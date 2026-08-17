@@ -1,0 +1,833 @@
+// mxv2 - 描画コア（旧 mxv/draw.cpp の移植）
+
+#include "drawscreen.h"
+
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+
+#include "bmpfile.h"
+#include "fileutil.h"
+
+namespace mxv2 {
+
+namespace {
+
+// レイアウト定数はスキン (skin.h) が持つ。既定値は旧 mxv/draw.cpp と同じ。
+
+int Min(int a, int b) { return a < b ? a : b; }
+int Max(int a, int b) { return a > b ? a : b; }
+
+// 5x7 での退避描画に流す最大文字数。はみ出した分はブリッタ側でクリップされる
+// ので、画面幅を越えられる長さがあれば十分。
+const size_t kMaxAsciiChars = 128;
+
+// 5x7 フォントで描ける形（ASCII 大文字）に落とす。文字描画が使えない
+// プラットフォーム向けの退避用。
+std::string ToAscii(const std::string &utf8, size_t maxLen) {
+	std::string out;
+	out.reserve(utf8.size());
+	for (size_t i = 0; i < utf8.size() && out.size() < maxLen; i++) {
+		unsigned char c = (unsigned char)utf8[i];
+		if (c >= 0x80) {
+			if ((c & 0xc0) == 0x80) continue;  // UTF-8 の後続バイト
+			out += '?';
+			continue;
+		}
+		if (c >= 'a' && c <= 'z') c = (unsigned char)(c - 'a' + 'A');
+		if (c < 0x20) c = ' ';
+		out += (char)c;
+	}
+	return out;
+}
+
+}  // namespace
+
+// ---------------------------------------------------------------------------
+
+DrawScreen::DrawScreen()
+    : skin_(0),
+      textLayer_(0),
+      fileListFontSize_(0),
+      scrollBarFlags_(0),
+      scrollBarThumb_(0),
+      playKeyStatusLast_(0),
+      progressBarLenLast_(-1),
+      progressNowSecLast_(-1),
+      totalVolBarLast_(-1),
+      fileListCursorLast_(-1) {
+	memset(kbPalette_, 0, sizeof(kbPalette_));
+	memset(palLevelMeter_, 0, sizeof(palLevelMeter_));
+}
+
+DrawScreen::~DrawScreen() {}
+
+bool DrawScreen::Init(const Skin *skin, std::string *err) {
+	InitBlendTables();
+
+	if (skin == 0) {
+		*err = "スキンが指定されていません。";
+		return false;
+	}
+	skin_ = skin;
+
+	if (!screen_.Create(width(), height(), 24) || !back_.Create(width(), height(), 24) ||
+	    !backBitmap_.Create(width(), height(), 24)) {
+		*err = "画面バッファを確保できません。";
+		return false;
+	}
+
+	theme_ = Theme();
+	theme_.Load(skin_->FindFile("theme.mxv"));
+
+	if (!LoadAssets(err)) return false;
+
+	Reload();
+	return true;
+}
+
+// ---------------------------------------------------------------------------
+// 素材の読み込み
+// ---------------------------------------------------------------------------
+
+bool DrawScreen::LoadAssets(std::string *err) {
+	Bitmap kb1, kb2;
+
+	// ファイル名はスキンが持つ（layout.ini の [Assets]）。
+	struct Item {
+		const std::string *name;
+		Bitmap *dst;
+	};
+	const Item items[] = {
+		{ &skin_->kb0Bitmap, &kb0_ },
+		{ &skin_->kb1Bitmap, &kb1 },
+		{ &skin_->kb2Bitmap, &kb2 },
+		{ &skin_->font5x7Bitmap, &font_ },
+		{ &skin_->levelMeterBitmap, &levelMeter_ },
+		{ &skin_->bannerBitmap, &banner_ },
+		{ &skin_->playKeyBitmap, &playKey_ },
+		{ &skin_->progressBarBitmap, &progressBarBase_ },
+		{ &skin_->volBarBitmap, &totalVolBarBase_ },
+		{ &skin_->scrollBarBitmap, &scrollBarBase_ },
+	};
+	for (size_t i = 0; i < sizeof(items) / sizeof(items[0]); i++) {
+		// スキンのフォルダ -> 土台のフォルダ の順に探す。
+		if (!LoadBmpFile(skin_->FindFile(*items[i].name), items[i].dst, err)) return false;
+	}
+
+	// 鍵ビットマップの切り出し。奇数番の音は kb2 (黒鍵) から取る。
+	// パレット 0x11 を 1 (影)、0x12+n を 2 (点灯色) へ寄せる。
+	static const int kUseKb2[12] = { 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0 };
+	for (int i = 0; i < 12; i++) {
+		const Bitmap &src = kUseKb2[i] ? kb2 : kb1;
+		CutKeyboardBitmap(&keyboard_[i], src, skin_->kbXOffset[i], 7, 0x11, 0x12 + i);
+	}
+	for (int i = 0; i < 12; i++) {
+		kbPalette_[i] = kb1.palette()[i + 0x12];
+	}
+
+	// レベルメータの点灯色 / 消灯色
+	for (int i = 0; i < skin_->levelMeterWidthCells * 2; i++) {
+		palLevelMeter_[i] = levelMeter_.palette()[i + skin_->levelMeterPalOfs];
+	}
+
+	// 組み立て用のバッファ
+	if (!progressBar_.Create(skin_->progW, skin_->progH, 8)) {
+		*err = "プログレスバーのバッファを確保できません。";
+		return false;
+	}
+	memcpy(progressBar_.palette(), progressBarBase_.palette(), sizeof(Rgb) * 256);
+
+	if (!totalVolBar_.Create(skin_->volW, skin_->volH, 8)) {
+		*err = "音量バーのバッファを確保できません。";
+		return false;
+	}
+	memcpy(totalVolBar_.palette(), totalVolBarBase_.palette(), sizeof(Rgb) * 256);
+
+	if (!scrollBar_.Create(skin_->scrollW, skin_->scrollH, 8)) {
+		*err = "スクロールバーのバッファを確保できません。";
+		return false;
+	}
+	memcpy(scrollBar_.palette(), scrollBarBase_.palette(), sizeof(Rgb) * 256);
+
+	// 操作キーの LED は消灯状態から始める
+	playKey_.SetPalette(skin_->palPlayLed, 25, 25, 25);
+	playKey_.SetPalette(skin_->palPauseLed, 25, 25, 25);
+	playKey_.SetPalette(skin_->palContLed, 25, 25, 25);
+	playKey_.SetPalette(skin_->palRepeatLed, 25, 25, 25);
+
+	return true;
+}
+
+void DrawScreen::CutKeyboardBitmap(Bitmap *out, const Bitmap &src, int xsrc, int cutWidth,
+                                   int pal1, int pal2) {
+	out->Create(cutWidth, src.height(), 8);
+	for (int y = 0; y < src.height(); y++) {
+		const uint8_t *p = src.RowFromTop(y) + xsrc;
+		uint8_t *q = out->RowFromTop(y);
+		for (int x = 0; x < cutWidth; x++) {
+			int c = p[x];
+			q[x] = (uint8_t)((c == pal1) ? 1 : (c == pal2) ? 2 : 0);
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 背景合成
+// ---------------------------------------------------------------------------
+
+void DrawScreen::LoadBackBitmap() {
+	BmpFill(&backBitmap_, 0, 0, width(), height(), 0, 0, 0, 100);
+	if (!theme_.back.bitmap) return;
+
+	Bitmap image;
+	std::string err;
+	if (!LoadBmpFile(skin_->FindFile(skin_->backBitmap), &image, &err)) return;
+	BmpCopy(&backBitmap_, 0, 0, width(), height(), &image, 0, 0, 100);
+}
+
+void DrawScreen::CompositeBanner() {
+	BmpCopy(&back_, skin_->bannerX, skin_->bannerY, skin_->bannerW, skin_->bannerH, &banner_, 0, 0, kBlendMul);
+}
+
+void DrawScreen::CompositeStatusBack() {
+	for (int i = 0; i < 9; i++) {
+		BmpFill(&back_, skin_->statusX, skin_->statusY + skin_->chYOffset[i], skin_->statusBackW, skin_->statusBackH,
+		        theme_.status.backColor.r, theme_.status.backColor.g,
+		        theme_.status.backColor.b, theme_.status.backColorBright);
+	}
+}
+
+void DrawScreen::CompositeFileList() {
+	BmpFill(&back_, skin_->fileListX, skin_->fileListY, skin_->fileListW, skin_->fileListH, theme_.filer.backColor.r,
+	        theme_.filer.backColor.g, theme_.filer.backColor.b, theme_.filer.backColorBright);
+}
+
+void DrawScreen::CompositeKeyboard() {
+	kb0_.SetPalette(1, theme_.kb.blackBright, theme_.kb.blackBright, theme_.kb.blackBright);
+	kb0_.SetPalette(2, theme_.kb.whiteBright, theme_.kb.whiteBright, theme_.kb.whiteBright);
+	for (int i = 0; i < 9; i++) {
+		BmpCopy(&back_, skin_->kbX, skin_->kbY + skin_->chYOffset[i] + skin_->kbYOffset, kb0_.width(), kb0_.height(),
+		        &kb0_, 0, 0, kBlendMul);
+	}
+}
+
+void DrawScreen::CompositeBack() {
+	BmpFill(&back_, 0, 0, width(), height(), 0, 0, 0, 100);
+	BmpCopy(&back_, 0, 0, width(), height(), &backBitmap_, 0, 0, theme_.back.bitmapBright);
+	BmpFill(&back_, 0, 0, width(), height(), theme_.back.color.r, theme_.back.color.g,
+	        theme_.back.color.b, theme_.back.colorBright);
+
+	CompositeBanner();
+	CompositeStatusBack();
+	CompositeFileList();
+	CompositeKeyboard();
+}
+
+void DrawScreen::Reload() {
+	LoadBackBitmap();
+	CompositeBack();
+
+	BmpCopy(&screen_, 0, 0, width(), height(), &back_, 0, 0, 100);
+	// 文字レイヤーも一度消す。行と曲名はこの後で描き直される。
+	if (textLayer_ != 0) textLayer_->ClearAll();
+
+	playKeyStatusLast_ = 0;
+	progressBarLenLast_ = -1;
+	progressNowSecLast_ = -1;
+	totalVolBarLast_ = -1;
+	fileListLast_.clear();
+	fileListCursorLast_ = -1;
+
+	PutMDXTitle(mdxTitle_);
+}
+
+// ---------------------------------------------------------------------------
+// 転送
+// ---------------------------------------------------------------------------
+
+void DrawScreen::BlitTo(Screen *out) const {
+	if (out == 0 || out->pixels() == 0) return;
+	const int w = Min(width(), out->width());
+	const int h = Min(height(), out->height());
+	for (int y = 0; y < h; y++) {
+		const uint8_t *p = screen_.RowFromTop(y);
+		uint32_t *q = out->pixels() + (size_t)y * out->width();
+		for (int x = 0; x < w; x++) {
+			q[x] = 0xff000000u | ((uint32_t)p[2] << 16) | ((uint32_t)p[1] << 8) | p[0];
+			p += 3;
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 文字描画 (5x7 フォント)
+// ---------------------------------------------------------------------------
+
+void DrawScreen::Print(int x, int y, const char *msg, const Rgb &color, int alpha) {
+	font_.SetPalette(1, color.r, color.g, color.b);
+	for (const char *p = msg; *p != '\0'; p++) {
+		int c = (unsigned char)*p;
+		if (c < 0x20) c = 0x20;
+		if (c > 0x6f) c = 0x6f;
+		c -= 0x20;
+		BmpCopyTransparent(&screen_, x, y, 5, 7, &font_, (c & 0x0f) * 5, (c >> 4) * 7, alpha);
+		x += skin_->fontW;
+	}
+}
+
+void DrawScreen::PrintCompose(int x, int y, const char *msg, const Rgb &color, int alpha) {
+	font_.SetPalette(1, color.r, color.g, color.b);
+	for (const char *p = msg; *p != '\0'; p++) {
+		int c = (unsigned char)*p;
+		if (c < 0x20) c = 0x20;
+		if (c > 0x6f) c = 0x6f;
+		c -= 0x20;
+		BmpCopyComposite(&screen_, x, y, 5, 7, &font_, (c & 0x0f) * 5, (c >> 4) * 7, &back_, x,
+		                 y, alpha);
+		x += skin_->fontW;
+	}
+}
+
+void DrawScreen::PutStatusText(int x, int y, int cells, const char *text) {
+	(void)cells;
+	PrintCompose(x, y, text, theme_.status.color, theme_.status.colorBright);
+}
+
+// ---------------------------------------------------------------------------
+// 鍵盤
+// ---------------------------------------------------------------------------
+
+void DrawScreen::PutNoteOn(int key, int row, int color, int bendMode) {
+	if (row < 0 || row >= 9) return;
+	key += skin_->keyOffset;
+	if (key < 0) return;
+	const int oct = key / 12;
+	const int note = key % 12;
+	Bitmap &b = keyboard_[note];
+	if (!b.valid()) return;
+
+	b.palette()[2] = kbPalette_[color % 12];
+
+	const int x = skin_->kbX + skin_->kbXOffset[note] + skin_->kbXOffset[12] * oct - skin_->kbXOffset[skin_->keyOffset];
+	const int y = skin_->kbY + skin_->chYOffset[row] + skin_->kbYOffset;
+	BmpCopyTransparent(&screen_, x, y, b.width(), b.height(), &b, 0, 0,
+	                   bendMode ? theme_.kb.bright / 2 : theme_.kb.bright);
+}
+
+void DrawScreen::PutNoteOff(int key, int row) {
+	if (row < 0 || row >= 9) return;
+	key += skin_->keyOffset;
+	if (key < 0) return;
+	const int oct = key / 12;
+	const int note = key % 12;
+	const Bitmap &b = keyboard_[note];
+	if (!b.valid()) return;
+
+	const int x = skin_->kbX + skin_->kbXOffset[note] + skin_->kbXOffset[12] * oct - skin_->kbXOffset[skin_->keyOffset];
+	const int y = skin_->kbY + skin_->chYOffset[row] + skin_->kbYOffset;
+	BmpCopy(&screen_, x, y, b.width(), b.height(), &back_, x, y, 100);
+}
+
+// ---------------------------------------------------------------------------
+// ステータス表示 (FM 0..7)
+// ---------------------------------------------------------------------------
+
+void DrawScreen::PutVolume(int volume, int row) {
+	if (row < 0 || row >= 9) return;
+	char s[64];
+	if (volume >= 128) {
+		snprintf(s, sizeof(s), "V%03d", 127 - (volume & 127));
+	} else {
+		snprintf(s, sizeof(s), "V%-3d", volume);
+	}
+	PutStatusText(2 + skin_->statusX, skin_->chYOffset[row] + 0 + skin_->statusY, 4, s);
+}
+
+void DrawScreen::PutPanpot(int panpot, int row) {
+	if (row < 0 || row >= 9) return;
+	char s[2];
+	s[0] = "-LRC"[panpot & 3];
+	s[1] = '\0';
+	PutStatusText(122 + skin_->statusX, skin_->chYOffset[row] + 0 + skin_->statusY, 1, s);
+}
+
+void DrawScreen::PutDetune(int detune, int row) {
+	if (row < 0 || row >= 9) return;
+	char s[64];
+	const int v = (int16_t)detune;
+	snprintf(s, sizeof(s), "D%c%04d", (v >= 0) ? '+' : '-', abs(v) % 10000);
+	PutStatusText(2 + skin_->statusX, skin_->chYOffset[row] + 9 + skin_->statusY, 6, s);
+}
+
+void DrawScreen::PutVoice(int voice, int row) {
+	if (row < 0 || row >= 9) return;
+	char s[64];
+	snprintf(s, sizeof(s), "@%03d", voice % 1000);
+	PutStatusText(40 + skin_->statusX, skin_->chYOffset[row] + 9 + skin_->statusY, 4, s);
+}
+
+void DrawScreen::PutQ(int q, int row) {
+	if (row < 0 || row >= 9) return;
+	char s[64];
+	snprintf(s, sizeof(s), "Q%03d", q % 1000);
+	PutStatusText(66 + skin_->statusX, skin_->chYOffset[row] + 9 + skin_->statusY, 4, s);
+}
+
+void DrawScreen::PutPtr(int ptr, int row) {
+	if (row < 0 || row >= 9) return;
+	char s[64];
+	snprintf(s, sizeof(s), "$%05X", (unsigned)ptr & 0xfffff);
+	PutStatusText(92 + skin_->statusX, skin_->chYOffset[row] + 9 + skin_->statusY, 6, s);
+}
+
+void DrawScreen::PutLFOPitch(int v, int row) {
+	if (row < 0 || row >= 9) return;
+	char s[64];
+	const int t = (int16_t)v;
+	snprintf(s, sizeof(s), "P%c%04d", (t >= 0) ? '+' : '-', abs(t) % 10000);
+	PutStatusText(2 + skin_->statusX, skin_->chYOffset[row] + 18 + skin_->statusY, 6, s);
+}
+
+void DrawScreen::PutLFOPitch1(int v, int row) {
+	if (row < 0 || row >= 9) return;
+	char s[2];
+	s[0] = (char)(0x65 + v);
+	s[1] = '\0';
+	PutStatusText(40 + skin_->statusX, skin_->chYOffset[row] + 18 + skin_->statusY, 1, s);
+}
+
+void DrawScreen::PutLFOPitch2(int v, int row) {
+	if (row < 0 || row >= 9) return;
+	char s[64];
+	snprintf(s, sizeof(s), "%04d", (uint16_t)v % 10000);
+	PutStatusText(46 + skin_->statusX, skin_->chYOffset[row] + 18 + skin_->statusY, 4, s);
+}
+
+void DrawScreen::PutLFOPitch3(int v, int row) {
+	if (row < 0 || row >= 9) return;
+	char s[64];
+	snprintf(s, sizeof(s), "%c%04d", (v >= 0) ? '+' : '-', abs(v) % 10000);
+	PutStatusText(72 + skin_->statusX, skin_->chYOffset[row] + 18 + skin_->statusY, 5, s);
+}
+
+void DrawScreen::PutLFOPitch4(int v, int row) {
+	if (row < 0 || row >= 9) return;
+	char s[64];
+	snprintf(s, sizeof(s), "D%03d", (uint16_t)v % 1000);
+	PutStatusText(104 + skin_->statusX, skin_->chYOffset[row] + 18 + skin_->statusY, 4, s);
+}
+
+void DrawScreen::PutLFOVolume(int v, int row) {
+	if (row < 0 || row >= 9) return;
+	char s[64];
+	const int t = (int16_t)v;
+	snprintf(s, sizeof(s), "A%c%04d", (t >= 0) ? '+' : '-', abs(t) % 10000);
+	PutStatusText(2 + skin_->statusX, skin_->chYOffset[row] + 27 + skin_->statusY, 6, s);
+}
+
+void DrawScreen::PutLFOVolume1(int v, int row) {
+	if (row < 0 || row >= 9) return;
+	char s[2];
+	s[0] = (char)(0x65 + v);
+	s[1] = '\0';
+	PutStatusText(40 + skin_->statusX, skin_->chYOffset[row] + 27 + skin_->statusY, 1, s);
+}
+
+void DrawScreen::PutLFOVolume2(int v, int row) {
+	if (row < 0 || row >= 9) return;
+	char s[64];
+	snprintf(s, sizeof(s), "%04d", (uint16_t)v % 10000);
+	PutStatusText(46 + skin_->statusX, skin_->chYOffset[row] + 27 + skin_->statusY, 4, s);
+}
+
+void DrawScreen::PutLFOVolume3(int v, int row) {
+	if (row < 0 || row >= 9) return;
+	char s[64];
+	snprintf(s, sizeof(s), "%c%04d", (v >= 0) ? '+' : '-', abs(v) % 10000);
+	PutStatusText(72 + skin_->statusX, skin_->chYOffset[row] + 27 + skin_->statusY, 5, s);
+}
+
+void DrawScreen::PutLevelMeter(const char *levelMeterInfo, int row) {
+	if (row < 0 || row >= 9 || !levelMeter_.valid()) return;
+
+	// 点灯しているセルだけ明るいパレットに差し替える。
+	for (int i = 0; i < skin_->levelMeterWidthCells; i++) {
+		levelMeter_.palette()[i + skin_->levelMeterPalOfs] =
+		    levelMeterInfo[i] ? palLevelMeter_[i] : palLevelMeter_[i + skin_->levelMeterWidthCells];
+	}
+
+	const int skip = 24 + 6 + 2;
+	const int w = levelMeter_.width() - skip;
+	const int h = levelMeter_.height();
+	const int x = 26 + skin_->statusX;
+	const int y = skin_->chYOffset[row] + 0 + skin_->statusY;
+	BmpCopyComposite(&screen_, x, y, w, h, &levelMeter_, skip, 0, &back_, x, y,
+	                 theme_.status.colorBright);
+}
+
+// ---------------------------------------------------------------------------
+// ステータス表示 (PCM 8..15)
+// ---------------------------------------------------------------------------
+
+void DrawScreen::PutPCMVolume(int volume, int row) {
+	const int i = row - 8;
+	if (i < 0 || i >= 8) return;
+	char s[64];
+	if (volume >= 128) {
+		snprintf(s, sizeof(s), "V%03d", 127 - (volume & 127));
+	} else {
+		snprintf(s, sizeof(s), "V%-3d", volume);
+	}
+	PutStatusText(skin_->pcmXOffset[i] + 2 + skin_->statusX,
+	              skin_->pcmYOffset[i] + skin_->chYOffset[8] + 0 + skin_->statusY, 4, s);
+}
+
+void DrawScreen::PutPCMPtr(int ptr, int row) {
+	const int i = row - 8;
+	if (i < 0 || i >= 8) return;
+	char s[64];
+	snprintf(s, sizeof(s), "$%05X", (unsigned)ptr & 0xfffff);
+	PutStatusText(skin_->pcmXOffset[i] + 24 + skin_->statusX,
+	              skin_->pcmYOffset[i] + skin_->chYOffset[8] + 0 + skin_->statusY, 6, s);
+}
+
+// ---------------------------------------------------------------------------
+// 曲名
+// ---------------------------------------------------------------------------
+
+void DrawScreen::PutMDXTitle(const std::string &titleUtf8) {
+	mdxTitle_ = titleUtf8;
+
+	// 背景を戻してからタイトル欄の下地を敷く
+	BmpCopy(&screen_, skin_->titleX, skin_->titleY, skin_->titleW, skin_->titleH, &back_, skin_->titleX, skin_->titleY, 100);
+	BmpFill(&screen_, skin_->titleX, skin_->titleY, skin_->titleW, skin_->titleH, theme_.mdxTitle.backColor.r,
+	        theme_.mdxTitle.backColor.g, theme_.mdxTitle.backColor.b,
+	        theme_.mdxTitle.backColorBright);
+
+	if (titleUtf8.empty()) return;
+
+	if (textLayer_ != 0 && textLayer_->available()) {
+		// 文字はキャンバスではなく出力解像度のレイヤーへ描く。
+		textLayer_->ClearRect(skin_->titleX, skin_->titleY, skin_->titleW, skin_->titleH);
+		textLayer_->DrawText(skin_->titleX + 4, skin_->titleY, skin_->titleW - 8, skin_->titleH, titleUtf8,
+		                     theme_.mdxTitle.color, theme_.mdxTitle.colorBright);
+		return;
+	}
+
+	// フォントが読めなかったときの非常用。5x7 は本来ビジュアライザ用なので、
+	// ここへ落ちている時点で assets の同梱フォントが失われている。
+	Print(skin_->titleX + 4, skin_->titleY + 3, ToAscii(titleUtf8, kMaxAsciiChars).c_str(),
+	      theme_.mdxTitle.color, theme_.mdxTitle.colorBright);
+}
+
+// ---------------------------------------------------------------------------
+// ファイルリスト
+// ---------------------------------------------------------------------------
+
+int DrawScreen::fileListRows() const {
+	return skin_->fileListRows[fileListFontSize_ & 1];
+}
+
+void DrawScreen::SetFileListFontSize(int size) {
+	fileListFontSize_ = (size & 1);
+	fileListLast_.clear();
+	fileListCursorLast_ = -1;
+}
+
+void DrawScreen::PutFileList(const Filer &filer, bool refresh) {
+	const int rows = fileListRows();
+	const int fs = fileListFontSize_ & 1;  // 0=小さい文字 / 1=大きい文字
+	const int itemH = skin_->fileListItemH[fs];
+	const int top = filer.top();
+	const int cursor = filer.cursor();
+
+	if ((int)fileListLast_.size() != rows) {
+		fileListLast_.assign(rows, FileItem());
+		refresh = true;
+	}
+
+	for (int i = 0; i < rows; i++) {
+		const int j = top + i;
+		bool redraw = refresh;
+
+		FileItem shown;
+		if (j < filer.itemCount()) shown = filer.item(j);
+
+		if (fileListLast_[i].baseName != shown.baseName ||
+		    fileListLast_[i].title != shown.title || fileListLast_[i].type != shown.type) {
+			fileListLast_[i] = shown;
+			redraw = true;
+		}
+		// カーソルが出入りした行は描き直す
+		if (fileListCursorLast_ != cursor && (j == fileListCursorLast_ || j == cursor)) {
+			redraw = true;
+		}
+		if (!redraw) continue;
+
+		const int x = skin_->fileListX;
+		const int y = skin_->fileListY + i * itemH;
+		const int h = (y + itemH > skin_->fileListY + skin_->fileListH) ? (skin_->fileListY + skin_->fileListH - y)
+		                                                    : itemH;
+		if (h <= 0) break;
+
+		// 背景を戻す -> カーソル -> 文字
+		// 背景とカーソルはキャンバス側、文字は出力解像度のレイヤー側。
+		BmpCopy(&screen_, x, y, skin_->fileListW, h, &back_, x, y, 100);
+		if (j == cursor && j < filer.itemCount()) {
+			BmpFill(&screen_, x, y, skin_->fileListW, h, theme_.filer.cursorBright.r,
+			        theme_.filer.cursorBright.g, theme_.filer.cursorBright.b, kBlendMul);
+		}
+		if (textLayer_ != 0) textLayer_->ClearRect(x, y, skin_->fileListW, h);
+		if (shown.baseName.empty() && shown.title.empty()) continue;
+
+		// 種別で文字色を変える
+		Rgb color = theme_.filer.color;
+		if (shown.type & kFileItemDrive) {
+			color = theme_.filer.driveColor;
+		} else if (shown.type & kFileItemDir) {
+			color = theme_.filer.folderColor;
+		}
+
+		if (textLayer_ != 0 && textLayer_->available()) {
+			textLayer_->DrawText(x + skin_->fileListBaseNameX[fs], y,
+			                     skin_->fileListBaseNameW[fs], itemH, shown.baseName, color,
+			                     theme_.filer.colorBright);
+			if (!shown.title.empty()) {
+				textLayer_->DrawText(x + skin_->fileListTitleX[fs], y, skin_->fileListTitleW[fs],
+				                     itemH, shown.title, color, theme_.filer.colorBright);
+			}
+		} else {
+			// フォントが読めなかったときの非常用（5x7 は本来ビジュアライザ用）。
+			Print(x + skin_->fileListBaseNameX[fs], y + 1,
+			      ToAscii(shown.baseName, kMaxAsciiChars).c_str(), color, theme_.filer.colorBright);
+			if (!shown.title.empty()) {
+				Print(x + skin_->fileListTitleX[fs], y + 1,
+				      ToAscii(shown.title, kMaxAsciiChars).c_str(), color, theme_.filer.colorBright);
+			}
+		}
+	}
+
+	// 最終行の余りを背景で埋める
+	{
+		const int y = skin_->fileListY + rows * itemH;
+		int h = skin_->fileListY + skin_->fileListH - y;
+		if (h > 0) {
+			BmpCopy(&screen_, skin_->fileListX, y, skin_->fileListW, h, &back_, skin_->fileListX, y, 100);
+			if (textLayer_ != 0) textLayer_->ClearRect(skin_->fileListX, y, skin_->fileListW, h);
+		}
+	}
+
+	fileListCursorLast_ = cursor;
+}
+
+// ---------------------------------------------------------------------------
+// スクロールバー
+// ---------------------------------------------------------------------------
+
+void DrawScreen::SetScrollBarThumb(int y) {
+	scrollBarThumb_ = Max(0, Min(scrollBarMovement(), y));
+}
+
+void DrawScreen::PutScrollBar(int top, int itemCount, int visibleRows) {
+	if (!scrollBar_.valid()) return;
+
+	// ドラッグ中はつまみの位置を掴んだまま動かす（top から計算し直すと
+	// 行単位に量子化されてカクつく）。旧 mxv の MX_PUTSCROLLBAR_FLAG_DRAG。
+	if ((scrollBarFlags_ & kScrollBarDrag) == 0) {
+		int n = itemCount - visibleRows;
+		if (n < 0) n = 0;
+		SetScrollBarThumb((n > 0) ? (scrollBarMovement() * top / n) : 0);
+	}
+
+	// 素材は上から「つまみ / 上矢印(押下) / 下矢印(押下) / 溝」の順。
+	BmpCopy(&scrollBar_, 0, 0, skin_->scrollW, skin_->scrollH, &scrollBarBase_, 0, skin_->scrollButtonH * 3, 100);
+	BmpCopy(&scrollBar_, 0, skin_->scrollButtonH + scrollBarThumb_, skin_->scrollW, skin_->scrollButtonH,
+	        &scrollBarBase_, 0, 0, 100);
+	// 矢印の押下表示。原典はここを高さ CH_D(110) で転送していてバー全体を
+	// 潰していたので、ボタン 1 個分 (12) だけにしてある。
+	if (scrollBarFlags_ & kScrollBarUpArrowDown) {
+		BmpCopy(&scrollBar_, 0, 0, skin_->scrollW, skin_->scrollButtonH, &scrollBarBase_, 0,
+		        skin_->scrollButtonH * 1, 100);
+	}
+	if (scrollBarFlags_ & kScrollBarDownArrowDown) {
+		BmpCopy(&scrollBar_, 0, skin_->scrollH - skin_->scrollButtonH, skin_->scrollW, skin_->scrollButtonH,
+		        &scrollBarBase_, 0, skin_->scrollButtonH * 2, 100);
+	}
+
+	BmpCopyComposite(&screen_, skin_->scrollX, skin_->scrollY, skin_->scrollW, skin_->scrollH, &scrollBar_, 0, 0,
+	                 &back_, skin_->scrollX, skin_->scrollY, kBlendMul);
+}
+
+// ---------------------------------------------------------------------------
+// プログレスバー
+// ---------------------------------------------------------------------------
+
+void DrawScreen::PutProgressBar(uint32_t nowTimeMs, uint32_t playTimeMs, bool refresh) {
+	if (!progressBar_.valid()) return;
+
+	uint32_t now = nowTimeMs;
+	if (playTimeMs != 0 && now > playTimeMs) now = playTimeMs;
+
+	int len = 0;
+	if (playTimeMs != 0) len = (int)((int64_t)skin_->progW * now / playTimeMs);
+
+	bool disp = refresh;
+	if (progressBarLenLast_ != len) {
+		progressBarLenLast_ = len;
+		disp = true;
+	}
+	if (disp) {
+		// 進んだ部分は素材の 2 段目、残りは 1 段目。
+		BmpCopy(&progressBar_, 0, 0, len, skin_->progH, &progressBarBase_, 0, skin_->progH, 100);
+		BmpCopy(&progressBar_, len, 0, skin_->progW - len, skin_->progH, &progressBarBase_, len, 0, 100);
+		BmpCopyComposite(&screen_, skin_->progX, skin_->progY, skin_->progW, skin_->progH, &progressBar_, 0, 0, &back_,
+		                 skin_->progX, skin_->progY, kBlendMul);
+	}
+
+	const int nowSec = (int)(nowTimeMs / 1000);
+	disp = refresh;
+	if (progressNowSecLast_ != nowSec) {
+		progressNowSecLast_ = nowSec;
+		disp = true;
+	}
+	if (disp) {
+		int t = Min(nowSec, 99 * 60 + 59);
+		int t2 = Min((int)(playTimeMs / 1000), 99 * 60 + 59);
+		char s[128];
+		snprintf(s, sizeof(s), "PLAY TIME: %02d:%02d / %02d:%02d", t / 60, t % 60, t2 / 60,
+		         t2 % 60);
+		PrintCompose(skin_->progX + skin_->progTimeXOfs, skin_->progY + skin_->progTimeYOfs, s, theme_.playKey.color,
+		             theme_.playKey.colorBright);
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 音量バー
+// ---------------------------------------------------------------------------
+
+void DrawScreen::PutTotalVolBar(int barPos, bool refresh) {
+	if (!totalVolBar_.valid()) return;
+
+	barPos = Max(0, Min(totalVolBarMovement(), barPos));
+	bool disp = refresh || (totalVolBarLast_ != barPos);
+	if (!disp) return;
+	totalVolBarLast_ = barPos;
+
+	BmpCopy(&totalVolBar_, 0, 0, skin_->volRect[1].w, skin_->volRect[1].h, &totalVolBarBase_,
+	        skin_->volRect[1].x, skin_->volRect[1].y, 100);
+	BmpCopy(&totalVolBar_, barPos, 0, skin_->volRect[0].w, skin_->volRect[1].h,
+	        &totalVolBarBase_, skin_->volRect[0].x, skin_->volRect[1].y, 100);
+	BmpCopyComposite(&screen_, skin_->volX, skin_->volY, skin_->volW, skin_->volH, &totalVolBar_, 0, 0, &back_, skin_->volX,
+	                 skin_->volY, kBlendMul);
+
+	const int k = barPos - (totalVolBarMovement() / 2);
+	char s[64];
+	snprintf(s, sizeof(s), "%c%02d", (k >= 0) ? '+' : '-', abs(k));
+	PrintCompose(skin_->volX + skin_->volTimeXOfs, skin_->volY + skin_->volTimeYOfs, s, theme_.playKey.color,
+	             theme_.playKey.colorBright);
+}
+
+// ---------------------------------------------------------------------------
+// 操作キー
+// ---------------------------------------------------------------------------
+
+void DrawScreen::PutPlayKey(uint32_t status, bool refresh) {
+	if (!playKey_.valid()) return;
+
+	playKey_.SetPalette(skin_->palPlayKeyKey, theme_.playKey.keyBright, theme_.playKey.keyBright,
+	                    theme_.playKey.keyBright);
+
+	struct LedMap {
+		uint32_t bit;
+		int pal;
+		int onPal;
+	};
+	const LedMap leds[4] = {
+		{ kPlayKeyPlayLed, skin_->palPlayLed, skin_->palGreen },
+		{ kPlayKeyPauseLed, skin_->palPauseLed, skin_->palGreen },
+		{ kPlayKeyContLed, skin_->palContLed, skin_->palRed },
+		{ kPlayKeyRepeatLed, skin_->palRepeatLed, skin_->palRed },
+	};
+
+	bool ledChanged = false;
+	for (int i = 0; i < 4; i++) {
+		const uint32_t now = status & leds[i].bit;
+		if (now == (playKeyStatusLast_ & leds[i].bit)) continue;
+		playKey_.palette()[leds[i].pal] = playKey_.palette()[now ? leds[i].onPal : skin_->palDark];
+		ledChanged = true;
+	}
+
+	for (int i = 0; i < skin_->numPlayKeys; i++) {
+		const uint32_t sw = status & (1u << i);
+		bool disp = refresh || ledChanged;
+		if (sw != (playKeyStatusLast_ & (1u << i))) disp = true;
+		if (!disp) continue;
+
+		const int w = skin_->playKeyRect[i].w;
+		const int h = skin_->playKeyRect[i].h;
+		const int x = skin_->playKeyX + skin_->playKeyPos[i][0];
+		const int y = skin_->playKeyY + skin_->playKeyPos[i][1];
+		BmpCopyComposite(&screen_, x, y, w, h, &playKey_, skin_->playKeyRect[i].x,
+		                 skin_->playKeyRect[i].y + (sw ? h : 0), &back_, x, y, kBlendMul);
+	}
+
+	playKeyStatusLast_ = status;
+}
+
+// ---------------------------------------------------------------------------
+// ヒットチェック（旧 mxv の Screen_HitCheck_*）
+// ---------------------------------------------------------------------------
+
+int DrawScreen::HitCheckPlayKey(int x, int y) const {
+	for (int i = 0; i < skin_->numPlayKeys; i++) {
+		const int l = skin_->playKeyX + skin_->playKeyPos[i][0];
+		const int t = skin_->playKeyY + skin_->playKeyPos[i][1];
+		if (x >= l && x < l + skin_->playKeyRect[i].w && y >= t && y < t + skin_->playKeyRect[i].h) {
+			return i + 1;
+		}
+	}
+	return kHitPlayKeyNone;
+}
+
+int DrawScreen::HitCheckScrollBar(int x, int y) const {
+	if (x < skin_->scrollX || x >= skin_->scrollX + skin_->scrollW) return kHitScrollBarNone;
+	if (y < skin_->scrollY || y >= skin_->scrollY + skin_->scrollH) return kHitScrollBarNone;
+
+	const int dy = y - skin_->scrollY;
+	if (dy < skin_->scrollButtonH) return kHitScrollBarUpArrow;
+	if (dy < skin_->scrollButtonH + scrollBarThumb_) return kHitScrollBarUpPage;
+	if (dy < skin_->scrollButtonH * 2 + scrollBarThumb_) return kHitScrollBarThumb;
+	if (dy < skin_->scrollH - skin_->scrollButtonH) return kHitScrollBarDownPage;
+	return kHitScrollBarDownArrow;
+}
+
+int DrawScreen::HitCheckFileList(int x, int y) const {
+	if (x < skin_->fileListX || x >= skin_->fileListX + skin_->fileListW) return -1;
+	if (y < skin_->fileListY || y >= skin_->fileListY + skin_->fileListH) return -1;
+
+	const int row = (y - skin_->fileListY) / skin_->fileListItemH[fileListFontSize_ & 1];
+	// 大きい文字 (13px) では 110/13 = 8 行と半端が出る。原典は半端の帯でも
+	// 行 8 を返していたが、そこには何も描かれていないので弾く。
+	if (row >= fileListRows()) return -1;
+	return row;
+}
+
+int DrawScreen::HitCheckProgressBar(int x, int y) const {
+	if (y < skin_->progY || y >= skin_->progY + skin_->progH) return -1;
+	if (x < skin_->progX || x >= skin_->progX + skin_->progW) return -1;
+	return Max(0, Min(skin_->progW, x - skin_->progX));
+}
+
+int DrawScreen::TotalVolBarPosFromX(int x) const {
+	// つまみの中心を掴む形にする（旧 mxv の MX_CX_TOTALVOLBAR_NOB）。
+	return Max(0, Min(totalVolBarMovement(), x - (skin_->volX + skin_->volNobW / 2)));
+}
+
+int DrawScreen::HitCheckTotalVolBar(int x, int y) const {
+	if (y < skin_->volY || y >= skin_->volY + skin_->volH) return -1;
+	if (x < skin_->volX || x >= skin_->volX + skin_->volW) return -1;
+	return TotalVolBarPosFromX(x);
+}
+
+}  // namespace mxv2

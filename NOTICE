@@ -1,0 +1,100 @@
+mxv2 - MDX player
+Copyright (C) 2000-2002, 2026 GORRY.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+ライセンス全文は同じフォルダの LICENSE にある。
+mxv2 で新たに作成したファイルと、旧 mxv (Win32 版) から引き継いだファイルは、
+いずれも Apache License Version 2.0 が適用される。
+
+
+================================================================================
+バイナリパッケージに含まれる第三者のソフトウェア
+================================================================================
+
+ソースコードは含まない (third_party/ はリポジトリに入っていない。用意のしかたは
+BUILD.md を参照)。ここに挙げるのは、ビルドしたバイナリパッケージに含まれるもの。
+
+--------------------------------------------------------------------------------
+SDL2  --  SDL2.dll として同梱
+--------------------------------------------------------------------------------
+zlib ライセンス
+
+    Copyright (C) 1997-2025 Sam Lantinga <slouken@libsdl.org>
+    https://www.libsdl.org/
+
+ライセンス全文: third_party/SDL2-2.32.10/LICENSE.txt
+
+--------------------------------------------------------------------------------
+Dear ImGui  --  imgui.lib として静的リンク
+--------------------------------------------------------------------------------
+MIT ライセンス
+
+    Copyright (c) 2014-2025 Omar Cornut
+    https://github.com/ocornut/imgui
+
+ライセンス全文: third_party/imgui/LICENSE.txt
+
+--------------------------------------------------------------------------------
+portable_mdx  --  portable_mdx.lib として静的リンク
+--------------------------------------------------------------------------------
+単一のライセンスではない。
+
+    https://github.com/yosshin4004/portable_mdx
+
+正確な条件は third_party/portable_mdx/readme.md の「ライセンス」項を読むこと。
+mxv2 がリンクするファイルは、由来によって次の 3 系統に分かれる。
+
+  1. Yosshin 氏が制作した部分
+     (mdx_util、mxdrv_context.h / x68sound_context.h など)
+
+     Apache License Version 2.0
+
+  2. MXDRVg / MXDRV.X に由来する部分 (mxdrv.h、mxdrv/*)
+
+     X68000 ネイティブ版 MXDRV.X (milk., K.MAEKAWA, Missy.M, Yatsube 氏) を
+     ディスアセンブルしたものを GORRY が C 言語へコンバートした MXDRVg を、
+     さらに Yosshin 氏が改変したもの。Yosshin 氏による改変箇所のライセンスは
+     オリジナルの MXDRV.X / MXDRVg に従う。
+     明確なライセンス文書は存在せず、「X68 的 default のフリーソフトウェア扱い」
+     とされている。
+     (MXDRVg の作者 GORRY は mxv2 の作者と同一人物である。)
+
+  3. X68Sound.dll に由来する部分 (x68sound.h、x68sound/*)
+
+     m_puusan 氏の X68Sound.dll を Yosshin 氏が改変したもの。Yosshin 氏による
+     改変箇所のライセンスはオリジナルの X68Sound.dll に従う。
+     オリジナルの使用許諾は次のとおり (readme.txt より)。
+
+         ・本ソースの改変および改変物の公開、自作ソフト等への組み込みおよび
+           そのソフトの配布は自由です。m_puusan への報告は必要ありません。
+         ・本ソフトウェアの使用または使用不能から生じるいかなる損害
+           (利益やデータの損失、その他の金銭的損失など) に関して
+           m_puusan は一切責任を負わないこととします。
+
+     参考: X68Sound.dll  http://mpuusan.web.fc2.com/x68sound/index.htm
+
+portable_mdx が同梱する SDL2 2.0.7 (examples/SDL2-2.0.7/*) は mxv2 のビルドでは
+使わないので、バイナリパッケージには含まれない。
+
+--------------------------------------------------------------------------------
+M PLUS 1p Regular  --  assets/MPLUS1p-Regular.ttf として同梱
+--------------------------------------------------------------------------------
+SIL Open Font License, Version 1.1
+
+    Copyright 2016 The M+ Project Authors.
+
+ライセンス全文の同梱が必要。assets/MPLUS1p-OFL.txt がそれ。
+
+assets/font.ttf を置いて表示フォントを差し替えた場合、そのフォントのライセンスは
+各自で確認すること。

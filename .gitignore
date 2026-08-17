@@ -1,0 +1,8 @@
+build/
+out/
+*.user
+*.vcxproj.user
+*.bak
+assets/font.ttf
+third_party/
+testdata/

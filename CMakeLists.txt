@@ -1,0 +1,204 @@
+cmake_minimum_required(VERSION 3.20)
+project(mxv2 LANGUAGES C CXX)
+
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# ---------------------------------------------------------------------------
+# 文字コードは全ソース UTF-8 に統一する。
+# MSVC は既定でナロー文字列リテラルをシステム ANSI (CP932) に再エンコードして
+# しまうため、/utf-8 を明示しないと SDL_ttf に渡す文字列が壊れる。
+# ---------------------------------------------------------------------------
+if(MSVC)
+	add_compile_options(/utf-8)
+else()
+	add_compile_options(-finput-charset=UTF-8 -fexec-charset=UTF-8)
+endif()
+
+# ---------------------------------------------------------------------------
+# portable_mdx (演奏モジュール)
+#   原典は読み取り専用扱いとし、ここから参照するだけで一切改変しない。
+# ---------------------------------------------------------------------------
+set(PORTABLE_MDX_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/portable_mdx" CACHE PATH
+	"portable_mdx のルートディレクトリ")
+
+if(NOT EXISTS "${PORTABLE_MDX_DIR}/include/mxdrv.h")
+	message(FATAL_ERROR "portable_mdx が見つかりません: ${PORTABLE_MDX_DIR}")
+endif()
+
+add_library(portable_mdx STATIC
+	"${PORTABLE_MDX_DIR}/src/mdx_util.c"
+	"${PORTABLE_MDX_DIR}/src/mxdrv/mxdrv.cpp"
+	"${PORTABLE_MDX_DIR}/src/mxdrv/mxdrv_context.cpp"
+	"${PORTABLE_MDX_DIR}/src/mxdrv/sound_iocs.cpp"
+	"${PORTABLE_MDX_DIR}/src/x68sound/x68sound.cpp"
+	"${PORTABLE_MDX_DIR}/src/x68sound/x68sound_adpcm.cpp"
+	"${PORTABLE_MDX_DIR}/src/x68sound/x68sound_context.cpp"
+	"${PORTABLE_MDX_DIR}/src/x68sound/x68sound_lfo.cpp"
+	"${PORTABLE_MDX_DIR}/src/x68sound/x68sound_op.cpp"
+	"${PORTABLE_MDX_DIR}/src/x68sound/x68sound_opm.cpp"
+	"${PORTABLE_MDX_DIR}/src/x68sound/x68sound_pcm8.cpp"
+)
+target_include_directories(portable_mdx PUBLIC "${PORTABLE_MDX_DIR}/include")
+
+if(MSVC)
+	# 原典コードは今の警告基準では大量に警告が出るため、ここだけ緩める。
+	target_compile_options(portable_mdx PRIVATE /W0 /wd4996)
+	target_compile_definitions(portable_mdx PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()
+
+# ---------------------------------------------------------------------------
+# SDL2
+#   third_party/SDL2-2.32.10 (公式の VC 開発用パッケージ) を使う。
+#   portable_mdx 同梱の 2.0.7 では Dear ImGui の SDL_Renderer バックエンドが
+#   要求する SDL_RenderGeometry (2.0.18 以降) が無いため差し替えた。
+#   SDL2_ROOT を指定すれば別の SDL2 に切り替えられる。
+# ---------------------------------------------------------------------------
+set(SDL2_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/SDL2-2.32.10" CACHE PATH
+	"SDL2 のルートディレクトリ")
+
+add_library(sdl2 INTERFACE)
+target_include_directories(sdl2 INTERFACE "${SDL2_ROOT}/include")
+if(WIN32)
+	if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+		set(SDL2_LIB_DIR "${SDL2_ROOT}/lib/x64")
+	else()
+		set(SDL2_LIB_DIR "${SDL2_ROOT}/lib/x86")
+	endif()
+	target_link_libraries(sdl2 INTERFACE
+		"${SDL2_LIB_DIR}/SDL2.lib"
+		"${SDL2_LIB_DIR}/SDL2main.lib"
+	)
+else()
+	find_package(SDL2 REQUIRED)
+	target_link_libraries(sdl2 INTERFACE SDL2::SDL2 SDL2::SDL2main)
+endif()
+
+# ---------------------------------------------------------------------------
+# Dear ImGui (設定 UI)
+#   third_party/imgui に v1.92.4 のコアと SDL2 / SDL_Renderer バックエンドだけを
+#   置いてある。原典同様、こちらからは改変しない。
+# ---------------------------------------------------------------------------
+set(IMGUI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/imgui")
+
+add_library(imgui STATIC
+	"${IMGUI_DIR}/imgui.cpp"
+	"${IMGUI_DIR}/imgui_draw.cpp"
+	"${IMGUI_DIR}/imgui_tables.cpp"
+	"${IMGUI_DIR}/imgui_widgets.cpp"
+	"${IMGUI_DIR}/backends/imgui_impl_sdl2.cpp"
+	"${IMGUI_DIR}/backends/imgui_impl_sdlrenderer2.cpp"
+)
+target_include_directories(imgui PUBLIC "${IMGUI_DIR}" "${IMGUI_DIR}/backends")
+target_link_libraries(imgui PUBLIC sdl2)
+if(MSVC)
+	target_compile_options(imgui PRIVATE /W0)
+	target_compile_definitions(imgui PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()
+
+# ---------------------------------------------------------------------------
+# Phase 0: 土台検証用。portable_mdx 付属サンプルをそのままビルドする。
+#   ここが鳴らなければ以降の全てが成立しないため、最初に確認する。
+# ---------------------------------------------------------------------------
+add_executable(simple_mdx_player
+	"${PORTABLE_MDX_DIR}/examples/simple_mdx_player/main.c"
+)
+target_link_libraries(simple_mdx_player PRIVATE portable_mdx sdl2)
+if(MSVC)
+	target_compile_definitions(simple_mdx_player PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()
+
+# WAV 書き出し版。音が出ているかを機械的に検証するのに使う（SDL 不要）。
+add_executable(simple_mdx2wav
+	"${PORTABLE_MDX_DIR}/examples/simple_mdx2wav/main.c"
+)
+target_link_libraries(simple_mdx2wav PRIVATE portable_mdx)
+if(MSVC)
+	target_compile_definitions(simple_mdx2wav PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()
+
+# ---------------------------------------------------------------------------
+# mxv2 本体
+# ---------------------------------------------------------------------------
+add_executable(mxv2
+	src/main.cpp
+	src/bitmap.cpp
+	src/bmpfile.cpp
+	src/drawscreen.cpp
+	src/filer.cpp
+	src/fileutil.cpp
+	src/ini.cpp
+	src/mdxsong.cpp
+	src/mouse.cpp
+	src/player.cpp
+	src/screen.cpp
+	src/settings.cpp
+	src/settingsui.cpp
+	src/skin.cpp
+	src/statuswatch.cpp
+	src/text.cpp
+	src/textlayer.cpp
+	src/textrender.cpp
+	src/theme.cpp
+	src/visualizer.cpp
+	src/bitmap.h
+	src/bmpfile.h
+	src/dispqueue.h
+	src/drawscreen.h
+	src/filer.h
+	src/fileutil.h
+	src/ini.h
+	src/mdxsong.h
+	src/mouse.h
+	src/mxdrvptr.h
+	src/player.h
+	src/screen.h
+	src/settings.h
+	src/settingsui.h
+	src/skin.h
+	src/statuswatch.h
+	src/text.h
+	src/textlayer.h
+	src/textrender.h
+	src/theme.h
+	src/visualizer.h
+)
+target_include_directories(mxv2 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(mxv2 PRIVATE portable_mdx sdl2 imgui)
+if(MSVC)
+	target_compile_definitions(mxv2 PRIVATE _CRT_SECURE_NO_WARNINGS)
+	target_compile_options(mxv2 PRIVATE /W3)
+endif()
+
+# ---------------------------------------------------------------------------
+# 検証用ツール
+#   mxv2 のデコード分割が波形を変えないことを確認する。SDL 不要。
+# ---------------------------------------------------------------------------
+add_executable(mxv2_chunktest
+	tools/chunktest.cpp
+	src/fileutil.cpp
+	src/text.cpp
+	src/mdxsong.cpp
+)
+target_include_directories(mxv2_chunktest PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_link_libraries(mxv2_chunktest PRIVATE portable_mdx)
+if(MSVC)
+	target_compile_definitions(mxv2_chunktest PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()
+
+# SDL2.dll を実行ファイルの隣に置く
+if(WIN32)
+	foreach(_target simple_mdx_player mxv2)
+		add_custom_command(TARGET ${_target} POST_BUILD
+			COMMAND ${CMAKE_COMMAND} -E copy_if_different
+				"${SDL2_LIB_DIR}/SDL2.dll" "$<TARGET_FILE_DIR:${_target}>"
+		)
+	endforeach()
+endif()
+
+# 素材ビットマップとテーマを実行ファイルの隣の assets/ へ置く
+add_custom_command(TARGET mxv2 POST_BUILD
+	COMMAND ${CMAKE_COMMAND} -E copy_directory
+		"${CMAKE_CURRENT_SOURCE_DIR}/assets" "$<TARGET_FILE_DIR:mxv2>/assets"
+)
