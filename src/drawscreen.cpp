@@ -22,6 +22,14 @@ int Max(int a, int b) { return a > b ? a : b; }
 // ので、画面幅を越えられる長さがあれば十分。
 const size_t kMaxAsciiChars = 128;
 
+// 音量の「まだ一度も描いていない」印。-100..+100 のどれとも重ならない値。
+const int kVolumeNever = -1000;
+
+// スクロールバーの部品の当たり判定。pos は {x, y}、src の w/h を大きさに使う。
+bool InRect(int x, int y, const int pos[2], const Xywh &src) {
+	return x >= pos[0] && x < pos[0] + src.w && y >= pos[1] && y < pos[1] + src.h;
+}
+
 // 5x7 フォントで描ける形（ASCII 大文字）に落とす。文字描画が使えない
 // プラットフォーム向けの退避用。
 std::string ToAscii(const std::string &utf8, size_t maxLen) {
@@ -54,7 +62,7 @@ DrawScreen::DrawScreen()
       playKeyStatusLast_(0),
       progressBarLenLast_(-1),
       progressNowSecLast_(-1),
-      totalVolBarLast_(-1),
+      totalVolBarLast_(kVolumeNever),
       fileListCursorLast_(-1) {
 	memset(kbPalette_, 0, sizeof(kbPalette_));
 	memset(palLevelMeter_, 0, sizeof(palLevelMeter_));
@@ -93,7 +101,7 @@ bool DrawScreen::Init(const Skin *skin, std::string *err) {
 bool DrawScreen::LoadAssets(std::string *err) {
 	Bitmap kb1, kb2;
 
-	// ファイル名はスキンが持つ（layout.ini の [Assets]）。
+	// ファイル名はスキンが持つ（layout.ini の各セクションの Img* キー）。
 	struct Item {
 		const std::string *name;
 		Bitmap *dst;
@@ -235,7 +243,7 @@ void DrawScreen::Reload() {
 	playKeyStatusLast_ = 0;
 	progressBarLenLast_ = -1;
 	progressNowSecLast_ = -1;
-	totalVolBarLast_ = -1;
+	totalVolBarLast_ = kVolumeNever;
 	fileListLast_.clear();
 	fileListCursorLast_ = -1;
 
@@ -640,19 +648,37 @@ void DrawScreen::PutScrollBar(int top, int itemCount, int visibleRows) {
 		SetScrollBarThumb((n > 0) ? (scrollBarMovement() * top / n) : 0);
 	}
 
-	// 素材は上から「つまみ / 上矢印(押下) / 下矢印(押下) / 溝」の順。
-	BmpCopy(&scrollBar_, 0, 0, skin_->scrollW, skin_->scrollH, &scrollBarBase_, 0, skin_->scrollButtonH * 3, 100);
-	BmpCopy(&scrollBar_, 0, skin_->scrollButtonH + scrollBarThumb_, skin_->scrollW, skin_->scrollButtonH,
-	        &scrollBarBase_, 0, 0, 100);
-	// 矢印の押下表示。原典はここを高さ CH_D(110) で転送していてバー全体を
-	// 潰していたので、ボタン 1 個分 (12) だけにしてある。
+	// 部品の位置と切り出しはスキンが持つ（layout.ini の [ScrollBar] Src* / Pos*）。
+	// 書かれない隙間はパレット 0 = 透明にしたいので、まず消す。
+	BmpFill(&scrollBar_, 0, 0, skin_->scrollW, skin_->scrollH, 0, 0, 0, 100);
+
+	const Xywh &up = skin_->scrollSrcUpArrow;
+	const Xywh &bar = skin_->scrollSrcBar;
+	const Xywh &down = skin_->scrollSrcDownArrow;
+	const Xywh &thumb = skin_->scrollSrcThumb;
+
+	BmpCopy(&scrollBar_, skin_->scrollPosUpArrow[0], skin_->scrollPosUpArrow[1], up.w, up.h,
+	        &scrollBarBase_, up.x, up.y, 100);
+	BmpCopy(&scrollBar_, skin_->scrollPosBar[0], skin_->scrollPosBar[1], bar.w, bar.h,
+	        &scrollBarBase_, bar.x, bar.y, 100);
+	BmpCopy(&scrollBar_, skin_->scrollPosDownArrow[0], skin_->scrollPosDownArrow[1], down.w, down.h,
+	        &scrollBarBase_, down.x, down.y, 100);
+
+	// つまみは溝の中を動く。
+	BmpCopy(&scrollBar_, skin_->scrollPosBar[0], skin_->scrollPosBar[1] + scrollBarThumb_, thumb.w,
+	        thumb.h, &scrollBarBase_, thumb.x, thumb.y, 100);
+
+	// 矢印の押下表示は通常の矢印と同じ場所に差し替える。原典はここを
+	// 高さ CH_D(110) で転送していてバー全体を潰していた。
 	if (scrollBarFlags_ & kScrollBarUpArrowDown) {
-		BmpCopy(&scrollBar_, 0, 0, skin_->scrollW, skin_->scrollButtonH, &scrollBarBase_, 0,
-		        skin_->scrollButtonH * 1, 100);
+		const Xywh &s = skin_->scrollSrcUpArrowPress;
+		BmpCopy(&scrollBar_, skin_->scrollPosUpArrow[0], skin_->scrollPosUpArrow[1], s.w, s.h,
+		        &scrollBarBase_, s.x, s.y, 100);
 	}
 	if (scrollBarFlags_ & kScrollBarDownArrowDown) {
-		BmpCopy(&scrollBar_, 0, skin_->scrollH - skin_->scrollButtonH, skin_->scrollW, skin_->scrollButtonH,
-		        &scrollBarBase_, 0, skin_->scrollButtonH * 2, 100);
+		const Xywh &s = skin_->scrollSrcDownArrowPress;
+		BmpCopy(&scrollBar_, skin_->scrollPosDownArrow[0], skin_->scrollPosDownArrow[1], s.w, s.h,
+		        &scrollBarBase_, s.x, s.y, 100);
 	}
 
 	BmpCopyComposite(&screen_, skin_->scrollX, skin_->scrollY, skin_->scrollW, skin_->scrollH, &scrollBar_, 0, 0,
@@ -706,14 +732,31 @@ void DrawScreen::PutProgressBar(uint32_t nowTimeMs, uint32_t playTimeMs, bool re
 // 音量バー
 // ---------------------------------------------------------------------------
 
-void DrawScreen::PutTotalVolBar(int barPos, bool refresh) {
+// 音量 (-100..+100) をつまみの画素位置へ。バーの幅はスキン次第なので、
+// ここで初めて画素に落とす。
+int DrawScreen::TotalVolBarPosFromVolume(int volume) const {
+	const int m = totalVolBarMovement();
+	if (m <= 0) return 0;
+	return Max(0, Min(m, (volume + 100) * m / 200));
+}
+
+// つまみを置いた画素位置から音量 (-100..+100) へ。上の逆。
+int DrawScreen::VolumeFromX(int x) const {
+	const int m = totalVolBarMovement();
+	if (m <= 0) return 0;
+	const int pos = Max(0, Min(m, x - (skin_->volX + skin_->volNobW / 2)));
+	return pos * 200 / m - 100;
+}
+
+void DrawScreen::PutTotalVolBar(int volume, bool refresh) {
 	if (!totalVolBar_.valid()) return;
 
-	barPos = Max(0, Min(totalVolBarMovement(), barPos));
-	bool disp = refresh || (totalVolBarLast_ != barPos);
+	volume = Max(-100, Min(100, volume));
+	bool disp = refresh || (totalVolBarLast_ != volume);
 	if (!disp) return;
-	totalVolBarLast_ = barPos;
+	totalVolBarLast_ = volume;
 
+	const int barPos = TotalVolBarPosFromVolume(volume);
 	BmpCopy(&totalVolBar_, 0, 0, skin_->volRect[1].w, skin_->volRect[1].h, &totalVolBarBase_,
 	        skin_->volRect[1].x, skin_->volRect[1].y, 100);
 	BmpCopy(&totalVolBar_, barPos, 0, skin_->volRect[0].w, skin_->volRect[1].h,
@@ -721,9 +764,9 @@ void DrawScreen::PutTotalVolBar(int barPos, bool refresh) {
 	BmpCopyComposite(&screen_, skin_->volX, skin_->volY, skin_->volW, skin_->volH, &totalVolBar_, 0, 0, &back_, skin_->volX,
 	                 skin_->volY, kBlendMul);
 
-	const int k = barPos - (totalVolBarMovement() / 2);
+	// 桁数は固定にする。短い文字列を書くと前の表示の末尾が残る。
 	char s[64];
-	snprintf(s, sizeof(s), "%c%02d", (k >= 0) ? '+' : '-', abs(k));
+	snprintf(s, sizeof(s), "%c%03d", (volume >= 0) ? '+' : '-', abs(volume));
 	PrintCompose(skin_->volX + skin_->volTimeXOfs, skin_->volY + skin_->volTimeYOfs, s, theme_.playKey.color,
 	             theme_.playKey.colorBright);
 }
@@ -794,12 +837,23 @@ int DrawScreen::HitCheckScrollBar(int x, int y) const {
 	if (x < skin_->scrollX || x >= skin_->scrollX + skin_->scrollW) return kHitScrollBarNone;
 	if (y < skin_->scrollY || y >= skin_->scrollY + skin_->scrollH) return kHitScrollBarNone;
 
+	// 当たり判定も描いた場所（スキンの Pos* と Src* の大きさ）から決める。
+	const int dx = x - skin_->scrollX;
 	const int dy = y - skin_->scrollY;
-	if (dy < skin_->scrollButtonH) return kHitScrollBarUpArrow;
-	if (dy < skin_->scrollButtonH + scrollBarThumb_) return kHitScrollBarUpPage;
-	if (dy < skin_->scrollButtonH * 2 + scrollBarThumb_) return kHitScrollBarThumb;
-	if (dy < skin_->scrollH - skin_->scrollButtonH) return kHitScrollBarDownPage;
-	return kHitScrollBarDownArrow;
+
+	if (InRect(dx, dy, skin_->scrollPosUpArrow, skin_->scrollSrcUpArrow)) {
+		return kHitScrollBarUpArrow;
+	}
+	if (InRect(dx, dy, skin_->scrollPosDownArrow, skin_->scrollSrcDownArrow)) {
+		return kHitScrollBarDownArrow;
+	}
+	// 残りは溝の中。つまみの上下がページ送りになる。
+	if (!InRect(dx, dy, skin_->scrollPosBar, skin_->scrollSrcBar)) return kHitScrollBarNone;
+
+	const int thumbTop = skin_->scrollPosBar[1] + scrollBarThumb_;
+	if (dy < thumbTop) return kHitScrollBarUpPage;
+	if (dy < thumbTop + skin_->scrollSrcThumb.h) return kHitScrollBarThumb;
+	return kHitScrollBarDownPage;
 }
 
 int DrawScreen::HitCheckFileList(int x, int y) const {
@@ -819,15 +873,13 @@ int DrawScreen::HitCheckProgressBar(int x, int y) const {
 	return Max(0, Min(skin_->progW, x - skin_->progX));
 }
 
-int DrawScreen::TotalVolBarPosFromX(int x) const {
-	// つまみの中心を掴む形にする（旧 mxv の MX_CX_TOTALVOLBAR_NOB）。
-	return Max(0, Min(totalVolBarMovement(), x - (skin_->volX + skin_->volNobW / 2)));
-}
-
-int DrawScreen::HitCheckTotalVolBar(int x, int y) const {
-	if (y < skin_->volY || y >= skin_->volY + skin_->volH) return -1;
-	if (x < skin_->volX || x >= skin_->volX + skin_->volW) return -1;
-	return TotalVolBarPosFromX(x);
+// 音量は -100..+100 で、-1 も正しい値なので「当たらなかった」を戻り値では
+// 表せない。真偽値で返して音量は out で渡す。
+bool DrawScreen::HitCheckTotalVolBar(int x, int y, int *volume) const {
+	if (y < skin_->volY || y >= skin_->volY + skin_->volH) return false;
+	if (x < skin_->volX || x >= skin_->volX + skin_->volW) return false;
+	if (volume != 0) *volume = VolumeFromX(x);
+	return true;
 }
 
 }  // namespace mxv2

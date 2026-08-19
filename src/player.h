@@ -43,7 +43,8 @@ public:
 		int mdxBufferBytes;
 		int pdxBufferBytes;
 		bool pcm8;
-		int volumeBarPos;       // 音量バーのつまみ位置 0..56。既定は中央 28
+		int masterVolume;       // マスター音量 -100..+100。既定は中央の 0
+		                        // （メイン音量は常に 0 から始まるので持たない）
 		int maxLoops;           // 自動フェードアウトまでのループ数
 		bool autoFadeout;
 		int displayLatencyFrames;  // 表示を遅らせる量。旧 mxv の DISP_LATE 相当
@@ -79,15 +80,23 @@ public:
 	int maxLoops() const { return maxLoops_.load(std::memory_order_relaxed); }
 	bool autoFadeout() const { return autoFadeout_.load(std::memory_order_relaxed); }
 
-	// 音量バーのつまみ位置 (0..volumeBarMax()) で音量を設定する。
-	// 旧 mxv (mxv.cpp:1239-1244) と同じ二次曲線で MXDRV の音量へ写す。
-	// 中央が MXDRV 音量 192 で、旧 mxv の既定値と一致する。
-	// 目盛りの数はバーの見た目に合わせるので、スキンによって変わる。
-	static const int kVolumeBarMaxDefault = 56;  // 旧 mxv のバー幅 (64-8)
-	void SetVolumeBarMax(int max);
-	int volumeBarMax() const { return volumeBarMax_; }
-	void SetVolumeBar(int pos);
-	int volumeBarPos() const { return volumeBarPos_; }
+	// 音量は 2 つある。どちらも -100..+100 に正規化してあり、
+	// **実際の音量はこの 2 つの和**（-100..+100 に丸める）。
+	//   マスター音量 … 設定ウィンドウで決める。mxv2.ini に記録する。
+	//   メイン音量   … メイン画面の音量バーと -/+ キー。
+	//                   その場かぎりの調整なので、起動時は必ず 0 から始まる。
+	// 和が 0 のとき MXDRV 音量 192（旧 mxv の既定値）、-100 で無音、
+	// +100 で最大 (4288)。旧 mxv (mxv.cpp:1239-1244) と同じ二次曲線で写す。
+	// 以前は音量バーの画素幅をそのまま持っていたので、スキンによって段数が
+	// 変わってしまっていた。バーの見た目とは切り離してある。
+	static const int kVolumeMin = -100;
+	static const int kVolumeMax = 100;
+	void SetMasterVolume(int volume);
+	int masterVolume() const { return masterVolume_; }
+	void SetMainVolume(int volume);
+	int mainVolume() const { return mainVolume_; }
+	// 実際に鳴っている音量（マスター + メイン を丸めたもの）。
+	int effectiveVolume() const;
 
 	void SetTotalVolume(int vol);
 	int totalVolume() const;
@@ -167,8 +176,9 @@ private:
 	std::atomic<bool> statusRefresh_;
 
 	MdxSong song_;
-	int volumeBarMax_;
-	int volumeBarPos_;
+	int masterVolume_;
+	int mainVolume_;
+	void ApplyVolume();
 	bool playing_;
 	bool paused_;
 	bool fadeoutStarted_;

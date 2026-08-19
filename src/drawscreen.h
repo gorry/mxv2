@@ -81,7 +81,8 @@ public:
 	// ---- 画面下部 ---------------------------------------------------
 	void PutMDXTitle(const std::string &titleUtf8);
 	void PutProgressBar(uint32_t nowTimeMs, uint32_t playTimeMs, bool refresh);
-	void PutTotalVolBar(int barPos, bool refresh);
+	// 音量は -100..+100（0 が中央）。つまみの画素位置は中で計算する。
+	void PutTotalVolBar(int volume, bool refresh);
 	void PutPlayKey(uint32_t status, bool refresh);
 
 	// ---- ファイラ ---------------------------------------------------
@@ -119,10 +120,13 @@ public:
 	int HitCheckFileList(int x, int y) const;
 	// バー内の x 位置 (0..kProgressBarWidth)。当たらなければ -1。
 	int HitCheckProgressBar(int x, int y) const;
-	// つまみ位置 (0..kTotalVolBarMovement)。当たらなければ -1。
-	int HitCheckTotalVolBar(int x, int y) const;
-	// x をつまみ位置へ写す (範囲外でも端に丸める)。ドラッグ中に使う。
-	int TotalVolBarPosFromX(int x) const;
+	// 音量バーに当たったら true を返し、*volume に -100..+100 を入れる。
+	// (-1 も正しい音量なので、戻り値では当たり外れを表せない)
+	bool HitCheckTotalVolBar(int x, int y, int *volume) const;
+	// x を音量へ写す (範囲外でも端に丸める)。ドラッグ中に使う。
+	int VolumeFromX(int x) const;
+	// 音量をつまみの画素位置へ写す。
+	int TotalVolBarPosFromVolume(int volume) const;
 
 	// ---- スクロールバーの見た目の状態 -------------------------------
 	enum ScrollBarFlag {

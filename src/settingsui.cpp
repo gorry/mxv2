@@ -84,7 +84,8 @@ SettingsUi::SettingsUi()
       styleScale_(0.0f),
       inputScale_(1.0f),
       pendingZoom_(0),
-      zoomApplyAtMs_(0) {
+      zoomApplyAtMs_(0),
+      changedFields_(0) {
 	pdxPathBuf_[0] = '\0';
 }
 
@@ -287,6 +288,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 				const bool selected = ((int)i == current);
 				if (ImGui::Selectable(skinNames_[i].c_str(), selected)) {
 					pendingSkin_ = skinNames_[i];
+					changedFields_ |= Settings::kFieldSkin;
 				}
 				if (selected) ImGui::SetItemDefaultFocus();
 			}
@@ -309,6 +311,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 			if (zoom < Screen::kZoomMin) zoom = Screen::kZoomMin;
 			if (zoom > Screen::kZoomMax) zoom = Screen::kZoomMax;
 			settings->zoomPercent = zoom;
+			changedFields_ |= Settings::kFieldZoom;
 		}
 		// 触られるたびに期限を先送りする（デバウンス）。こうすると
 		// -/+ の連打でも、桁を打っている途中でも、手が止まってから適用される。
@@ -321,6 +324,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 		ImGui::SameLine();
 		if (ImGui::SmallButton("システムに合わせる")) {
 			settings->zoomPercent = Screen::SystemZoomPercent();
+			changedFields_ |= Settings::kFieldZoom;
 			pendingZoom_ = settings->zoomPercent;
 			zoomApplyAtMs_ = SDL_GetTicks() + kZoomApplyDelayMs;
 		}
@@ -348,6 +352,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 					if (ImGui::Selectable(kItems[i].label, selected)) {
 						screen->SetScaleMode(kItems[i].mode);
 						settings->scaleFilter = Screen::ScaleModeName(kItems[i].mode);
+					changedFields_ |= Settings::kFieldFilter;
 					}
 					if (selected) ImGui::SetItemDefaultFocus();
 				}
@@ -361,6 +366,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 		bool largeFont = (settings->fileListFontSize != 0);
 		if (ImGui::Checkbox("大きい文字で表示する", &largeFont)) {
 			settings->fileListFontSize = largeFont ? 1 : 0;
+			changedFields_ |= Settings::kFieldFontSize;
 			draw->SetFileListFontSize(settings->fileListFontSize);
 			filer->SetVisibleRows(draw->fileListRows());
 		}
@@ -368,6 +374,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 		bool folderFirst = settings->folderFirst;
 		if (ImGui::Checkbox("フォルダを先に並べる", &folderFirst)) {
 			settings->folderFirst = folderFirst;
+			changedFields_ |= Settings::kFieldFolderFirst;
 			filer->SetFolderFirst(folderFirst);
 			filer->Refresh();
 		}
@@ -378,26 +385,35 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 		int loops = settings->loops;
 		if (ImGui::SliderInt("ループ数", &loops, 1, 10)) {
 			settings->loops = loops;
+			changedFields_ |= Settings::kFieldLoops;
 			player->SetLoopConfig(settings->loops, settings->fadeout);
 		}
 		bool fadeout = settings->fadeout;
 		if (ImGui::Checkbox("最後にフェードアウトする", &fadeout)) {
 			settings->fadeout = fadeout;
+			changedFields_ |= Settings::kFieldFadeout;
 			player->SetLoopConfig(settings->loops, settings->fadeout);
 		}
 		ImGui::TextDisabled("ループ数とフェードアウトは次の曲から効きます");
 
-		int vol = player->volumeBarPos();
-		if (ImGui::SliderInt("音量", &vol, 0, player->volumeBarMax())) {
-			player->SetVolumeBar(vol);
+		// マスター音量。メイン画面の音量バーとは別で、実際の音量は 2 つの和。
+		int vol = player->masterVolume();
+		if (ImGui::SliderInt("マスター音量", &vol, Player::kVolumeMin, Player::kVolumeMax,
+		                     "%+d")) {
+			player->SetMasterVolume(vol);
+			changedFields_ |= Settings::kFieldVolume;
 		}
-		settings->volumeBarPos = player->volumeBarPos();
+		settings->masterVolume = player->masterVolume();
+		ImGui::TextDisabled("実際の音量 = マスター %+d + メイン画面 %+d = %+d",
+		                    player->masterVolume(), player->mainVolume(),
+		                    player->effectiveVolume());
 
 		if (pdxPathBuf_[0] == '\0' && !settings->pdxPath.empty()) {
 			snprintf(pdxPathBuf_, sizeof(pdxPathBuf_), "%s", settings->pdxPath.c_str());
 		}
 		if (ImGui::InputText("PDX の探索先", pdxPathBuf_, sizeof(pdxPathBuf_))) {
 			settings->pdxPath = pdxPathBuf_;
+			changedFields_ |= Settings::kFieldPdxPath;
 		}
 	}
 
@@ -476,11 +492,9 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	}
 
 	ImGui::Separator();
-	if (ImGui::Button("設定を保存")) {
-		settings->Save(Settings::DefaultPath());
-	}
-	ImGui::SameLine();
-	ImGui::TextDisabled("F1 で閉じる");
+	// 保存ボタンは無い。触った時点で mxv2.ini へ書き戻す（スマートフォンでの
+	// 作法に合わせてある。デスクトップでも不自然ではないという判断）。
+	ImGui::TextDisabled("変更はすぐに保存されます / F1 で閉じる");
 
 	ImGui::End();
 }

@@ -59,20 +59,13 @@ MouseRequest MouseInput::Handle(const SDL_Event &ev) {
 MouseRequest MouseInput::OnButtonDown(int x, int y, int clicks) {
 	if (captured_ != kCapturedNone) return kMouseRequestNone;
 
-	// ファイルリスト
-	{
-		const int row = draw_->HitCheckFileList(x, y);
-		if (row >= 0) {
-			const int index = filer_->top() + row;
-			if (index >= filer_->itemCount()) return kMouseRequestNone;  // 空行
-			captured_ = kCapturedFileList;
-			filer_->SetCursor(index);
-			if (clicks >= 2) return kMouseRequestOpenCursor;
-			return kMouseRequestNone;
-		}
-	}
-
 	// スクロールバー
+	//
+	// ファイルリストより先に見ること。スキンによっては [FileList] の矩形が
+	// [ScrollBar] の矩形を含んでいることがあり（Phone がそうだった）、
+	// 順番が逆だとスクロールバーのクリックがファイルリストに食われて
+	// 「触っても反応しない」状態になる。描画はスクロールバーが上に来るので、
+	// 当たり判定もそれに合わせる。
 	{
 		const int hit = draw_->HitCheckScrollBar(x, y);
 		if (hit != DrawScreen::kHitScrollBarNone) {
@@ -82,6 +75,19 @@ MouseRequest MouseInput::OnButtonDown(int x, int y, int clicks) {
 			dragOriginThumb_ = draw_->scrollBarThumb();
 			nextRepeatMs_ = SDL_GetTicks() + kRepeatDelayMs;
 			PressScrollBar(hit);
+			return kMouseRequestNone;
+		}
+	}
+
+	// ファイルリスト
+	{
+		const int row = draw_->HitCheckFileList(x, y);
+		if (row >= 0) {
+			const int index = filer_->top() + row;
+			if (index >= filer_->itemCount()) return kMouseRequestNone;  // 空行
+			captured_ = kCapturedFileList;
+			filer_->SetCursor(index);
+			if (clicks >= 2) return kMouseRequestOpenCursor;
 			return kMouseRequestNone;
 		}
 	}
@@ -101,10 +107,10 @@ MouseRequest MouseInput::OnButtonDown(int x, int y, int clicks) {
 
 	// 音量バー
 	{
-		const int hit = draw_->HitCheckTotalVolBar(x, y);
-		if (hit >= 0) {
+		int volume = 0;
+		if (draw_->HitCheckTotalVolBar(x, y, &volume)) {
 			captured_ = kCapturedTotalVolBar;
-			player_->SetVolumeBar(hit);
+			player_->SetMainVolume(volume);
 			return kMouseRequestNone;
 		}
 	}
@@ -151,7 +157,7 @@ void MouseInput::OnMotion(int x, int y) {
 			break;
 
 		case kCapturedTotalVolBar:
-			player_->SetVolumeBar(draw_->TotalVolBarPosFromX(x));
+			player_->SetMainVolume(draw_->VolumeFromX(x));
 			break;
 
 		case kCapturedProgressBar:

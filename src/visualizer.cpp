@@ -126,7 +126,7 @@ void Visualizer::UpdateChrome(const Player &player, bool refresh, bool autoNext,
 	if (autoRepeat) status |= DrawScreen::kPlayKeyRepeatLed;
 	draw_->PutPlayKey(status, refresh);
 
-	draw_->PutTotalVolBar(player.volumeBarPos(), refresh);
+	draw_->PutTotalVolBar(player.mainVolume(), refresh);
 }
 
 }  // namespace mxv2

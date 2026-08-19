@@ -12,17 +12,18 @@ Player *Player::s_instance = 0;
 
 namespace {
 
-// 音量バーのつまみ位置 -> MXDRV 音量。旧 mxv/mxv.cpp:1239-1244 と同じ式。
-//   中央 (h) までは 0..192 の二次曲線、そこから上は 192..4288 の二次曲線。
-// 目盛りの数 (max) はバーの見た目に合わせて変わるので引数で受ける。
-int VolumeFromBarPos(int pos, int max) {
-	if (max < 1) max = 1;
-	const double h = max / 2.0;
-	if (pos < 0) pos = 0;
-	if (pos > max) pos = max;
-	const double hc = pos;
-	if (hc <= h) return (int)(hc * hc / h / h * 192);
-	return (int)(192 + (hc - h) * (hc - h) / h / h * 4096);
+// 音量 (-100..+100) -> MXDRV 音量。旧 mxv/mxv.cpp:1239-1244 と同じ形の
+// 二次曲線を、バーの画素幅に依存しない形へ正規化したもの。
+//   -100 -> 0 / 0 -> 192 (旧 mxv の既定) / +100 -> 4288
+int MxdrvVolumeFromNormalized(int volume) {
+	if (volume < Player::kVolumeMin) volume = Player::kVolumeMin;
+	if (volume > Player::kVolumeMax) volume = Player::kVolumeMax;
+	const double t = volume / 100.0;
+	if (volume <= 0) {
+		const double u = 1.0 + t;  // -100..0 を 0..1 へ
+		return (int)(u * u * 192);
+	}
+	return (int)(192 + t * t * 4096);
 }
 
 }  // namespace
@@ -35,7 +36,7 @@ Player::Config::Config()
       mdxBufferBytes(1 * 1024 * 1024),
       pdxBufferBytes(2 * 1024 * 1024),
       pcm8(true),
-      volumeBarPos(kVolumeBarMaxDefault / 2),
+      masterVolume(0),
       maxLoops(2),
       autoFadeout(true),
       displayLatencyFrames(0) {}
@@ -62,8 +63,8 @@ Player::Player()
       maxLoops_(2),
       autoFadeout_(true),
       statusRefresh_(false),
-      volumeBarMax_(kVolumeBarMaxDefault),
-      volumeBarPos_(kVolumeBarMaxDefault / 2),
+      masterVolume_(0),
+      mainVolume_(0),
       playing_(false),
       paused_(false),
       fadeoutStarted_(false),
@@ -115,8 +116,10 @@ bool Player::Open(const Config &config, std::string *err) {
 	mxdrvStarted_ = true;
 
 	MXDRV_PCM8Enable(&context_, config_.pcm8 ? 1 : 0);
-	volumeBarPos_ = config_.volumeBarPos;
-	MXDRV_TotalVolume(&context_, VolumeFromBarPos(volumeBarPos_, volumeBarMax_));
+	// メイン音量は記録しないので、起動時は必ず 0（マスターのみ）から始まる。
+	masterVolume_ = config_.masterVolume;
+	mainVolume_ = 0;
+	MXDRV_TotalVolume(&context_, MxdrvVolumeFromNormalized(effectiveVolume()));
 
 	watch_.Bind(&context_);
 	watch_.Reset();
@@ -363,20 +366,29 @@ void Player::SetLoopConfig(int maxLoops, bool autoFadeout) {
 	autoFadeout_.store(autoFadeout, std::memory_order_relaxed);
 }
 
-void Player::SetVolumeBarMax(int max) {
-	if (max < 1) max = 1;
-	if (max == volumeBarMax_) return;
-	// 目盛りの数が変わっても、耳に聞こえる音量は保つように読み替える。
-	const int pos = (int)((int64_t)volumeBarPos_ * max / volumeBarMax_);
-	volumeBarMax_ = max;
-	SetVolumeBar(pos);
+int Player::effectiveVolume() const {
+	const int v = masterVolume_ + mainVolume_;
+	if (v < kVolumeMin) return kVolumeMin;
+	if (v > kVolumeMax) return kVolumeMax;
+	return v;
 }
 
-void Player::SetVolumeBar(int pos) {
-	if (pos < 0) pos = 0;
-	if (pos > volumeBarMax_) pos = volumeBarMax_;
-	volumeBarPos_ = pos;
-	SetTotalVolume(VolumeFromBarPos(pos, volumeBarMax_));
+void Player::ApplyVolume() {
+	SetTotalVolume(MxdrvVolumeFromNormalized(effectiveVolume()));
+}
+
+void Player::SetMasterVolume(int volume) {
+	if (volume < kVolumeMin) volume = kVolumeMin;
+	if (volume > kVolumeMax) volume = kVolumeMax;
+	masterVolume_ = volume;
+	ApplyVolume();
+}
+
+void Player::SetMainVolume(int volume) {
+	if (volume < kVolumeMin) volume = kVolumeMin;
+	if (volume > kVolumeMax) volume = kVolumeMax;
+	mainVolume_ = volume;
+	ApplyVolume();
 }
 
 void Player::SetTotalVolume(int vol) {

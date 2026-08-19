@@ -34,7 +34,9 @@ struct Settings {
 	// [Play]
 	int loops;
 	bool fadeout;
-	int volumeBarPos;  // 0..Player::kVolumeBarMax
+	// マスター音量 -100..+100 (0 = 中央)。メイン画面の音量はその場かぎりの
+	// 調整なので記録しない（起動時は必ず 0 から始まる）。
+	int masterVolume;
 
 	// [Path]
 	std::string pdxPath;  // PDX の追加探索先（1 つ。複数は -pdxpath で足す）
@@ -43,6 +45,23 @@ struct Settings {
 	bool savePosition;
 	int windowX, windowY;
 
+	// 保存する項目。「変わった項目だけを書き戻す」ために使う。
+	// 設定ウィンドウには保存ボタンが無く、触った時点で保存する作りなので、
+	// 何を触ったかをこのビットで積んでいく。
+	enum Field {
+		kFieldSkin = 1 << 0,
+		kFieldZoom = 1 << 1,
+		kFieldFilter = 1 << 2,
+		kFieldFontSize = 1 << 3,
+		kFieldFolderFirst = 1 << 4,
+		kFieldLastDir = 1 << 5,
+		kFieldLoops = 1 << 6,
+		kFieldFadeout = 1 << 7,
+		kFieldVolume = 1 << 8,
+		kFieldPdxPath = 1 << 9,
+		kFieldWindowPos = 1 << 10,
+	};
+
 	Settings();
 
 	// 実行ファイルの隣の mxv2.ini のパス。
@@ -50,6 +69,11 @@ struct Settings {
 
 	bool Load(const std::string &path);
 	bool Save(const std::string &path) const;
+
+	// ファイルを読み直してから fields の項目だけを差し替えて書く。
+	// こうしないと -nofade のようなコマンドラインの一時指定まで
+	// residue として ini に焼き付いてしまう。
+	bool SaveFields(const std::string &path, unsigned fields) const;
 };
 
 }  // namespace mxv2

@@ -27,6 +27,14 @@
 
 namespace {
 
+// - / + キー 1 回で動かす音量。音量は -100..+100 なので、この幅だと端から端まで
+// 40 回。旧 mxv はバー 1 画素ぶん (64 段) 動かしていたので、それに近い刻み。
+const int kVolumeKeyStep = 5;
+
+// 設定を書き戻すまでの待ち時間 (ms)。音量のドラッグやウィンドウ移動は毎フレーム
+// 値が変わるので、手が止まってからまとめて 1 回書く。
+const uint32_t kSettingsSaveDelayMs = 400;
+
 // コマンドライン専用の指定。永続化する設定は Settings が持つ。
 struct Options {
 	std::string target;  // MDX ファイルかディレクトリ。空ならカレント
@@ -65,7 +73,7 @@ void PrintUsage(const char *argv0) {
 	    "  R               演奏終了で同じ曲を繰り返す (REPEAT)\n"
 	    "  TAB             ファイラの文字サイズ\n"
 	    "  1-8             FM チャンネルのミュート切り替え\n"
-	    "  - / +           音量\n"
+	    "  - / +           音量 (この画面ぶん。マスター音量は F1 の設定で)\n"
 	    "  F1              設定ウィンドウの開閉\n"
 	    "mouse:\n"
 	    "  ファイルリスト  クリックでカーソル移動 / ダブルクリックで開く\n"
@@ -240,9 +248,16 @@ int main(int argc, char **argv) {
 	// 表示倍率が決まっていなければ、システムの拡大率 (175% など) を初期値にする。
 	// 旧い ini の Scale=<整数倍> は「システム拡大率の n 倍」だったので、
 	// 見た目が変わらないように % へ読み替える。
+	// 変更のあった項目だけを ini へ書き戻すためのビット。設定ウィンドウには
+	// 保存ボタンが無く、触った時点で保存する。
+	unsigned dirtyFields = 0;
+	uint32_t saveAtMs = 0;
+
 	int defaultZoom = 100;
 	{
 		const int systemZoom = mxv2::Screen::SystemZoomPercent();
+		// ini に倍率が無ければ、ここで決めた値を書き残す（初回起動で定着させる）。
+		if (settings.zoomPercent <= 0) dirtyFields |= mxv2::Settings::kFieldZoom;
 		defaultZoom = (legacyScale > 0) ? legacyScale * systemZoom : systemZoom;
 		if (defaultZoom < mxv2::Screen::kZoomMin) defaultZoom = mxv2::Screen::kZoomMin;
 		if (defaultZoom > mxv2::Screen::kZoomMax) defaultZoom = mxv2::Screen::kZoomMax;
@@ -286,7 +301,10 @@ int main(int argc, char **argv) {
 		}
 		screen.SetScaleMode(
 		    mxv2::Screen::ScaleModeFromName(settings.scaleFilter, mxv2::Screen::kScaleSharp));
-		settings.scaleFilter = mxv2::Screen::ScaleModeName(screen.scaleMode());
+		// 綴りが違っていたら解決後の名前で書き直す。
+		const std::string resolved = mxv2::Screen::ScaleModeName(screen.scaleMode());
+		if (settings.scaleFilter != resolved) dirtyFields |= mxv2::Settings::kFieldFilter;
+		settings.scaleFilter = resolved;
 	}
 
 	// ファイラと曲名の文字は、キャンバスとは別に出力解像度で描いて重ねる。
@@ -323,7 +341,7 @@ int main(int argc, char **argv) {
 		cfg.maxLoops = settings.loops;
 		cfg.autoFadeout = settings.fadeout;
 		cfg.displayLatencyFrames = opt.latencyFrames;
-		cfg.volumeBarPos = settings.volumeBarPos;
+		cfg.masterVolume = settings.masterVolume;
 
 		std::string err;
 		if (!player.Open(cfg, &err)) {
@@ -332,9 +350,6 @@ int main(int argc, char **argv) {
 			SDL_Quit();
 			return EXIT_FAILURE;
 		}
-		// 音量の目盛りはバーの見た目に合わせる（スキンで変わる）。
-		player.SetVolumeBarMax(draw.totalVolBarMovement());
-		player.SetVolumeBar(settings.volumeBarPos);
 	}
 
 	mxv2::SettingsUi ui;
@@ -558,12 +573,12 @@ int main(int argc, char **argv) {
 
 				case SDLK_MINUS:
 				case SDLK_KP_MINUS:
-					player.SetVolumeBar(player.volumeBarPos() - 1);
+					player.SetMainVolume(player.mainVolume() - kVolumeKeyStep);
 					break;
 				case SDLK_EQUALS:
 				case SDLK_PLUS:
 				case SDLK_KP_PLUS:
-					player.SetVolumeBar(player.volumeBarPos() + 1);
+					player.SetMainVolume(player.mainVolume() + kVolumeKeyStep);
 					break;
 
 				default:
@@ -611,7 +626,6 @@ int main(int argc, char **argv) {
 
 				draw.SetFileListFontSize(settings.fileListFontSize);
 				filer.SetVisibleRows(draw.fileListRows());
-				player.SetVolumeBarMax(draw.totalVolBarMovement());
 				player.RequestStatusRefresh();
 				chromeRefresh = true;
 				fileListRefresh = true;
@@ -623,10 +637,46 @@ int main(int argc, char **argv) {
 		// 設定 UI はここで組み立てる。テーマを変えると 640x480 の
 		// オフスクリーンを作り直すので、下の描画より先に回す。
 		// キー操作でも変わる項目は、UI を開く前に拾っておく。
-		settings.fileListFontSize = draw.fileListFontSize();
-		settings.volumeBarPos = player.volumeBarPos();
-		if (settings.lastDir != filer.currentDir()) settings.lastDir = filer.currentDir();
+		unsigned newDirt = 0;
+		if (settings.fileListFontSize != draw.fileListFontSize()) {
+			settings.fileListFontSize = draw.fileListFontSize();
+			newDirt |= mxv2::Settings::kFieldFontSize;
+		}
+		if (settings.masterVolume != player.masterVolume()) {
+			settings.masterVolume = player.masterVolume();
+			newDirt |= mxv2::Settings::kFieldVolume;
+		}
+		if (settings.lastDir != filer.currentDir()) {
+			settings.lastDir = filer.currentDir();
+			newDirt |= mxv2::Settings::kFieldLastDir;
+		}
+		if (settings.savePosition) {
+			int wx = 0, wy = 0, ww = 0, wh = 0;
+			screen.GetWindowRect(&wx, &wy, &ww, &wh);
+			if (wx != settings.windowX || wy != settings.windowY) {
+				settings.windowX = wx;
+				settings.windowY = wy;
+				newDirt |= mxv2::Settings::kFieldWindowPos;
+			}
+		}
 		ui.Build(&settings, &draw, &player, &filer, &screen);
+		newDirt |= ui.TakeChangedFields();
+
+		// 保存ボタンは無く「変えた時点で保存」する。ただしドラッグ中やウィンドウ
+		// 移動中は毎フレーム変わるので、手が止まってから少し待ってまとめて書く。
+		{
+			const uint32_t now = SDL_GetTicks();
+			if (newDirt != 0) {
+				dirtyFields |= newDirt;
+				saveAtMs = now + kSettingsSaveDelayMs;
+			}
+			if (dirtyFields != 0 && now >= saveAtMs) {
+				if (!settings.SaveFields(settingsPath, dirtyFields)) {
+					printf("warning  : 設定を保存できません: %s\n", settingsPath.c_str());
+				}
+				dirtyFields = 0;
+			}
+		}
 
 		const uint64_t frame = player.visualFrame();
 		visualizer.Consume(&player.dispQueue(), frame);
@@ -663,26 +713,32 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	// 終了時の状態を書き戻す。旧 mxv も終了時に mxv.ini を更新していた。
-	// ここで settings をそのまま書くと -nofade などの一時的な指定まで
-	// residue として残ってしまうので、ファイルを読み直してから
-	// 「アプリの操作で変わる項目」だけ差し替える。
-	// テーマやループ数を残したいときは設定ウィンドウの「設定を保存」を使う。
+	// 変更はその場で書いているが、待ち時間の途中で終わった分をここで流す。
+	// 変わっていない項目は触らないので、-nofade のようなコマンドラインの
+	// 一時指定が residue として ini に残ることはない。
 	{
-		mxv2::Settings onDisk;
-		onDisk.Load(settingsPath);
-		// 初回起動（または旧 ini からの移行）で決まった倍率は書き残す。
-		// -zoom の一時指定は残さないので、ここでは解決前の既定値を書く。
-		if (onDisk.zoomPercent <= 0) onDisk.zoomPercent = defaultZoom;
-		onDisk.scaleFilter = settings.scaleFilter;  // 設定 UI からしか変わらない
-		onDisk.fileListFontSize = draw.fileListFontSize();
-		onDisk.volumeBarPos = player.volumeBarPos();
-		onDisk.lastDir = filer.currentDir();
-		if (onDisk.savePosition) {
-			int w = 0, h = 0;
-			screen.GetWindowRect(&onDisk.windowX, &onDisk.windowY, &w, &h);
+		if (settings.fileListFontSize != draw.fileListFontSize()) {
+			settings.fileListFontSize = draw.fileListFontSize();
+			dirtyFields |= mxv2::Settings::kFieldFontSize;
 		}
-		if (!onDisk.Save(settingsPath)) {
+		if (settings.masterVolume != player.masterVolume()) {
+			settings.masterVolume = player.masterVolume();
+			dirtyFields |= mxv2::Settings::kFieldVolume;
+		}
+		if (settings.lastDir != filer.currentDir()) {
+			settings.lastDir = filer.currentDir();
+			dirtyFields |= mxv2::Settings::kFieldLastDir;
+		}
+		if (settings.savePosition) {
+			int wx = 0, wy = 0, ww = 0, wh = 0;
+			screen.GetWindowRect(&wx, &wy, &ww, &wh);
+			if (wx != settings.windowX || wy != settings.windowY) {
+				settings.windowX = wx;
+				settings.windowY = wy;
+				dirtyFields |= mxv2::Settings::kFieldWindowPos;
+			}
+		}
+		if (!settings.SaveFields(settingsPath, dirtyFields)) {
 			printf("warning  : 設定を保存できません: %s\n", settingsPath.c_str());
 		}
 	}

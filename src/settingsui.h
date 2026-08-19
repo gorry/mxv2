@@ -53,6 +53,15 @@ public:
 	void Build(Settings *settings, DrawScreen *draw, Player *player, Filer *filer,
 	           Screen *screen);
 
+	// このフレームでユーザーが触った項目 (Settings::Field のビット和)。
+	// 保存ボタンは無く「触った時点で保存する」ので、メインループがこれを
+	// 拾って ini へ書き戻す。読んだら 0 に戻る。
+	unsigned TakeChangedFields() {
+		const unsigned f = changedFields_;
+		changedFields_ = 0;
+		return f;
+	}
+
 	// 組み立てた UI を今のレンダラへ描く。Screen::Draw と Present の間で呼ぶ。
 	void Render(Screen *screen);
 
@@ -100,6 +109,9 @@ private:
 
 	// PDX パスの入力欄。std::string を直接は編集できないので固定長で持つ。
 	char pdxPathBuf_[512];
+
+	// ユーザーが触った項目。TakeChangedFields() で取り出す。
+	unsigned changedFields_;
 
 	SettingsUi(const SettingsUi &);
 	SettingsUi &operator=(const SettingsUi &);

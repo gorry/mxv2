@@ -69,8 +69,20 @@ struct Skin {
 	int fileListTitleX[2], fileListTitleW[2];
 
 	// ---- スクロールバー -----------------------------------------------
+	// 部品は 6 つ。Src* は素材の中の位置と大きさ、Pos* は Rect の左上からの
+	// 相対位置（[PlayKey] の Src<n> / Pos<n> と同じ書き方）。
+	// つまみは溝の中を動くので位置が計算で決まり、押下中の矢印は通常の矢印と
+	// 同じ場所へ描くので、この 3 つは Pos を持たない。
 	int scrollX, scrollY, scrollW, scrollH;
-	int scrollButtonH;
+	Xywh scrollSrcThumb;
+	Xywh scrollSrcUpArrowPress;
+	Xywh scrollSrcDownArrowPress;
+	Xywh scrollSrcUpArrow;
+	Xywh scrollSrcBar;
+	Xywh scrollSrcDownArrow;
+	int scrollPosUpArrow[2];
+	int scrollPosBar[2];
+	int scrollPosDownArrow[2];
 
 	// ---- プログレスバー -----------------------------------------------
 	int progX, progY, progW, progH;
@@ -93,8 +105,10 @@ struct Skin {
 	int palDark, palRed, palGreen;
 
 	// ---- 素材のファイル名 ---------------------------------------------
-	// layout.ini の [Assets]。スキンのフォルダに無ければ Base のフォルダから
-	// 読む (FindFile)。差し替えたいときはファイル名ごと変えられる。
+	// layout.ini では表示部品ごとのセクションに Img<名前> のキーで書く
+	// （背景なら [Screen] ImgBack、バナーなら [Banner] ImgBanner）。
+	// スキンのフォルダに無ければ Base のフォルダから読む (FindFile)。
+	// 差し替えたいときはファイル名ごと変えられる。
 	std::string backBitmap;         // 背景
 	std::string kb0Bitmap;          // 鍵盤の下地
 	std::string kb1Bitmap;          // 白鍵側の鍵
@@ -125,7 +139,8 @@ struct Skin {
 		return (fileListItemH[0] > fileListItemH[1]) ? fileListItemH[0] : fileListItemH[1];
 	}
 	// つまみが動ける幅。旧 mxv の MX_CH_SCROLLBARMOVEMENT / MX_CW_TOTALVOLBARMOVEMENT。
-	int scrollBarMovement() const { return scrollH - scrollButtonH * 3; }
+	// つまみは溝の中を動くので、溝の高さからつまみの高さを引いたもの。
+	int scrollBarMovement() const { return scrollSrcBar.h - scrollSrcThumb.h; }
 	int volBarMovement() const { return volW - volNobW; }
 
 private:

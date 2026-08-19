@@ -136,7 +136,28 @@ Skin::Skin() {
 	scrollY = 366;
 	scrollW = 12;
 	scrollH = 110;
-	scrollButtonH = 12;
+	// scrollbar.bmp (12x146) は上から つまみ / 上矢印(押下) / 下矢印(押下) /
+	// 上矢印 / 溝 / 下矢印 の順に並んでいる。
+	{
+		const Xywh thumb = { 0, 0, 12, 12 };
+		const Xywh upPress = { 0, 12, 12, 12 };
+		const Xywh downPress = { 0, 24, 12, 12 };
+		const Xywh up = { 0, 36, 12, 12 };
+		const Xywh bar = { 0, 48, 12, 86 };
+		const Xywh down = { 0, 134, 12, 12 };
+		scrollSrcThumb = thumb;
+		scrollSrcUpArrowPress = upPress;
+		scrollSrcDownArrowPress = downPress;
+		scrollSrcUpArrow = up;
+		scrollSrcBar = bar;
+		scrollSrcDownArrow = down;
+	}
+	scrollPosUpArrow[0] = 0;
+	scrollPosUpArrow[1] = 0;
+	scrollPosBar[0] = 0;
+	scrollPosBar[1] = 12;
+	scrollPosDownArrow[0] = 0;
+	scrollPosDownArrow[1] = 98;
 
 	progX = 476;
 	progY = 270;
@@ -237,15 +258,20 @@ bool Skin::LoadInto(const std::string &skinDir, std::string *err, int depth) {
 
 	screenW = ini.GetInt("Screen", "Width", screenW);
 	screenH = ini.GetInt("Screen", "Height", screenH);
+	backBitmap = ini.GetString("Screen", "ImgBack", backBitmap);
 
 	GetXy(ini, "Keyboard", "Pos", &kbX, &kbY);
 	GetIntList(ini, "Keyboard", "XOffset", kbXOffset, 13);
 	kbYOffset = ini.GetInt("Keyboard", "YOffset", kbYOffset);
 	GetIntList(ini, "Keyboard", "ChannelY", chYOffset, 9);
 	keyOffset = ini.GetInt("Keyboard", "KeyOffset", keyOffset);
+	kb0Bitmap = ini.GetString("Keyboard", "ImgKeyboard0", kb0Bitmap);
+	kb1Bitmap = ini.GetString("Keyboard", "ImgKeyboard1", kb1Bitmap);
+	kb2Bitmap = ini.GetString("Keyboard", "ImgKeyboard2", kb2Bitmap);
 
 	fontW = ini.GetInt("Font5x7", "Width", fontW);
 	fontH = ini.GetInt("Font5x7", "Height", fontH);
+	font5x7Bitmap = ini.GetString("Font5x7", "ImgFont5x7", font5x7Bitmap);
 
 	GetXy(ini, "Status", "Pos", &statusX, &statusY);
 	statusBackW = ini.GetInt("Status", "BackWidth", statusBackW);
@@ -255,6 +281,7 @@ bool Skin::LoadInto(const std::string &skinDir, std::string *err, int depth) {
 
 	levelMeterPalOfs = ini.GetInt("LevelMeter", "PaletteOffset", levelMeterPalOfs);
 	levelMeterWidthCells = ini.GetInt("LevelMeter", "Cells", levelMeterWidthCells);
+	levelMeterBitmap = ini.GetString("LevelMeter", "ImgLevelMeter", levelMeterBitmap);
 
 	{
 		Xywh r = { bannerX, bannerY, bannerW, bannerH };
@@ -264,6 +291,7 @@ bool Skin::LoadInto(const std::string &skinDir, std::string *err, int depth) {
 		bannerW = r.w;
 		bannerH = r.h;
 	}
+	bannerBitmap = ini.GetString("Banner", "ImgBanner", bannerBitmap);
 	{
 		Xywh r = { titleX, titleY, titleW, titleH };
 		GetXywh(ini, "Title", "Rect", &r);
@@ -296,7 +324,16 @@ bool Skin::LoadInto(const std::string &skinDir, std::string *err, int depth) {
 		scrollW = r.w;
 		scrollH = r.h;
 	}
-	scrollButtonH = ini.GetInt("ScrollBar", "ButtonHeight", scrollButtonH);
+	GetXywh(ini, "ScrollBar", "SrcThumb", &scrollSrcThumb);
+	GetXywh(ini, "ScrollBar", "SrcUpArrowPress", &scrollSrcUpArrowPress);
+	GetXywh(ini, "ScrollBar", "SrcDownArrowPress", &scrollSrcDownArrowPress);
+	GetXywh(ini, "ScrollBar", "SrcUpArrow", &scrollSrcUpArrow);
+	GetXywh(ini, "ScrollBar", "SrcBar", &scrollSrcBar);
+	GetXywh(ini, "ScrollBar", "SrcDownArrow", &scrollSrcDownArrow);
+	GetIntList(ini, "ScrollBar", "PosUpArrow", scrollPosUpArrow, 2);
+	GetIntList(ini, "ScrollBar", "PosBar", scrollPosBar, 2);
+	GetIntList(ini, "ScrollBar", "PosDownArrow", scrollPosDownArrow, 2);
+	scrollBarBitmap = ini.GetString("ScrollBar", "ImgScrollBar", scrollBarBitmap);
 
 	{
 		Xywh r = { progX, progY, progW, progH };
@@ -308,6 +345,7 @@ bool Skin::LoadInto(const std::string &skinDir, std::string *err, int depth) {
 	}
 	progTimeXOfs = ini.GetInt("ProgressBar", "TimeX", progTimeXOfs);
 	progTimeYOfs = ini.GetInt("ProgressBar", "TimeY", progTimeYOfs);
+	progressBarBitmap = ini.GetString("ProgressBar", "ImgProgressBar", progressBarBitmap);
 
 	{
 		Xywh r = { volX, volY, volW, volH };
@@ -322,6 +360,7 @@ bool Skin::LoadInto(const std::string &skinDir, std::string *err, int depth) {
 	volNobW = ini.GetInt("VolumeBar", "NobWidth", volNobW);
 	GetXywh(ini, "VolumeBar", "NobSrc", &volRect[0]);
 	GetXywh(ini, "VolumeBar", "SlideSrc", &volRect[1]);
+	volBarBitmap = ini.GetString("VolumeBar", "ImgVolumeBar", volBarBitmap);
 
 	GetXy(ini, "PlayKey", "Pos", &playKeyX, &playKeyY);
 	numPlayKeys = ini.GetInt("PlayKey", "Count", numPlayKeys);
@@ -339,18 +378,8 @@ bool Skin::LoadInto(const std::string &skinDir, std::string *err, int depth) {
 	palDark = ini.GetInt("PlayKey", "PalDark", palDark);
 	palRed = ini.GetInt("PlayKey", "PalRed", palRed);
 	palGreen = ini.GetInt("PlayKey", "PalGreen", palGreen);
+	playKeyBitmap = ini.GetString("PlayKey", "ImgPlayKey", playKeyBitmap);
 
-	backBitmap = ini.GetString("Assets", "Back", backBitmap);
-	kb0Bitmap = ini.GetString("Assets", "Keyboard0", kb0Bitmap);
-	kb1Bitmap = ini.GetString("Assets", "Keyboard1", kb1Bitmap);
-	kb2Bitmap = ini.GetString("Assets", "Keyboard2", kb2Bitmap);
-	font5x7Bitmap = ini.GetString("Assets", "Font5x7", font5x7Bitmap);
-	levelMeterBitmap = ini.GetString("Assets", "LevelMeter", levelMeterBitmap);
-	bannerBitmap = ini.GetString("Assets", "Banner", bannerBitmap);
-	playKeyBitmap = ini.GetString("Assets", "PlayKey", playKeyBitmap);
-	progressBarBitmap = ini.GetString("Assets", "ProgressBar", progressBarBitmap);
-	volBarBitmap = ini.GetString("Assets", "VolumeBar", volBarBitmap);
-	scrollBarBitmap = ini.GetString("Assets", "ScrollBar", scrollBarBitmap);
 	return true;
 }
 

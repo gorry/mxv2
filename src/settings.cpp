@@ -16,7 +16,7 @@ Settings::Settings()
       folderFirst(false),
       loops(2),
       fadeout(true),
-      volumeBarPos(28),  // Player::kVolumeBarMaxDefault / 2
+      masterVolume(0),  // 中央
       savePosition(true),
       windowX(-1),
       windowY(-1) {}
@@ -41,7 +41,9 @@ bool Settings::Load(const std::string &path) {
 
 	loops = ini.GetInt("Play", "N_Loop", loops);
 	fadeout = ini.GetInt("Play", "Fadeout", fadeout ? 1 : 0) != 0;
-	volumeBarPos = ini.GetInt("Play", "Volume", volumeBarPos);
+	masterVolume = ini.GetInt("Play", "Volume", masterVolume);
+	if (masterVolume < -100) masterVolume = -100;
+	if (masterVolume > 100) masterVolume = 100;
 
 	pdxPath = ini.GetString("Path", "PDX", pdxPath);
 
@@ -68,7 +70,7 @@ bool Settings::Save(const std::string &path) const {
 
 	ini.SetInt("Play", "N_Loop", loops);
 	ini.SetInt("Play", "Fadeout", fadeout ? 1 : 0);
-	ini.SetInt("Play", "Volume", volumeBarPos);
+	ini.SetInt("Play", "Volume", masterVolume);
 
 	ini.SetString("Path", "PDX", pdxPath);
 
@@ -77,6 +79,30 @@ bool Settings::Save(const std::string &path) const {
 	ini.SetInt("Position", "Y", windowY);
 
 	return ini.Save(path);
+}
+
+bool Settings::SaveFields(const std::string &path, unsigned fields) const {
+	if (fields == 0) return true;
+
+	// ファイルにある値を土台にして、変わった項目だけを載せ替える。
+	Settings out;
+	out.Load(path);
+
+	if (fields & kFieldSkin) out.skinName = skinName;
+	if (fields & kFieldZoom) out.zoomPercent = zoomPercent;
+	if (fields & kFieldFilter) out.scaleFilter = scaleFilter;
+	if (fields & kFieldFontSize) out.fileListFontSize = fileListFontSize;
+	if (fields & kFieldFolderFirst) out.folderFirst = folderFirst;
+	if (fields & kFieldLastDir) out.lastDir = lastDir;
+	if (fields & kFieldLoops) out.loops = loops;
+	if (fields & kFieldFadeout) out.fadeout = fadeout;
+	if (fields & kFieldVolume) out.masterVolume = masterVolume;
+	if (fields & kFieldPdxPath) out.pdxPath = pdxPath;
+	if (fields & kFieldWindowPos) {
+		out.windowX = windowX;
+		out.windowY = windowY;
+	}
+	return out.Save(path);
 }
 
 }  // namespace mxv2
