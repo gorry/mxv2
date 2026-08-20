@@ -43,7 +43,7 @@ std::string AppHeader() {
 	return buf;
 }
 
-// - / + キー 1 回で動かす音量。音量は -100..+100 なので、この幅だと端から端まで
+// - / + (;) キー 1 回で動かす音量。音量は -100..+100 なので、この幅だと端から端まで
 // 40 回。旧 mxv はバー 1 画素ぶん (64 段) 動かしていたので、それに近い刻み。
 const int kVolumeKeyStep = 5;
 
@@ -67,6 +67,54 @@ struct Options {
 	Options() : latencyFrames(0), quitOnEnd(true) {}
 };
 
+// 演奏位置の移動幅。, / . が普通、Shift 付きの < / > が高速。
+const uint32_t kSeekStepMs = 3 * 1000;
+const uint32_t kSeekFastStepMs = 30 * 1000;
+
+// キーとマウスの操作一覧。-h の出力と [操作方法] ダイアログで同じものを
+// 使うので、文面はここだけに置く。書式指定 (% や %s) は入れないこと。
+const char *kKeyHelpText =
+	    "キー操作:\n"
+	    "  ESC / Q         終了\n"
+	    "  SPACE           一時停止 / 再開\n"
+	    "  F               フェードアウト\n"
+	    "  ENTER           ファイラーのファイル/ディレクトリを開く\n"
+	    "  BACKSPACE       親ディレクトリへ\n"
+	    "  \\               ルートディレクトリへ\n"
+	    "  L               フォルダを選んで移動\n"
+	    "  UP/DOWN         カーソル移動\n"
+	    "  PGUP/PGDN       カーソル移動（ページ単位）\n"
+	    "  HOME/END        カーソル移動（最初/最後）\n"
+	    "  N / B           次 / 前の MDX を演奏\n"
+	    "  C               自動で次の曲へ (CONT)\n"
+	    "  R               自動で繰り返す (REPEAT)\n"
+	    "  TAB             ファイラーの文字サイズ\n"
+	    "  1-8             FM チャンネル (ch.1-8) のマスク切り替え\n"
+	    "  0               FM チャンネルの一括マスク\n"
+	    "  Shift+1-8       PCM チャンネル (ch.P-W) のマスク切り替え\n"
+	    "  Shift+0         PCM チャンネルの一括マスク\n"
+	    "  Ctrl+0          全チャンネルの一括マスク\n"
+	    "  - / +(;)        音量を変更 （マスター音量は[mxv の設定]で）\n"
+	    "  , / .           演奏位置を移動\n"
+	    "  < / >           演奏位置を高速移動\n"
+	    "  F1              [mxv の設定]ダイアログを開く\n"
+	    "  F2              [テーマ設定]ダイアログを開く\n"
+	    "  F11 / H         [操作方法]ダイアログを開く\n"
+	    "  F12 / A         [バージョン情報]ダイアログを開く\n"
+	    "マウス操作:\n"
+	    "  バナー          メニュー表示（右クリックでも出る）\n"
+	    "  ファイラー      ファイル/ディレクトリを選択、ダブルクリックで開く\n"
+	    "  PREV            前の曲へ移動\n"
+	    "  STOP            演奏を停止\n"
+	    "  PLAY            演奏を開始\n"
+	    "  FAST            演奏を早送り\n"
+	    "  PAUSE           演奏を一時停止/解除\n"
+	    "  NEXT            次の曲へ移動\n"
+	    "  CONT            自動で次の曲へ\n"
+	    "  REPEAT          自動で繰り返す\n"
+	    "  音量バー        音量を変更 （マスター音量は[mxv の設定]で）\n"
+	    "  プログレスバー  演奏位置を移動\n";
+
 void PrintUsage(const char *argv0) {
 	printf("%s", AppHeader().c_str());
 	printf(
@@ -81,35 +129,9 @@ void PrintUsage(const char *argv0) {
 	    "  -assets <dir>   素材ビットマップの場所 (既定: 実行ファイルの隣の assets)\n"
 	    "  -skin <name>    スキン名 (assets/skin/<name>。既定: Default)\n"
 	    "  -folderfirst    ファイラでフォルダを先に並べる\n"
-	    "  -noquit         演奏終了後も閉じない\n"
-	    "keys:\n"
-	    "  ESC / Q         終了\n"
-	    "  SPACE           一時停止 / 再開\n"
-	    "  F               フェードアウト\n"
-	    "  ENTER           ファイラの項目を開く\n"
-	    "  BACKSPACE       親ディレクトリへ\n"
-	    "  \\               ルートディレクトリへ\n"
-	    "  L               フォルダを選んで移動 (ESC で閉じる)\n"
-	    "  UP/DOWN/PGUP/PGDN/HOME/END  カーソル移動\n"
-	    "  N / B           次 / 前の MDX を演奏\n"
-	    "  C               演奏終了で次の曲へ (CONT)\n"
-	    "  R               演奏終了で同じ曲を繰り返す (REPEAT)\n"
-	    "  TAB             ファイラの文字サイズ\n"
-	    "  1-8             FM チャンネル (ch.1-8) のミュート切り替え\n"
-	    "  Shift+1-8       PCM チャンネル (ch.P-W) のミュート切り替え\n"
-	    "  0 / Shift+0 / Ctrl+0  FM / PCM / 全チャンネルの一括マスク\n"
-	    "  - / +           音量 (この画面ぶん。マスター音量は F1 の設定で)\n"
-	    "  F1              設定ウィンドウを開く (ESC で閉じる)\n"
-	    "  F2              テーマ設定を開く (ESC で閉じる)\n"
-	    "mouse:\n"
-	    "  バナー          クリックでメニュー (右クリックでも同じものが出る)\n"
-	    "  ファイルリスト  クリックでカーソル移動 / ダブルクリックで開く\n"
-	    "                  ドラッグでスクロール (振ると慣性で滑る。触ると止まる)\n"
-	    "  スクロールバー  矢印・溝・つまみのドラッグ。ホイールでも送れる\n"
-	    "  操作キー        PREV STOP PLAY FAST PAUSE NEXT CONT REPEAT\n"
-	    "  音量バー        クリックとドラッグ\n"
-	    "  プログレスバー  クリックで演奏位置を移動\n",
+	    "  -noquit         演奏終了後も閉じない\n",
 	    argv0);
+	printf("%s", kKeyHelpText);
 }
 
 // mxv2.ini から読んだ設定を、コマンドラインで上書きする。
@@ -388,6 +410,7 @@ int main(int argc, char **argv) {
 			printf("warning  : %s\n", err.c_str());
 		}
 		ui.SetAboutHeader(AppHeader());
+		ui.SetHelpText(kKeyHelpText);
 	}
 
 	mxv2::Filer filer;
@@ -536,6 +559,38 @@ int main(int argc, char **argv) {
 				case SDLK_F2:
 					ui.OpenTheme();
 					break;
+				case SDLK_F11:
+				case SDLK_h:
+					ui.OpenHelp();
+					break;
+				case SDLK_F12:
+				case SDLK_a:
+					ui.OpenAbout();
+					break;
+
+				// 演奏位置の移動。Shift 付き (< >) は大きく飛ぶ。
+				// 「,」「.」と「<」「>」は配列によって同じキーコードで届いたり
+				// 別のキーコードで届いたりするので、両方を受ける。
+				case SDLK_COMMA:
+				case SDLK_PERIOD:
+				case SDLK_LESS:
+				case SDLK_GREATER: {
+					const bool back = (key == SDLK_COMMA || key == SDLK_LESS);
+					const bool fast = (key == SDLK_LESS || key == SDLK_GREATER ||
+					                   (ev.key.keysym.mod & KMOD_SHIFT) != 0);
+					const uint32_t step = fast ? kSeekFastStepMs : kSeekStepMs;
+					const uint32_t now = player.nowTimeMs();
+					uint32_t want = 0;
+					if (back) {
+						want = (now > step) ? (now - step) : 0;
+					} else {
+						want = now + step;
+						const uint32_t total = player.playTimeMs();
+						if (total != 0 && want > total) want = total;
+					}
+					player.SeekMs(want);
+					break;
+				}
 
 				case SDLK_SPACE:
 					if (player.paused()) {
@@ -629,6 +684,10 @@ int main(int argc, char **argv) {
 				case SDLK_EQUALS:
 				case SDLK_PLUS:
 				case SDLK_KP_PLUS:
+				// JP 配列の「+」は Shift+「;」なので、SDL には SDLK_SEMICOLON で
+				// 届く（US 配列の「+」は Shift+「=」で SDLK_EQUALS）。
+				// 「;」そのものは他に割り当てが無いので、修飾なしでも受ける。
+				case SDLK_SEMICOLON:
 					player.SetMainVolume(player.mainVolume() + kVolumeKeyStep);
 					break;
 

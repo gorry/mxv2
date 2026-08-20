@@ -54,6 +54,7 @@ const char *kThemeTitle = "テーマ設定";
 // 同じものとして扱う。
 const char *kFolderTitle = "フォルダを開く###mxv2folder";
 const char *kPdxFolderTitle = "PDX フォルダを選ぶ###mxv2folder";
+const char *kHelpTitle = "操作方法";
 const char *kAboutTitle = "バージョン情報";
 
 // 表示倍率を変えたあと、実際に適用するまでの待ち時間。
@@ -192,6 +193,7 @@ SettingsUi::SettingsUi()
       dragScroll_(false),
       dragMoved_(false),
       showTheme_(false),
+      showHelp_(false),
       showFolder_(false),
       folderTarget_(kFolderTargetFiler),
       folderReturnToSettings_(false),
@@ -399,6 +401,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 		showFolder_ = true;
 	}
 	BuildFolderWindow(settings);
+	BuildHelpWindow();
 	if (folderReturnToSettings_ && !showFolder_ && !folderOpenPending_ &&
 	    !ImGui::IsPopupOpen(folderTitle())) {
 		folderReturnToSettings_ = false;
@@ -754,6 +757,125 @@ void SettingsUi::SelectFolderEntry(const std::string &path) {
 // パスの打ち込みと子フォルダの一覧を持つ自前のダイアログにしてある。
 // 決まった行き先は request_ に積んで、実際の移動はメインループに任せる
 // （ファイラの持ち物はあちらなので、コンテキストメニューと同じ作法）。
+// -h と同じ文面を、キー名と説明に切り分けて持つ。
+//   ・行頭が空白でない行は見出し（「キー操作:」など）
+//   ・それ以外は「空白 2 個以上」で左右に割る
+// 元の文面は空白で桁を揃えてあるが、同梱フォントはプロポーショナルなので
+// そのまま出すと崩れる。表示時に幅を測って揃え直す。
+void SettingsUi::SetHelpText(const std::string &text) {
+	helpRows_.clear();
+
+	size_t pos = 0;
+	while (pos < text.size()) {
+		size_t nl = text.find('\n', pos);
+		if (nl == std::string::npos) nl = text.size();
+		const std::string line = text.substr(pos, nl - pos);
+		pos = nl + 1;
+		if (line.empty()) continue;
+
+		HelpRow row;
+		if (line[0] != ' ') {
+			row.header = true;
+			row.key = line;
+			helpRows_.push_back(row);
+			continue;
+		}
+
+		const size_t s = line.find_first_not_of(' ');
+		if (s == std::string::npos) continue;
+		const size_t gap = line.find("  ", s);
+		if (gap == std::string::npos) {
+			row.key = line.substr(s);
+		} else {
+			row.key = line.substr(s, gap - s);
+			const size_t d = line.find_first_not_of(' ', gap);
+			if (d != std::string::npos) row.desc = line.substr(d);
+		}
+		helpRows_.push_back(row);
+	}
+}
+
+// 操作方法のダイアログ (F11 / H)。中身は -h で出すものと同じ文面で、
+// main.cpp から SetHelpText() で渡してもらう（文面を二重に持たない）。
+void SettingsUi::BuildHelpWindow() {
+	if (!SyncModal(kHelpTitle, &showHelp_)) return;
+
+	const ImGuiIO &io = ImGui::GetIO();
+	float w = 560.0f * styleScale_;
+	float h = 460.0f * styleScale_;
+	if (w > io.DisplaySize.x) w = io.DisplaySize.x;
+	if (h > io.DisplaySize.y) h = io.DisplaySize.y;
+	ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Appearing);
+	ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_Appearing);
+
+	if (ImGui::BeginPopupModal(kHelpTitle, &showHelp_,
+	                           ImGuiWindowFlags_NoCollapse |
+	                               ImGuiWindowFlags_NoSavedSettings)) {
+		ImGui::BeginChild("##help", ImVec2(0, 0), ImGuiChildFlags_None,
+		                  ImGuiWindowFlags_HorizontalScrollbar);
+
+		// キー名の桁を揃えて 2 段組で出す。空白で揃えないのは、同梱フォントが
+		// プロポーショナルで桁が合わないため。
+		//
+		// 幅は「一番広いキー名」と「一番広い説明」から決める。横に収まらな
+		// ければ字を小さくする。文字の幅は大きさに比例するので、今の大きさで
+		// 測った比をそのまま倍率にしてよい。PushFont に渡すのは**倍率を
+		// 掛ける前**の大きさ (FontSizeBase)。
+		const float avail = ImGui::GetContentRegionAvail().x;
+		float scale = 1.0f;
+		{
+			float keyW = 0.0f;
+			float descW = 0.0f;
+			for (size_t i = 0; i < helpRows_.size(); i++) {
+				if (helpRows_[i].header) continue;
+				const float k = ImGui::CalcTextSize(helpRows_[i].key.c_str()).x;
+				const float d = ImGui::CalcTextSize(helpRows_[i].desc.c_str()).x;
+				if (k > keyW) keyW = k;
+				if (d > descW) descW = d;
+			}
+			const float unit = ImGui::CalcTextSize(" ").x;  // 字下げと段間に使う
+			const float total = unit * 4.0f + keyW + descW;
+			if (total > avail && avail > 0.0f && total > 0.0f) scale = avail / total;
+		}
+		const bool shrink = (scale < 1.0f);
+		if (shrink) ImGui::PushFont(NULL, ImGui::GetStyle().FontSizeBase * scale);
+
+		// 縮めたあとの大きさで測り直す。
+		float keyW = 0.0f;
+		for (size_t i = 0; i < helpRows_.size(); i++) {
+			if (helpRows_[i].header) continue;
+			const float k = ImGui::CalcTextSize(helpRows_[i].key.c_str()).x;
+			if (k > keyW) keyW = k;
+		}
+		const float unit = ImGui::CalcTextSize(" ").x;
+		const float x0 = ImGui::GetCursorPosX();
+		const float keyX = x0 + unit * 2.0f;   // 行頭の字下げ
+		const float descX = keyX + keyW + unit * 2.0f;
+
+		for (size_t i = 0; i < helpRows_.size(); i++) {
+			const HelpRow &row = helpRows_[i];
+			if (row.header) {
+				if (i != 0) ImGui::Spacing();
+				ImGui::TextUnformatted(row.key.c_str());
+				continue;
+			}
+			ImGui::SetCursorPosX(keyX);
+			ImGui::TextUnformatted(row.key.c_str());
+			if (row.desc.empty()) continue;
+			// SameLine の位置はウィンドウ左端からの距離なので、
+			// Indent ではなくこちらで直に指定する。
+			ImGui::SameLine(descX);
+			ImGui::TextUnformatted(row.desc.c_str());
+		}
+
+		if (shrink) ImGui::PopFont();
+
+		DragToScroll(&dragScroll_, &dragMoved_, false, false);
+		ImGui::EndChild();
+		ImGui::EndPopup();
+	}
+}
+
 const char *SettingsUi::folderTitle() const {
 	return (folderTarget_ == kFolderTargetPdx) ? kPdxFolderTitle : kFolderTitle;
 }
@@ -978,10 +1100,8 @@ void SettingsUi::BuildContextMenu(DrawScreen *draw, Player *player, Filer *filer
 		if (ImGui::MenuItem("テーマ設定...", "F2")) {
 			showTheme_ = true;
 		}
-		if (ImGui::MenuItem("バージョン情報...")) {
-			showAbout_ = true;
-			if (aboutText_.empty()) aboutText_ = LoadAboutText();
-		}
+		if (ImGui::MenuItem("操作方法...", "F11")) showHelp_ = true;
+		if (ImGui::MenuItem("バージョン情報...", "F12")) showAbout_ = true;
 		ImGui::Separator();
 		if (ImGui::MenuItem("終了")) request_ = kRequestQuit;
 
@@ -995,6 +1115,9 @@ void SettingsUi::BuildContextMenu(DrawScreen *draw, Player *player, Filer *filer
 	if (!contextMenuOpen_) closeContextMenu_ = false;
 
 	if (SyncModal(kAboutTitle, &showAbout_)) {
+		// NOTICE は初めて開くときに読む（メニューからでも F12 からでも通る）。
+		if (aboutText_.empty()) aboutText_ = LoadAboutText();
+
 		// 設定ウィンドウと同じく、開くたびに画面の左上から出す。
 		// 大きさは画面からはみ出さないように詰める。スキンの横幅の下限は
 		// 480px なので、既定の 560px はそのままでは入らない。

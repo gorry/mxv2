@@ -76,6 +76,18 @@ public:
 		showFolder_ = true;
 	}
 
+	// 操作方法のダイアログ (F11 / H)。文面は main.cpp の -h と同じもの。
+	void OpenHelp() {
+		if (busy()) return;
+		showHelp_ = true;
+	}
+
+	// バージョン情報のダイアログ (F12 / A)。
+	void OpenAbout() {
+		if (busy()) return;
+		showAbout_ = true;
+	}
+
 	// 開いているダイアログを閉じる。閉じるものが無ければ false。
 	// ESC 用。ImGui はキーボードナビを有効にしていないとポップアップを
 	// ESC で閉じてくれないので、こちらで面倒を見る。
@@ -85,6 +97,7 @@ public:
 		// 実際の始末は Build() に任せる。
 		if (contextMenuOpen_) { closeContextMenu_ = true; return true; }
 		if (showAbout_) { showAbout_ = false; return true; }
+		if (showHelp_) { showHelp_ = false; return true; }
 		if (showFolder_) { showFolder_ = false; return true; }
 		if (showTheme_) { showTheme_ = false; return true; }
 		if (visible_) { visible_ = false; return true; }
@@ -98,6 +111,10 @@ public:
 	// バージョン情報の見出し（名前・版・ビルド日付・著作権表示）。
 	// 文言は main.cpp が持っているので渡してもらう。
 	void SetAboutHeader(const std::string &text) { aboutHeader_ = text; }
+
+	// 操作方法の本文。-h で出すものと同じ文字列を main.cpp から渡してもらう。
+	// 受け取った時点でキー名と説明に切り分ける（表示は桁を揃えて出すため）。
+	void SetHelpText(const std::string &text);
 
 	// メニューから出た「メインループにやってもらうこと」。読んだら消える。
 	// 演奏の開始・曲送り・終了はメインループが状態を持っているので、
@@ -193,7 +210,25 @@ private:
 	const char *openedModal_;
 	// どれか 1 つでもダイアログが開いているか。モーダルなので、開いている
 	// 間は別のものを開けない（先にそれを閉じてもらう）。
-	bool busy() const { return visible_ || showTheme_ || showAbout_ || showFolder_; }
+	bool busy() const {
+		return visible_ || showTheme_ || showAbout_ || showFolder_ || showHelp_;
+	}
+
+	// 操作方法のダイアログ。
+	//
+	// 元の文面は空白で桁を揃えてあるが、同梱フォントはプロポーショナルなので
+	// そのまま出すと崩れる。「キー名」と「説明」に切り分けて持っておき、
+	// 表示するときに幅を測って揃える。
+	struct HelpRow {
+		std::string key;   // 見出し行のときは見出しそのもの
+		std::string desc;  // 見出し行と説明の無い行では空
+		bool header;
+
+		HelpRow() : header(false) {}
+	};
+	void BuildHelpWindow();
+	bool showHelp_;
+	std::vector<HelpRow> helpRows_;
 
 	// テーマの色のダイアログ
 	void BuildThemeWindow(Settings *settings, DrawScreen *draw, Player *player);
