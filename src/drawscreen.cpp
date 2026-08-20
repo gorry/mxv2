@@ -714,8 +714,40 @@ void DrawScreen::PutScrollBar(int topPx, int maxTopPx) {
 		        &scrollBarBase_, s.x, s.y, 100);
 	}
 
-	BmpCopyComposite(&screen_, skin_->scrollX, skin_->scrollY, skin_->scrollW, skin_->scrollH, &scrollBar_, 0, 0,
-	                 &back_, skin_->scrollX, skin_->scrollY, kBlendMul);
+	// ファイルリストと重なっている列には触らない。
+	//
+	// BmpCopyComposite はパレット 0（透明）の画素に背景 (back_) をそのまま
+	// 敷く。つまり「毎フレーム背景で塗り直してから絵を載せる」ので、
+	// スクロールバーの矩形がファイルリストへ食い込んでいると、
+	// ファイルリストが差分描画で置いたカーソルの右端がそこだけ消えてしまう
+	// （Phone は指で掴みやすいよう、左側 12px を透明な当たり判定にしている。
+	//  [FileList] は x 4..464、[ScrollBar] は x 452..476 で 12px 重なる）。
+	// 重なりぶんは絵が無いので、描かずに残すのが正しい。
+	const int sx = skin_->scrollX;
+	const int sy = skin_->scrollY;
+	const int sw = skin_->scrollW;
+	const int sh = skin_->scrollH;
+	const int listRight = skin_->fileListX + skin_->fileListW;
+	const int iy0 = Max(sy, skin_->fileListY);
+	const int iy1 = Min(sy + sh, skin_->fileListY + skin_->fileListH);
+
+	if (sx >= listRight || iy0 >= iy1) {
+		// 重なっていない。今までどおり一度に描く。
+		CompositeScrollBar(sx, sy, sw, sh);
+		return;
+	}
+	// 縦に重なっている帯だけ、ファイルリストより右の列に限る。
+	if (iy0 > sy) CompositeScrollBar(sx, sy, sw, iy0 - sy);
+	const int cx = Min(listRight, sx + sw);
+	if (cx < sx + sw) CompositeScrollBar(cx, iy0, sx + sw - cx, iy1 - iy0);
+	if (iy1 < sy + sh) CompositeScrollBar(sx, iy1, sw, sy + sh - iy1);
+}
+
+// スクロールバーの一部分を画面へ合成する。x/y は画面座標。
+void DrawScreen::CompositeScrollBar(int x, int y, int w, int h) {
+	if (w <= 0 || h <= 0) return;
+	BmpCopyComposite(&screen_, x, y, w, h, &scrollBar_, x - skin_->scrollX,
+	                 y - skin_->scrollY, &back_, x, y, kBlendMul);
 }
 
 // ---------------------------------------------------------------------------

@@ -188,6 +188,10 @@ private:
 	// ステータス欄の共通処理: 背景を戻してから文字を合成する。
 	void PutStatusText(int x, int y, int cells, const char *text);
 
+	// スクロールバーの一部分を画面へ合成する（ファイルリストと重なる列を
+	// 避けて描くために分割して呼ぶ）。
+	void CompositeScrollBar(int x, int y, int w, int h);
+
 	const Skin *skin_;  // 呼び出し側の持ち物。寿命は DrawScreen より長いこと
 	Theme theme_;
 
