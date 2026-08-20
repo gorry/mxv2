@@ -50,7 +50,10 @@ const float kFontSizePx = 15.0f;
 // ダイアログの題名。ImGui のポップアップ id を兼ねるので 1 箇所で持つ。
 const char *kSettingsTitle = "mxv2 の設定";
 const char *kThemeTitle = "テーマ設定";
-const char *kFolderTitle = "フォルダを開く";
+// "###" 以降が ImGui の id。見出しだけ用途で変えて、ポップアップとしては
+// 同じものとして扱う。
+const char *kFolderTitle = "フォルダを開く###mxv2folder";
+const char *kPdxFolderTitle = "PDX フォルダを選ぶ###mxv2folder";
 const char *kAboutTitle = "バージョン情報";
 
 // 表示倍率を変えたあと、実際に適用するまでの待ち時間。
@@ -173,6 +176,9 @@ SettingsUi::SettingsUi()
       dragScroll_(false),
       showTheme_(false),
       showFolder_(false),
+      folderTarget_(kFolderTargetFiler),
+      folderReturnToSettings_(false),
+      folderOpenPending_(false),
       openedModal_(0) {
 	pdxPathBuf_[0] = '\0';
 	folderPathBuf_[0] = '\0';
@@ -361,7 +367,23 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	// 右クリックのメニューとバージョン情報は、設定ウィンドウが閉じていても出す。
 	BuildContextMenu(draw, player, filer);
 	BuildThemeWindow(settings, draw, player);
-	BuildFolderWindow();
+
+	// 設定ウィンドウの [参照...] から来た往復。ImGui のポップアップは
+	// 同じ階層で掛け替えられないので、片方が閉じきってからもう片方を開く。
+	if (folderOpenPending_ && !ImGui::IsPopupOpen(kSettingsTitle)) {
+		folderOpenPending_ = false;
+		// PDX の探索先が入っていればそこから、無ければファイラの今の場所から。
+		const std::string start =
+		    IsDirectory(pdxPathBuf_) ? std::string(pdxPathBuf_) : filer->currentDir();
+		SetFolderDir(start);
+		showFolder_ = true;
+	}
+	BuildFolderWindow(settings);
+	if (folderReturnToSettings_ && !showFolder_ && !folderOpenPending_ &&
+	    !ImGui::IsPopupOpen(folderTitle())) {
+		folderReturnToSettings_ = false;
+		visible_ = true;
+	}
 
 	// ここから下は設定ウィンドウ。モーダルなので、開いている間はメイン画面も
 	// 他のダイアログも操作できない。
@@ -520,9 +542,28 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 		if (pdxPathBuf_[0] == '\0' && !settings->pdxPath.empty()) {
 			snprintf(pdxPathBuf_, sizeof(pdxPathBuf_), "%s", settings->pdxPath.c_str());
 		}
-		if (ImGui::InputText("PDX の探索先", pdxPathBuf_, sizeof(pdxPathBuf_))) {
+		// 打ち込みでも、[参照...] で L キーと同じフォルダ選択からでも指定できる。
+		// ラベルは上の行に出す。横に並べると入力欄と参照ボタンが入らない
+		// （スキンの下限は横 480px）。
+		ImGui::TextUnformatted("PDX の探索先");
+		{
+			const ImGuiStyle &style = ImGui::GetStyle();
+			const float browseW =
+			    ImGui::CalcTextSize("参照...").x + style.FramePadding.x * 2.0f;
+			ImGui::SetNextItemWidth(-(browseW + style.ItemSpacing.x));
+		}
+		if (ImGui::InputText("##pdxpath", pdxPathBuf_, sizeof(pdxPathBuf_))) {
 			settings->pdxPath = pdxPathBuf_;
 			changedFields_ |= Settings::kFieldPdxPath;
+		}
+		ImGui::SameLine();
+		if (ImGui::Button("参照...")) {
+			// モーダル同士は入れ子にせず、いったん設定ウィンドウを閉じてから
+			// フォルダ選択を出す。戻ってきたらまた開く。
+			folderTarget_ = kFolderTargetPdx;
+			folderReturnToSettings_ = true;
+			folderOpenPending_ = true;
+			visible_ = false;
 		}
 	}
 
@@ -693,8 +734,13 @@ void SettingsUi::SelectFolderEntry(const std::string &path) {
 // パスの打ち込みと子フォルダの一覧を持つ自前のダイアログにしてある。
 // 決まった行き先は request_ に積んで、実際の移動はメインループに任せる
 // （ファイラの持ち物はあちらなので、コンテキストメニューと同じ作法）。
-void SettingsUi::BuildFolderWindow() {
-	if (!SyncModal(kFolderTitle, &showFolder_)) return;
+const char *SettingsUi::folderTitle() const {
+	return (folderTarget_ == kFolderTargetPdx) ? kPdxFolderTitle : kFolderTitle;
+}
+
+void SettingsUi::BuildFolderWindow(Settings *settings) {
+	const char *title = folderTitle();
+	if (!SyncModal(title, &showFolder_)) return;
 
 	const ImGuiIO &io = ImGui::GetIO();
 	float w = 460.0f * styleScale_;
@@ -704,7 +750,7 @@ void SettingsUi::BuildFolderWindow() {
 	ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Appearing);
 	ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_Appearing);
 
-	if (!ImGui::BeginPopupModal(kFolderTitle, &showFolder_,
+	if (!ImGui::BeginPopupModal(title, &showFolder_,
 	                            ImGuiWindowFlags_NoCollapse |
 	                                ImGuiWindowFlags_NoSavedSettings)) {
 		return;
@@ -811,12 +857,18 @@ void SettingsUi::BuildFolderWindow() {
 		SetFolderDir(nextDir);
 	} else if (apply) {
 		const std::string want = folderPathBuf_;
-		if (IsDirectory(want)) {
+		if (!IsDirectory(want)) {
+			folderError_ = "そのフォルダは見つかりません。";
+		} else if (folderTarget_ == kFolderTargetPdx) {
+			settings->pdxPath = AbsolutePath(want);
+			snprintf(pdxPathBuf_, sizeof(pdxPathBuf_), "%s", settings->pdxPath.c_str());
+			changedFields_ |= Settings::kFieldPdxPath;
+			showFolder_ = false;
+		} else {
+			// ファイラを動かすのはメインループの持ち物なので、要求だけ積む。
 			requestedFolder_ = AbsolutePath(want);
 			request_ = kRequestSetFolder;
 			showFolder_ = false;
-		} else {
-			folderError_ = "そのフォルダは見つかりません。";
 		}
 	}
 

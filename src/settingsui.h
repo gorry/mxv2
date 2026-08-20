@@ -70,6 +70,8 @@ public:
 	// dir は最初に見せるフォルダ（ふつうはファイラの今の場所）。
 	void OpenFolder(const std::string &dir) {
 		if (busy()) return;
+		folderTarget_ = kFolderTargetFiler;
+		folderReturnToSettings_ = false;
 		SetFolderDir(dir);
 		showFolder_ = true;
 	}
@@ -197,8 +199,22 @@ private:
 	void BuildThemeWindow(Settings *settings, DrawScreen *draw, Player *player);
 	bool showTheme_;
 
-	// フォルダを選ぶダイアログ
-	void BuildFolderWindow();
+	// フォルダを選ぶダイアログ。選んだ結果の行き先は 2 つある。
+	//   kFolderTargetFiler … ファイラを動かす (L キー / メニュー)
+	//   kFolderTargetPdx   … PDX の探索先に入れる (設定ウィンドウの [参照...])
+	enum FolderTarget {
+		kFolderTargetFiler = 0,
+		kFolderTargetPdx,
+	};
+	// ダイアログの題名。"###" 以降が ImGui の id なので、見出しを変えても
+	// 同じポップアップとして扱われる。
+	const char *folderTitle() const;
+	void BuildFolderWindow(Settings *settings);
+	FolderTarget folderTarget_;
+	// 設定ウィンドウから呼ばれたときの往復。モーダルは入れ子にせず、
+	// 設定ウィンドウが閉じきってからフォルダ選択を出し、閉じたら開き直す。
+	bool folderReturnToSettings_;
+	bool folderOpenPending_;
 	// 子フォルダの一覧だけ作り直す（入力欄には触らない）。
 	void RelistFolder(const std::string &dir);
 	// 一覧で選んだものを入力欄へ移す。中へは入らない（そこはダブルクリック）。
