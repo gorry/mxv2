@@ -105,15 +105,26 @@ const char kAboutRuler88[] =
 // 一度掴んだら、枠から出ても離すまで続ける。
 //
 // hasTitleBar: タイトルバーのあるウィンドウなら true。子ウィンドウは false。
-void DragToScroll(bool *dragging, bool hasTitleBar) {
+// fromItems:   部品の上からでも掴んでよいなら true。一覧のように
+//              「並んでいるのが全部 Selectable」だと、部品を避けていては
+//              どこも掴めない。Selectable はドラッグを使わないので譲る必要もない。
+// moved:       実際にスクロールしたら true にする。押した先の部品を
+//              反応させないため（ドラッグしたつもりが選択になるのを防ぐ）に使う。
+void DragToScroll(bool *dragging, bool *moved, bool hasTitleBar, bool fromItems) {
 	if (*dragging) {
 		if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
 			*dragging = false;
 			return;
 		}
 		const ImVec2 d = ImGui::GetIO().MouseDelta;
-		if (ImGui::GetScrollMaxX() > 0.0f) ImGui::SetScrollX(ImGui::GetScrollX() - d.x);
-		if (ImGui::GetScrollMaxY() > 0.0f) ImGui::SetScrollY(ImGui::GetScrollY() - d.y);
+		if (ImGui::GetScrollMaxX() > 0.0f && d.x != 0.0f) {
+			ImGui::SetScrollX(ImGui::GetScrollX() - d.x);
+			*moved = true;
+		}
+		if (ImGui::GetScrollMaxY() > 0.0f && d.y != 0.0f) {
+			ImGui::SetScrollY(ImGui::GetScrollY() - d.y);
+			*moved = true;
+		}
 		return;
 	}
 
@@ -121,10 +132,15 @@ void DragToScroll(bool *dragging, bool hasTitleBar) {
 	const float maxY = ImGui::GetScrollMaxY();
 	if (maxX <= 0.0f && maxY <= 0.0f) return;
 	if (!ImGui::IsMouseClicked(ImGuiMouseButton_Left)) return;
-	if (!ImGui::IsWindowHovered()) return;
+	// 押した先が部品だと、ImGui はその時点で「別の部品が掴んでいる」として
+	// ウィンドウを hover 扱いしなくなる。部品の上から掴みたいときは
+	// AllowWhenBlockedByActiveItem を足して、その判定を外す。
+	const ImGuiHoveredFlags hoverFlags =
+	    fromItems ? ImGuiHoveredFlags_AllowWhenBlockedByActiveItem : ImGuiHoveredFlags_None;
+	if (!ImGui::IsWindowHovered(hoverFlags)) return;
 	// 部品が拾える押下は部品に譲る。ImGui はこのフレームの分まで
 	// 当たり判定を済ませているので、中身を組んだあとなら正しく見える。
-	if (ImGui::IsAnyItemHovered() || ImGui::IsAnyItemActive()) return;
+	if (!fromItems && (ImGui::IsAnyItemHovered() || ImGui::IsAnyItemActive())) return;
 
 	// タイトルバーとスクロールバーを除く。タイトルバーの高さは枠 1 行分。
 	// ここは ImGui の内部 API を使わずに済ませたいので、公開されている
@@ -174,6 +190,7 @@ SettingsUi::SettingsUi()
       request_(kRequestNone),
       showAbout_(false),
       dragScroll_(false),
+      dragMoved_(false),
       showTheme_(false),
       showFolder_(false),
       folderTarget_(kFolderTargetFiler),
@@ -363,6 +380,9 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	// ドラッグでスクロール中の印は、ボタンを離したところで落とす。
 	// ドラッグの途中でダイアログが閉じても、次に開いたものへ持ち越さない。
 	if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) dragScroll_ = false;
+	// 「実際にスクロールしたか」は離したフレームでもまだ要る（押した行を
+	// 選ばせないため）ので、落とすのは次に押したときにする。
+	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) dragMoved_ = false;
 
 	// 右クリックのメニューとバージョン情報は、設定ウィンドウが閉じていても出す。
 	BuildContextMenu(draw, player, filer);
@@ -569,7 +589,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 
 	// 保存ボタンは無い。触った時点で mxv2.ini へ書き戻す（スマートフォンでの
 	// 作法に合わせてある。デスクトップでも不自然ではないという判断）。
-	DragToScroll(&dragScroll_, true);
+	DragToScroll(&dragScroll_, &dragMoved_, true, false);
 	ImGui::EndPopup();
 }
 
@@ -694,7 +714,7 @@ void SettingsUi::BuildThemeWindow(Settings *settings, DrawScreen *draw, Player *
 		ImGui::SameLine();
 		ImGui::TextDisabled("skin/%s/theme.mxv", settings->skinName.c_str());
 
-		DragToScroll(&dragScroll_, true);
+		DragToScroll(&dragScroll_, &dragMoved_, true, false);
 		ImGui::EndPopup();
 	}
 }
@@ -832,7 +852,10 @@ void SettingsUi::BuildFolderWindow(Settings *settings) {
 			}
 		}
 
-		if (!pick.empty()) {
+		// ドラッグでスクロールした指を離したときは、押した行を選ばない。
+		// 中身は指に付いて動くので、離した先には押した行がそのまま居る。
+		// これを拾ってしまうと「スクロールしたつもりが選択された」になる。
+		if (!pick.empty() && !dragMoved_) {
 			if (entered) {
 				nextDir = pick;
 			} else {
@@ -840,7 +863,7 @@ void SettingsUi::BuildFolderWindow(Settings *settings) {
 			}
 		}
 
-		DragToScroll(&dragScroll_, false);
+		DragToScroll(&dragScroll_, &dragMoved_, false, true);
 		ImGui::EndChild();
 	}
 
@@ -872,7 +895,8 @@ void SettingsUi::BuildFolderWindow(Settings *settings) {
 		}
 	}
 
-	DragToScroll(&dragScroll_, true);
+	// このダイアログのスクロールは中の一覧が受け持つので、ここでは呼ばない。
+	// 同じ dragScroll_ を二重に使うと、一覧を掴んだ状態がここへ漏れる。
 	ImGui::EndPopup();
 }
 
@@ -1007,7 +1031,7 @@ void SettingsUi::BuildContextMenu(DrawScreen *draw, Player *player, Filer *filer
 			if (shrink) ImGui::PopFont();
 
 			// 本文はドラッグでスクロールする。子ウィンドウなのでタイトルバーは無い。
-			DragToScroll(&dragScroll_, false);
+			DragToScroll(&dragScroll_, &dragMoved_, false, false);
 
 			ImGui::EndChild();
 			ImGui::EndPopup();
