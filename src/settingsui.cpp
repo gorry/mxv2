@@ -2,6 +2,7 @@
 
 #include "settingsui.h"
 
+#include <algorithm>
 #include <cfloat>
 #include <cstdio>
 #include <cstring>
@@ -49,6 +50,7 @@ const float kFontSizePx = 15.0f;
 // ダイアログの題名。ImGui のポップアップ id を兼ねるので 1 箇所で持つ。
 const char *kSettingsTitle = "mxv2 の設定";
 const char *kThemeTitle = "テーマ設定";
+const char *kFolderTitle = "フォルダを開く";
 const char *kAboutTitle = "バージョン情報";
 
 // 表示倍率を変えたあと、実際に適用するまでの待ち時間。
@@ -136,6 +138,11 @@ void DragToScroll(bool *dragging, bool hasTitleBar) {
 	*dragging = true;
 }
 
+// フォルダ名を並べるときの順。ファイラ (filer.cpp) と同じ規則。
+bool LessPathNoCase(const std::string &a, const std::string &b) {
+	return CompareNoCase(a, b) < 0;
+}
+
 // バージョン情報に出す文面。実行ファイルの隣の NOTICE をそのまま読む。
 // 配布物に入れるファイルなので、同じ文面をソースに二重に持たない。
 std::string LoadAboutText() {
@@ -165,8 +172,10 @@ SettingsUi::SettingsUi()
       showAbout_(false),
       dragScroll_(false),
       showTheme_(false),
+      showFolder_(false),
       openedModal_(0) {
 	pdxPathBuf_[0] = '\0';
+	folderPathBuf_[0] = '\0';
 }
 
 SettingsUi::~SettingsUi() {
@@ -352,6 +361,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	// 右クリックのメニューとバージョン情報は、設定ウィンドウが閉じていても出す。
 	BuildContextMenu(draw, player, filer);
 	BuildThemeWindow(settings, draw, player);
+	BuildFolderWindow();
 
 	// ここから下は設定ウィンドウ。モーダルなので、開いている間はメイン画面も
 	// 他のダイアログも操作できない。
@@ -648,11 +658,176 @@ void SettingsUi::BuildThemeWindow(Settings *settings, DrawScreen *draw, Player *
 	}
 }
 
+// 子フォルダの一覧だけ作り直す。毎フレーム読み直すと重いので、
+// 行き先が変わったときだけ列挙する。
+void SettingsUi::RelistFolder(const std::string &dir) {
+	folderDir_ = AbsolutePath(dir);
+	folderSelected_.clear();
+	folderEntries_.clear();
+
+	std::vector<DirEntry> entries;
+	if (!ListDirectory(folderDir_, &entries)) return;
+	for (size_t i = 0; i < entries.size(); i++) {
+		if (entries[i].isDir) folderEntries_.push_back(entries[i].name);
+	}
+	std::sort(folderEntries_.begin(), folderEntries_.end(), LessPathNoCase);
+}
+
+// 一覧に出すフォルダを決めて、入力欄もそこへ合わせる。
+void SettingsUi::SetFolderDir(const std::string &dir) {
+	RelistFolder(dir);
+	snprintf(folderPathBuf_, sizeof(folderPathBuf_), "%s", folderDir_.c_str());
+	folderError_.clear();
+}
+
+// 一覧で選んだものを入力欄へ移すだけ。中へは入らない。
+// メイン画面のファイラと同じで、クリックは選ぶだけ・ダブルクリックで移動。
+void SettingsUi::SelectFolderEntry(const std::string &path) {
+	folderSelected_ = path;
+	snprintf(folderPathBuf_, sizeof(folderPathBuf_), "%s", path.c_str());
+	folderError_.clear();
+}
+
+// フォルダを選ぶダイアログ (L)。旧 mxv の MX_GetNewDirFileList にあたる。
+// 原典は SHBrowseForFolder を出していたが、あれは Windows 専用なので、
+// パスの打ち込みと子フォルダの一覧を持つ自前のダイアログにしてある。
+// 決まった行き先は request_ に積んで、実際の移動はメインループに任せる
+// （ファイラの持ち物はあちらなので、コンテキストメニューと同じ作法）。
+void SettingsUi::BuildFolderWindow() {
+	if (!SyncModal(kFolderTitle, &showFolder_)) return;
+
+	const ImGuiIO &io = ImGui::GetIO();
+	float w = 460.0f * styleScale_;
+	float h = 400.0f * styleScale_;
+	if (w > io.DisplaySize.x) w = io.DisplaySize.x;
+	if (h > io.DisplaySize.y) h = io.DisplaySize.y;
+	ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Appearing);
+	ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_Appearing);
+
+	if (!ImGui::BeginPopupModal(kFolderTitle, &showFolder_,
+	                            ImGuiWindowFlags_NoCollapse |
+	                                ImGuiWindowFlags_NoSavedSettings)) {
+		return;
+	}
+
+	// パスは直接打ってもよい。ENTER は「開く」と同じ扱い。
+	ImGui::SetNextItemWidth(-FLT_MIN);
+	bool apply = ImGui::InputText("##folderpath", folderPathBuf_, sizeof(folderPathBuf_),
+	                              ImGuiInputTextFlags_EnterReturnsTrue);
+
+	// 打ち込んだ先が実在するフォルダなら、下の一覧もそこへ合わせる。
+	// 入力欄そのものは書き換えない。打っている最中に正規化された文字列で
+	// 差し替えると、カーソルごと飛んでしまって打てなくなる。
+	if (ImGui::IsItemEdited()) {
+		const std::string typed = folderPathBuf_;
+		if (!typed.empty() && IsDirectory(typed)) {
+			const std::string abs = AbsolutePath(typed);
+			if (abs != folderDir_) RelistFolder(abs);
+		}
+		folderError_.clear();
+	}
+
+	// 親へ戻るのは一覧の ".." が受け持つので、専用のボタンは置かない。
+	// この行は、下の一覧がどこを出しているのかを常に知らせる。入力欄と
+	// 同じことも多いが、一覧で選んだだけのときや打ち込みの途中は食い違う。
+	// 見出しは付けず、上の入力欄と桁を揃える。入力欄の文字は枠の内側に
+	// FramePadding のぶん寄っているので、こちらも同じだけ下げる。
+	const std::string up = ParentDir(folderDir_);
+	const bool hasUp = (!up.empty() && up != folderDir_);
+	{
+		const float inset = ImGui::GetStyle().FramePadding.x;
+		ImGui::Indent(inset);
+		ImGui::TextDisabled("%s", folderDir_.c_str());
+		ImGui::Unindent(inset);
+	}
+
+	// 子フォルダの一覧。クリックで選ぶだけ、ダブルクリックでその中へ入る。
+	// メイン画面のファイラと同じ操作感にしてある。
+	// 一覧の作り直しは回している最中にやってはいけないので、行き先を
+	// 控えてから動かす。
+	std::string nextDir;
+	{
+		const float foot = ImGui::GetFrameHeightWithSpacing() +
+		                   ImGui::GetTextLineHeightWithSpacing();
+		ImGui::BeginChild("##folderlist", ImVec2(0, -foot), ImGuiChildFlags_Borders);
+
+		// 1 行ぶんの処理。AllowDoubleClick を付けると 1 回目のクリックでも
+		// true が返るので、ダブルクリックかどうかを自分で見分ける。
+		struct Row {
+			static bool Hit(const char *label, const std::string &path,
+			                const std::string &selected, bool *entered) {
+				const bool on = (!selected.empty() && CompareNoCase(selected, path) == 0);
+				if (!ImGui::Selectable(label, on, ImGuiSelectableFlags_AllowDoubleClick)) {
+					return false;
+				}
+				*entered = ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+				return true;
+			}
+		};
+
+		std::string pick;   // 選ばれたもの
+		bool entered = false;  // ダブルクリックだったか
+
+		if (hasUp && Row::Hit("..", up, folderSelected_, &entered)) pick = up;
+		for (size_t i = 0; i < folderEntries_.size(); i++) {
+			const std::string path = JoinPath(folderDir_, folderEntries_[i]);
+			if (Row::Hit(folderEntries_[i].c_str(), path, folderSelected_, &entered)) {
+				pick = path;
+			}
+		}
+		// ドライブ (Windows のみ)。旧 mxv のファイラが末尾に並べていたのと同じ。
+		const std::vector<std::string> drives = ListDrives();
+		if (!drives.empty()) {
+			ImGui::Separator();
+			for (size_t i = 0; i < drives.size(); i++) {
+				if (Row::Hit(drives[i].c_str(), drives[i], folderSelected_, &entered)) {
+					pick = drives[i];
+				}
+			}
+		}
+
+		if (!pick.empty()) {
+			if (entered) {
+				nextDir = pick;
+			} else {
+				SelectFolderEntry(pick);
+			}
+		}
+
+		DragToScroll(&dragScroll_, false);
+		ImGui::EndChild();
+	}
+
+	if (folderError_.empty()) {
+		ImGui::TextDisabled("クリックで選択 / ダブルクリックで移動 / ENTER で開く");
+	} else {
+		ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), "%s", folderError_.c_str());
+	}
+	if (ImGui::Button("開く")) apply = true;
+	ImGui::SameLine();
+	if (ImGui::Button("キャンセル")) showFolder_ = false;
+
+	if (!nextDir.empty()) {
+		SetFolderDir(nextDir);
+	} else if (apply) {
+		const std::string want = folderPathBuf_;
+		if (IsDirectory(want)) {
+			requestedFolder_ = AbsolutePath(want);
+			request_ = kRequestSetFolder;
+			showFolder_ = false;
+		} else {
+			folderError_ = "そのフォルダは見つかりません。";
+		}
+	}
+
+	DragToScroll(&dragScroll_, true);
+	ImGui::EndPopup();
+}
+
 // 旧 mxv の右クリックメニュー (mxv.cpp の CreateContextMenu) にあたる。
 // 演奏の開始・曲送り・終了はメインループの持ち物なので request_ に積んで返す。
 void SettingsUi::BuildContextMenu(DrawScreen *draw, Player *player, Filer *filer) {
 	(void)draw;
-	(void)filer;
 
 	// バナーを押したときはこちらから開ける（右クリックできない環境向け）。
 	// BeginPopupContextVoid と同じ id なので、下の Begin がそのまま拾う。
@@ -677,6 +852,10 @@ void SettingsUi::BuildContextMenu(DrawScreen *draw, Player *player, Filer *filer
 		}
 
 		if (ImGui::MenuItem("開く")) request_ = kRequestOpenCursor;
+		if (ImGui::MenuItem("フォルダを開く...", "L")) {
+			SetFolderDir(filer->currentDir());
+			showFolder_ = true;
+		}
 
 		if (ImGui::BeginMenu("操作")) {
 			if (player->paused()) {

@@ -52,7 +52,7 @@ public:
 	//
 	// F1 は開くだけ。閉じるのは ESC か × ボタン。
 	void OpenSettings() {
-		if (showTheme_ || showAbout_) return;
+		if (busy()) return;
 		visible_ = true;
 	}
 	bool visible() const { return visible_; }
@@ -60,8 +60,18 @@ public:
 	// テーマの色を編集するダイアログ (F2)。設定ウィンドウとは独立に開閉する。
 	// F2 も開くだけ。閉じるのは ESC か × ボタン（設定ウィンドウと同じ）。
 	void OpenTheme() {
-		if (visible_ || showAbout_) return;
+		if (busy()) return;
 		showTheme_ = true;
+	}
+
+	// フォルダを選ぶダイアログ (L)。旧 mxv の MX_GetNewDirFileList にあたる。
+	// 原典は SHBrowseForFolder だったが Windows 専用なので、パスの打ち込みと
+	// フォルダ一覧を持つ自前のダイアログにしてある。
+	// dir は最初に見せるフォルダ（ふつうはファイラの今の場所）。
+	void OpenFolder(const std::string &dir) {
+		if (busy()) return;
+		SetFolderDir(dir);
+		showFolder_ = true;
 	}
 
 	// 開いているダイアログを閉じる。閉じるものが無ければ false。
@@ -73,6 +83,7 @@ public:
 		// 実際の始末は Build() に任せる。
 		if (contextMenuOpen_) { closeContextMenu_ = true; return true; }
 		if (showAbout_) { showAbout_ = false; return true; }
+		if (showFolder_) { showFolder_ = false; return true; }
 		if (showTheme_) { showTheme_ = false; return true; }
 		if (visible_) { visible_ = false; return true; }
 		return false;
@@ -97,6 +108,7 @@ public:
 		kRequestNext,
 		kRequestToggleCont,
 		kRequestToggleRepeat,
+		kRequestSetFolder,    // ファイラを requestedFolder() へ移す
 		kRequestQuit,
 	};
 	Request TakeRequest() {
@@ -104,6 +116,9 @@ public:
 		request_ = kRequestNone;
 		return r;
 	}
+
+	// kRequestSetFolder の行き先。
+	const std::string &requestedFolder() const { return requestedFolder_; }
 
 	// 1 フレーム分の UI を組み立てる。設定の変更はその場で反映する。
 	// 非表示のときも ImGui のフレームは回す必要があるので毎フレーム呼ぶ。
@@ -174,9 +189,29 @@ private:
 	bool SyncModal(const char *title, bool *wanted);
 	// 自分が開けたモーダルの題名 (ポインタ比較)。0 なら開けていない。
 	const char *openedModal_;
+	// どれか 1 つでもダイアログが開いているか。モーダルなので、開いている
+	// 間は別のものを開けない（先にそれを閉じてもらう）。
+	bool busy() const { return visible_ || showTheme_ || showAbout_ || showFolder_; }
+
 	// テーマの色のダイアログ
 	void BuildThemeWindow(Settings *settings, DrawScreen *draw, Player *player);
 	bool showTheme_;
+
+	// フォルダを選ぶダイアログ
+	void BuildFolderWindow();
+	// 子フォルダの一覧だけ作り直す（入力欄には触らない）。
+	void RelistFolder(const std::string &dir);
+	// 一覧で選んだものを入力欄へ移す。中へは入らない（そこはダブルクリック）。
+	void SelectFolderEntry(const std::string &path);
+	// 一覧に出すフォルダを決めて、入力欄もそこへ合わせる。
+	void SetFolderDir(const std::string &dir);
+	bool showFolder_;
+	std::string folderDir_;                    // 今 一覧に出しているフォルダ
+	std::string folderSelected_;               // 一覧で選ばれている行のパス
+	std::vector<std::string> folderEntries_;   // その中の子フォルダ名
+	std::string folderError_;                  // 開けなかったときの文言
+	std::string requestedFolder_;              // kRequestSetFolder の行き先
+	char folderPathBuf_[512];                  // パスの入力欄
 
 	// コンテキストメニュー
 	void BuildContextMenu(DrawScreen *draw, Player *player, Filer *filer);

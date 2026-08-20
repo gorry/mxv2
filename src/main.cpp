@@ -89,6 +89,7 @@ void PrintUsage(const char *argv0) {
 	    "  ENTER           ファイラの項目を開く\n"
 	    "  BACKSPACE       親ディレクトリへ\n"
 	    "  \\               ルートディレクトリへ\n"
+	    "  L               フォルダを選んで移動 (ESC で閉じる)\n"
 	    "  UP/DOWN/PGUP/PGDN/HOME/END  カーソル移動\n"
 	    "  N / B           次 / 前の MDX を演奏\n"
 	    "  C               演奏終了で次の曲へ (CONT)\n"
@@ -585,6 +586,10 @@ int main(int argc, char **argv) {
 					filer.GoRoot();
 					fileListRefresh = true;
 					break;
+				case SDLK_l:
+					// フォルダを選ぶダイアログ。今の場所から出す。
+					ui.OpenFolder(filer.currentDir());
+					break;
 
 				case SDLK_n: {
 					std::string path;
@@ -756,6 +761,10 @@ int main(int argc, char **argv) {
 			case mxv2::SettingsUi::kRequestToggleRepeat:
 				autoRepeat = !autoRepeat;
 				chromeRefresh = true;
+				break;
+			case mxv2::SettingsUi::kRequestSetFolder:
+				filer.SetCurrentDir(ui.requestedFolder());
+				fileListRefresh = true;
 				break;
 			case mxv2::SettingsUi::kRequestQuit:
 				quit = true;
