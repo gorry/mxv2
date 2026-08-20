@@ -48,11 +48,22 @@ public:
 	void SetCursor(int i);
 	void MoveCursor(int delta);
 
-	int top() const { return top_; }
+	// 先頭に見えている項目と、そこからのずれ (px)。
+	//
+	// スクロール位置は画素で持つ。ドラッグを指に追従させるためで、
+	// 行番号しか要らない側は今までどおり top() / SetTop() を使えばよい
+	// （SetTop はずれを 0 に戻すので、キー移動・ホイール・スクロールバーは
+	// 自動的に行の切れ目に揃う）。
+	int top() const { return topPx_ / rowHeightPx_; }
+	int topOffsetPx() const { return topPx_ % rowHeightPx_; }
 	void SetTop(int t);
+	void SetTopPx(int px);
+	int topPx() const { return topPx_; }
+	// スクロールできる最大の画素位置。
+	int maxTopPx() const;
 
-	// 画面に見えている行数。スクロール量の計算に使う。
-	void SetVisibleRows(int rows);
+	// 画面に見えている行数と 1 行の高さ (px)。スクロール量の計算に使う。
+	void SetViewMetrics(int rows, int rowHeightPx);
 	int visibleRows() const { return visibleRows_; }
 
 	// カーソルが画面外に出ていたら top を調整する。
@@ -88,7 +99,8 @@ private:
 	std::string currentDir_;
 	std::vector<FileItem> items_;
 	int cursor_;
-	int top_;
+	int topPx_;        // スクロール位置 (画素)
+	int rowHeightPx_;  // 1 行の高さ。0 にはしない（除算に使う）
 	int visibleRows_;
 	bool folderFirst_;
 };

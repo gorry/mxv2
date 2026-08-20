@@ -145,8 +145,19 @@ void TextLayer::ClearRect(int x, int y, int width, int height) {
 }
 
 void TextLayer::DrawText(int x, int y, int maxWidth, int cellHeight, const std::string &utf8,
-                         const Rgb &color, int bright) {
+                         const Rgb &color, int bright, int clipY, int clipH) {
 	if (!available() || utf8.empty() || cellHeight <= 0) return;
+
+	// 書き込んでよい縦の範囲。指定が無ければ 1 行ぶん。
+	if (clipH <= 0) {
+		clipY = y;
+		clipH = cellHeight;
+	}
+	int clipTop = ToOut(clipY, scaleY_);
+	int clipBottom = ToOut(clipY + clipH, scaleY_);
+	if (clipTop < 0) clipTop = 0;
+	if (clipBottom > height_) clipBottom = height_;
+	if (clipTop >= clipBottom) return;
 
 	const int ox = ToOut(x, scaleX_);
 	const int oy = ToOut(y, scaleY_);
@@ -168,7 +179,7 @@ void TextLayer::DrawText(int x, int y, int maxWidth, int cellHeight, const std::
 
 	for (int yy = 0; yy < rows; yy++) {
 		const int py = oy + yy;
-		if (py < 0 || py >= height_) continue;
+		if (py < clipTop || py >= clipBottom) continue;
 		const uint8_t *p = scratch_.RowFromTop(yy);
 		uint32_t *q = &pixels_[(size_t)py * width_];
 		for (int xx = 0; xx < clip; xx++) {

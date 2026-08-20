@@ -55,6 +55,17 @@ public:
 	// ホイール 1 段で送る行数 (旧 mxv は SPI_GETWHEELSCROLLLINES)。
 	static const int kWheelLines = 3;
 
+	// これ以上動かしたらドラッグとみなす閾値 (論理 px)。
+	static const int kDragSlopPx = 3;
+
+	// 慣性スクロール（スマートフォンのスワイプに合わせたもの）。
+	// 離したときの速度で滑り続け、指数的に減速する。
+	// 速度は論理 px / 秒。
+	static const int kFlingStartPxPerSec = 80;  // これ未満なら滑らせない
+	static const int kFlingStopPxPerSec = 20;   // これ未満まで落ちたら止める
+	// 指が止まってからこれだけ経って離したら、滑らせない（置いただけ）。
+	static const uint32_t kVelocityStaleMs = 80;
+
 private:
 	enum Captured {
 		kCapturedNone = 0,
@@ -75,6 +86,11 @@ private:
 	void PressScrollBar(int hit);
 	void ReleaseAll();
 
+	// 慣性スクロール。velocity は Filer::topPx() の毎秒変化量。
+	void StartFling(float velocity);
+	void UpdateFling(uint32_t nowMs);
+	void StopFling() { flingActive_ = false; }
+
 	DrawScreen *draw_;
 	Filer *filer_;
 	Player *player_;
@@ -88,14 +104,26 @@ private:
 	int dragOriginThumb_;    // つまみを掴んだ時のつまみ位置
 	uint32_t nextRepeatMs_;  // 次のオートリピート時刻
 
-	// ファイルリストのドラッグスクロール。指で使うことを想定したもので、
-	// 1 行ぶん動くごとに送る（ホイールと同じ粒度）。
+	// ファイルリストのドラッグスクロール。指に追従するよう画素単位で送る。
 	// カーソルは押した時点では動かさず、ドラッグせずに離したときだけ動かす
 	// （フォルダを開くダイアログと同じ作法。ドラッグしたつもりが選択に
 	// なってしまうのを避ける）。
-	int dragOriginTop_;   // 掴んだ時の Filer::top()
-	int pendingCursor_;   // 離したときに合わせる項目。-1 なら合わせない
-	bool dragMoved_;      // 実際にスクロールしたか
+	int dragOriginTopPx_;  // 掴んだ時の Filer::topPx()
+	int pendingCursor_;    // 離したときに合わせる項目。-1 なら合わせない
+	bool dragMoved_;       // ドラッグ扱いになったか
+
+	// 指の速度。直近の動きを平滑化したもの (論理 px / 秒、画面座標)。
+	int lastMoveY_;
+	uint32_t lastMoveMs_;
+	float dragVelocity_;
+
+	// 慣性で滑っている間の状態。
+	bool flingActive_;
+	float flingVelocity_;  // topPx の毎秒変化量
+	float flingPos_;       // 端数を持ち越すための位置
+	int flingAppliedPx_;   // 前のフレームで自分が入れた値。
+	                       // 食い違っていたら他所が動かしたので手を引く
+	uint32_t flingLastMs_;
 
 	MouseInput(const MouseInput &);
 	MouseInput &operator=(const MouseInput &);

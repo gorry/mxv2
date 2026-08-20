@@ -55,8 +55,12 @@ public:
 
 	// 論理座標に文字を描く。cellHeight は論理の行高、bright はテーマの
 	// Bright 値 (0..100)。
+	//
+	// clipY / clipH は書き込んでよい縦の範囲（論理座標）。ファイラを画素単位で
+	// スクロールすると上下の端に半端な行が出るので、字の位置 (y) は動かさずに
+	// 出力側だけを切る必要がある。clipH <= 0 なら y..y+cellHeight を使う。
 	void DrawText(int x, int y, int maxWidth, int cellHeight, const std::string &utf8,
-	              const Rgb &color, int bright);
+	              const Rgb &color, int bright, int clipY = 0, int clipH = 0);
 
 	// キャンバスの上へ重ねる。Screen::Draw と Present の間で毎フレーム呼ぶ。
 	void Render(Screen *screen);

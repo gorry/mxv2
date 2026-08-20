@@ -26,7 +26,8 @@ bool HasMdxExtension(const std::string &name) {
 
 }  // namespace
 
-Filer::Filer() : cursor_(0), top_(0), visibleRows_(11), folderFirst_(false) {}
+Filer::Filer()
+    : cursor_(0), topPx_(0), rowHeightPx_(1), visibleRows_(11), folderFirst_(false) {}
 
 void Filer::SetFolderFirst(bool on) {
 	folderFirst_ = on;
@@ -45,7 +46,7 @@ void Filer::SetCurrentDir(const std::string &dir) {
 		}
 	}
 	Refresh();
-	top_ = 0;
+	topPx_ = 0;
 	// 旧 mxv と同じく、開いた直後は 1 番目（".." の次）にカーソルを置く。
 	cursor_ = std::min((int)items_.size() - 1, 1);
 	if (cursor_ < 0) cursor_ = 0;
@@ -156,25 +157,46 @@ void Filer::MoveCursor(int delta) {
 	SetCursor(cursor_ + delta);
 }
 
-void Filer::SetTop(int t) {
+int Filer::maxTopPx() const {
 	const int maxTop = std::max(0, (int)items_.size() - visibleRows_);
-	if (t < 0) t = 0;
-	if (t > maxTop) t = maxTop;
-	top_ = t;
+	return maxTop * rowHeightPx_;
 }
 
-void Filer::SetVisibleRows(int rows) {
+// 行単位の指定。端数は落とすので、キー移動・ホイール・スクロールバーは
+// 必ず行の切れ目に揃う。
+void Filer::SetTop(int t) {
+	SetTopPx(t * rowHeightPx_);
+}
+
+void Filer::SetTopPx(int px) {
+	const int maxPx = maxTopPx();
+	if (px < 0) px = 0;
+	if (px > maxPx) px = maxPx;
+	topPx_ = px;
+}
+
+void Filer::SetViewMetrics(int rows, int rowHeightPx) {
+	// 行の高さが変わると画素位置の意味も変わるので、今の先頭項目を保って
+	// 測り直す（文字サイズの切り替えで表示が飛ばないように）。
+	const int keepTop = top();
 	visibleRows_ = (rows > 0) ? rows : 1;
+	rowHeightPx_ = (rowHeightPx > 0) ? rowHeightPx : 1;
+	SetTop(keepTop);
 	EnsureCursorVisible();
 }
 
 void Filer::EnsureCursorVisible() {
-	if (cursor_ < top_) {
+	const int top = topPx_ / rowHeightPx_;
+	if (cursor_ < top) {
 		SetTop(cursor_);
-	} else if (cursor_ >= top_ + visibleRows_) {
+	} else if (cursor_ >= top + visibleRows_) {
 		SetTop(cursor_ - visibleRows_ + 1);
+	} else if (topOffsetPx() != 0) {
+		// 端数が残っていると先頭と末尾の行が欠けて見える。カーソルを
+		// 動かしたときは行に揃え直す。
+		SetTop(top);
 	} else {
-		SetTop(top_);
+		SetTopPx(topPx_);  // 項目が減ったときの詰め直し
 	}
 }
 

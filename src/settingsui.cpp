@@ -519,7 +519,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 			settings->fileListFontSize = largeFont ? 1 : 0;
 			changedFields_ |= Settings::kFieldFontSize;
 			draw->SetFileListFontSize(settings->fileListFontSize);
-			filer->SetVisibleRows(draw->fileListRows());
+			filer->SetViewMetrics(draw->fileListRows(), draw->fileListItemH());
 		}
 
 		bool folderFirst = settings->folderFirst;

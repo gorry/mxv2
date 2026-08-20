@@ -104,7 +104,7 @@ void PrintUsage(const char *argv0) {
 	    "mouse:\n"
 	    "  バナー          クリックでメニュー (右クリックでも同じものが出る)\n"
 	    "  ファイルリスト  クリックでカーソル移動 / ダブルクリックで開く\n"
-	    "                  ドラッグでスクロール\n"
+	    "                  ドラッグでスクロール (振ると慣性で滑る。触ると止まる)\n"
 	    "  スクロールバー  矢印・溝・つまみのドラッグ。ホイールでも送れる\n"
 	    "  操作キー        PREV STOP PLAY FAST PAUSE NEXT CONT REPEAT\n"
 	    "  音量バー        クリックとドラッグ\n"
@@ -392,7 +392,7 @@ int main(int argc, char **argv) {
 
 	mxv2::Filer filer;
 	filer.SetFolderFirst(settings.folderFirst);
-	filer.SetVisibleRows(draw.fileListRows());
+	filer.SetViewMetrics(draw.fileListRows(), draw.fileListItemH());
 	filer.SetCurrentDir(startDir);
 	if (!startFile.empty()) filer.SelectByPath(startFile);
 
@@ -618,7 +618,7 @@ int main(int argc, char **argv) {
 
 				case SDLK_TAB:
 					draw.SetFileListFontSize(draw.fileListFontSize() ^ 1);
-					filer.SetVisibleRows(draw.fileListRows());
+					filer.SetViewMetrics(draw.fileListRows(), draw.fileListItemH());
 					fileListRefresh = true;
 					break;
 
@@ -691,7 +691,7 @@ int main(int argc, char **argv) {
 				}
 
 				draw.SetFileListFontSize(settings.fileListFontSize);
-				filer.SetVisibleRows(draw.fileListRows());
+				filer.SetViewMetrics(draw.fileListRows(), draw.fileListItemH());
 				player.RequestStatusRefresh();
 				chromeRefresh = true;
 				fileListRefresh = true;
@@ -795,7 +795,7 @@ int main(int argc, char **argv) {
 		visualizer.UpdateChrome(player, chromeRefresh, autoNext, autoRepeat,
 		                        mouse.playKeyPressMask());
 		draw.PutFileList(filer, fileListRefresh);
-		draw.PutScrollBar(filer.top(), filer.itemCount(), filer.visibleRows());
+		draw.PutScrollBar(filer.topPx(), filer.maxTopPx());
 		chromeRefresh = false;
 		fileListRefresh = false;
 

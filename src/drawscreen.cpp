@@ -63,7 +63,8 @@ DrawScreen::DrawScreen()
       progressBarLenLast_(-1),
       progressNowSecLast_(-1),
       totalVolBarLast_(kVolumeNever),
-      fileListCursorLast_(-1) {
+      fileListCursorLast_(-1),
+      fileListOffsetLast_(0) {
 	memset(kbPalette_, 0, sizeof(kbPalette_));
 	memset(palLevelMeter_, 0, sizeof(palLevelMeter_));
 }
@@ -554,12 +555,27 @@ void DrawScreen::PutFileList(const Filer &filer, bool refresh) {
 	const int top = filer.top();
 	const int cursor = filer.cursor();
 
-	if ((int)fileListLast_.size() != rows) {
-		fileListLast_.assign(rows, FileItem());
+	// スクロール位置の端数 (0..itemH-1)。ドラッグ中だけ 0 以外になる。
+	// 端数があるぶん全体が上へずれるので、上下の端に半端な行が出る。
+	// その 1 行ぶん多く回して、はみ出しは矩形を切って描く。
+	const int offset = filer.topOffsetPx();
+	const int drawRows = (offset > 0) ? rows + 1 : rows;
+	const int listTop = skin_->fileListY;
+	const int listBottom = skin_->fileListY + skin_->fileListH;
+
+	// 端数が変わると行と画素の対応がまるごとずれるので、行ごとの差分は
+	// 使えない。ドラッグ中は毎フレーム全部描き直す（文字はグリフを
+	// キャッシュしてあるので、焼き直しではなく転送だけで済む）。
+	if (fileListOffsetLast_ != offset) {
+		fileListOffsetLast_ = offset;
+		refresh = true;
+	}
+	if ((int)fileListLast_.size() != rows + 1) {
+		fileListLast_.assign(rows + 1, FileItem());
 		refresh = true;
 	}
 
-	for (int i = 0; i < rows; i++) {
+	for (int i = 0; i < drawRows; i++) {
 		const int j = top + i;
 		bool redraw = refresh;
 
@@ -578,9 +594,15 @@ void DrawScreen::PutFileList(const Filer &filer, bool refresh) {
 		if (!redraw) continue;
 
 		const int x = skin_->fileListX;
-		const int y = skin_->fileListY + i * itemH;
-		const int h = (y + itemH > skin_->fileListY + skin_->fileListH) ? (skin_->fileListY + skin_->fileListH - y)
-		                                                    : itemH;
+		// 文字を置く基準は切る前の行の上辺。ここを動かすと字が縦に潰れる。
+		const int rowY = listTop + i * itemH - offset;
+		int y = rowY;
+		int h = itemH;
+		if (y < listTop) {
+			h -= (listTop - y);
+			y = listTop;
+		}
+		if (y + h > listBottom) h = listBottom - y;
 		if (h <= 0) break;
 
 		// 背景を戻す -> カーソル -> 文字
@@ -602,28 +624,35 @@ void DrawScreen::PutFileList(const Filer &filer, bool refresh) {
 		}
 
 		if (textLayer_ != 0 && textLayer_->available()) {
-			textLayer_->DrawText(x + skin_->fileListBaseNameX[fs], y,
+			// 字は切る前の行位置 (rowY) に置き、はみ出しは y..y+h で切る。
+			textLayer_->DrawText(x + skin_->fileListBaseNameX[fs], rowY,
 			                     skin_->fileListBaseNameW[fs], itemH, shown.baseName, color,
-			                     theme_.filer.colorBright);
+			                     theme_.filer.colorBright, y, h);
 			if (!shown.title.empty()) {
-				textLayer_->DrawText(x + skin_->fileListTitleX[fs], y, skin_->fileListTitleW[fs],
-				                     itemH, shown.title, color, theme_.filer.colorBright);
+				textLayer_->DrawText(x + skin_->fileListTitleX[fs], rowY,
+				                     skin_->fileListTitleW[fs], itemH, shown.title, color,
+				                     theme_.filer.colorBright, y, h);
 			}
 		} else {
 			// フォントが読めなかったときの非常用（5x7 は本来ビジュアライザ用）。
-			Print(x + skin_->fileListBaseNameX[fs], y + 1,
-			      ToAscii(shown.baseName, kMaxAsciiChars).c_str(), color, theme_.filer.colorBright);
-			if (!shown.title.empty()) {
-				Print(x + skin_->fileListTitleX[fs], y + 1,
-				      ToAscii(shown.title, kMaxAsciiChars).c_str(), color, theme_.filer.colorBright);
+			// こちらは縦に切れないので、丸ごと入る行だけ描く。
+			if (h >= itemH) {
+				Print(x + skin_->fileListBaseNameX[fs], rowY + 1,
+				      ToAscii(shown.baseName, kMaxAsciiChars).c_str(), color,
+				      theme_.filer.colorBright);
+				if (!shown.title.empty()) {
+					Print(x + skin_->fileListTitleX[fs], rowY + 1,
+					      ToAscii(shown.title, kMaxAsciiChars).c_str(), color,
+					      theme_.filer.colorBright);
+				}
 			}
 		}
 	}
 
-	// 最終行の余りを背景で埋める
+	// 最終行の余りを背景で埋める（行数 * 行高がぴったりでないスキン用）
 	{
-		const int y = skin_->fileListY + rows * itemH;
-		int h = skin_->fileListY + skin_->fileListH - y;
+		const int y = listTop + drawRows * itemH - offset;
+		int h = listBottom - y;
 		if (h > 0) {
 			BmpCopy(&screen_, skin_->fileListX, y, skin_->fileListW, h, &back_, skin_->fileListX, y, 100);
 			if (textLayer_ != 0) textLayer_->ClearRect(skin_->fileListX, y, skin_->fileListW, h);
@@ -641,15 +670,15 @@ void DrawScreen::SetScrollBarThumb(int y) {
 	scrollBarThumb_ = Max(0, Min(scrollBarMovement(), y));
 }
 
-void DrawScreen::PutScrollBar(int top, int itemCount, int visibleRows) {
+// topPx / maxTopPx は Filer のスクロール位置（画素）。行番号ではなく画素で
+// 受けるので、ファイラを画素単位で送るとつまみも同じだけ滑らかに動く。
+void DrawScreen::PutScrollBar(int topPx, int maxTopPx) {
 	if (!scrollBar_.valid()) return;
 
-	// ドラッグ中はつまみの位置を掴んだまま動かす（top から計算し直すと
-	// 行単位に量子化されてカクつく）。旧 mxv の MX_PUTSCROLLBAR_FLAG_DRAG。
+	// つまみ自体をドラッグしている間は、掴んだ位置のまま動かす。
+	// 旧 mxv の MX_PUTSCROLLBAR_FLAG_DRAG。
 	if ((scrollBarFlags_ & kScrollBarDrag) == 0) {
-		int n = itemCount - visibleRows;
-		if (n < 0) n = 0;
-		SetScrollBarThumb((n > 0) ? (scrollBarMovement() * top / n) : 0);
+		SetScrollBarThumb((maxTopPx > 0) ? (scrollBarMovement() * topPx / maxTopPx) : 0);
 	}
 
 	// 部品の位置と切り出しはスキンが持つ（layout.ini の [ScrollBar] Src* / Pos*）。
@@ -864,10 +893,17 @@ int DrawScreen::HitCheckFileList(int x, int y) const {
 	if (x < skin_->fileListX || x >= skin_->fileListX + skin_->fileListW) return -1;
 	if (y < skin_->fileListY || y >= skin_->fileListY + skin_->fileListH) return -1;
 
-	const int row = (y - skin_->fileListY) / skin_->fileListItemH[fileListFontSize_ & 1];
+	// 画素単位でスクロールしていると全体が上へずれているので、その分を足して
+	// から行に直す。ずれの量は最後に描いたときのものを使う（描いてあるものと
+	// 当たり判定を必ず一致させるため）。戻り値は「上から数えて何行目か」で、
+	// 呼び出し側が Filer::top() に足して項目を決める。
+	const int itemH = skin_->fileListItemH[fileListFontSize_ & 1];
+	const int row = (y - skin_->fileListY + fileListOffsetLast_) / itemH;
 	// 大きい文字 (13px) では 110/13 = 8 行と半端が出る。原典は半端の帯でも
 	// 行 8 を返していたが、そこには何も描かれていないので弾く。
-	if (row >= fileListRows()) return -1;
+	// ずれているときは半端な行が 1 つ増える。
+	const int drawRows = fileListRows() + ((fileListOffsetLast_ > 0) ? 1 : 0);
+	if (row >= drawRows) return -1;
 	return row;
 }
 

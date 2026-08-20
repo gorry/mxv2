@@ -86,12 +86,12 @@ public:
 	void PutPlayKey(uint32_t status, bool refresh);
 
 	// ---- ファイラ ---------------------------------------------------
-	// 画面に収まる行数。Filer::SetVisibleRows へ渡す。
+	// 画面に収まる行数。Filer::SetViewMetrics へ渡す。
 	int fileListRows() const;
-	// 1 行の高さ (px)。ドラッグの移動量を行数へ直すのに要る。
+	// 1 行の高さ (px)。Filer::SetViewMetrics へ渡す（画素スクロールに要る）。
 	int fileListItemH() const;
 	void PutFileList(const Filer &filer, bool refresh);
-	void PutScrollBar(int top, int itemCount, int visibleRows);
+	void PutScrollBar(int topPx, int maxTopPx);
 
 	// ---- ヒットチェック (旧 mxv の Screen_HitCheck_*) ----------------
 	// 操作キー。戻り値は旧 mxv の MX_HITCODE_PLAYKEY_* と同じ並びで、
@@ -226,6 +226,7 @@ private:
 	int totalVolBarLast_;
 	std::vector<FileItem> fileListLast_;
 	int fileListCursorLast_;
+	int fileListOffsetLast_;  // 前回のスクロール端数 (px)
 
 	DrawScreen(const DrawScreen &);
 	DrawScreen &operator=(const DrawScreen &);
