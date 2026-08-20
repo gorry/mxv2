@@ -17,6 +17,8 @@ Settings::Settings()
       loops(2),
       fadeout(true),
       masterVolume(0),  // 中央
+      latencyAuto(true),
+      latencyMs(0),
       savePosition(true),
       windowX(-1),
       windowY(-1) {}
@@ -44,6 +46,10 @@ bool Settings::Load(const std::string &path) {
 	masterVolume = ini.GetInt("Play", "Volume", masterVolume);
 	if (masterVolume < -100) masterVolume = -100;
 	if (masterVolume > 100) masterVolume = 100;
+	latencyAuto = ini.GetInt("Play", "LatencyAuto", latencyAuto ? 1 : 0) != 0;
+	latencyMs = ini.GetInt("Play", "Latency", latencyMs);
+	if (latencyMs < kLatencyMsMin) latencyMs = kLatencyMsMin;
+	if (latencyMs > kLatencyMsMax) latencyMs = kLatencyMsMax;
 
 	pdxPath = ini.GetString("Path", "PDX", pdxPath);
 
@@ -71,6 +77,8 @@ bool Settings::Save(const std::string &path) const {
 	ini.SetInt("Play", "N_Loop", loops);
 	ini.SetInt("Play", "Fadeout", fadeout ? 1 : 0);
 	ini.SetInt("Play", "Volume", masterVolume);
+	ini.SetInt("Play", "LatencyAuto", latencyAuto ? 1 : 0);
+	ini.SetInt("Play", "Latency", latencyMs);
 
 	ini.SetString("Path", "PDX", pdxPath);
 
@@ -97,6 +105,10 @@ bool Settings::SaveFields(const std::string &path, unsigned fields) const {
 	if (fields & kFieldLoops) out.loops = loops;
 	if (fields & kFieldFadeout) out.fadeout = fadeout;
 	if (fields & kFieldVolume) out.masterVolume = masterVolume;
+	if (fields & kFieldLatency) {
+		out.latencyAuto = latencyAuto;
+		out.latencyMs = latencyMs;
+	}
 	if (fields & kFieldPdxPath) out.pdxPath = pdxPath;
 	if (fields & kFieldWindowPos) {
 		out.windowX = windowX;

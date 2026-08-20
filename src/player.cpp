@@ -39,6 +39,7 @@ Player::Config::Config()
       masterVolume(0),
       maxLoops(2),
       autoFadeout(true),
+      displayLatencyAuto(true),
       displayLatencyFrames(0) {}
 
 Player::Player()
@@ -62,6 +63,8 @@ Player::Player()
       framesPerPoll_(0),
       maxLoops_(2),
       autoFadeout_(true),
+      displayLatencyFrames_(0),
+      audioBufferFrames_(0),
       statusRefresh_(false),
       masterVolume_(0),
       mainVolume_(0),
@@ -152,6 +155,16 @@ bool Player::Open(const Config &config, std::string *err) {
 		Close();
 		return false;
 	}
+
+	// 表示を遅らせる量を決める。
+	//
+	// コールバックへ渡した音は、装置のバッファを 1 つぶん通り抜けてから鳴る。
+	// playedFrames_ は「渡した位置」なので、そのまま表示に使うと画面が音より
+	// バッファ 1 つぶん先に進む。既定ではその差をそのまま戻す。
+	// 実際の値は SDL が返してきた have.samples を使う（要求どおりとは限らない）。
+	audioBufferFrames_ = (have.samples > 0) ? (int)have.samples : config_.audioBlockFrames;
+	displayLatencyFrames_ =
+	    config_.displayLatencyAuto ? audioBufferFrames_ : config_.displayLatencyFrames;
 
 	// OPM 割り込みコールバックを登録。
 	// portable_mdx (MXDRV_ENABLE_PORTABLE_CODE) では MXCALLBACK_OPMINT は
@@ -443,13 +456,20 @@ void Player::SetFastPlay(bool on) {
 	Unlock();
 }
 
+void Player::SetDisplayLatency(bool useAuto, int frames) {
+	config_.displayLatencyAuto = useAuto;
+	config_.displayLatencyFrames = frames;
+	displayLatencyFrames_ = useAuto ? audioBufferFrames_ : frames;
+}
+
+// 表示に使う再生位置。playedFrames_ は「SDL へ渡した位置」なので、
+// 実際に鳴っている位置はそこから装置のバッファぶん手前になる。
+// 正の遅らせ量で戻し、負なら逆に進める。
 uint64_t Player::visualFrame() const {
-	uint64_t played = playedFrames_.load(std::memory_order_acquire);
-	int offset = config_.displayLatencyFrames;
-	if (offset >= 0) {
-		return played + (uint64_t)offset;
-	}
-	uint64_t back = (uint64_t)(-offset);
+	const uint64_t played = playedFrames_.load(std::memory_order_acquire);
+	const int late = displayLatencyFrames_;
+	if (late <= 0) return played + (uint64_t)(-late);
+	const uint64_t back = (uint64_t)late;
 	return (played > back) ? (played - back) : 0;
 }
 

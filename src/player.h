@@ -47,8 +47,18 @@ public:
 		                        // （メイン音量は常に 0 から始まるので持たない）
 		int maxLoops;           // 自動フェードアウトまでのループ数
 		bool autoFadeout;
-		int displayLatencyFrames;  // 表示を遅らせる量。旧 mxv の DISP_LATE 相当
-		                           // だが既定 0 (サンプル位置同期なので不要)
+		// 表示を遅らせるフレーム数（旧 mxv の DISP_LATE 相当）。
+		//
+		// イベントはデコード時のサンプル位置で打刻してあるので、
+		// 「SDL へ渡した位置」との同期は取れている。ただし渡した音が実際に
+		// 鳴るのはオーディオ装置のバッファを通り抜けたあとで、そのぶん
+		// **画面が音より先に進む**。ここでその差を戻す。
+		// 正の値で表示が遅れ、負の値で先に進む。
+		//
+		// displayLatencyAuto が true なら、開いたときの装置のバッファ長を
+		// そのまま使う（既定）。false のときだけ displayLatencyFrames を見る。
+		bool displayLatencyAuto;
+		int displayLatencyFrames;
 
 		Config();
 	};
@@ -112,6 +122,15 @@ public:
 	// 表示用の現在位置（サンプル）。ここに追いついたイベントだけを描画する。
 	uint64_t visualFrame() const;
 
+	// 実際に使っている表示の遅らせ量（フレーム）。Open() で決まる。
+	int displayLatencyFrames() const { return displayLatencyFrames_; }
+	// オーディオ装置が実際に返してきたバッファ長（フレーム）。
+	int audioBufferFrames() const { return audioBufferFrames_; }
+	int sampleRate() const { return config_.sampleRate; }
+	// 表示の遅らせ量を後から変える（設定ウィンドウ用）。auto なら装置の
+	// バッファ長を使い、frames は見ない。次のフレームから効く。
+	void SetDisplayLatency(bool useAuto, int frames);
+
 	uint64_t playedFrames() const { return playedFrames_.load(std::memory_order_acquire); }
 	uint64_t decodedFrames() const { return decodedFrames_.load(std::memory_order_acquire); }
 
@@ -132,6 +151,9 @@ private:
 	static void OpmIntTrampoline(MxdrvContext *context);
 
 	void AudioCallback(uint8_t *stream, int len);
+
+	int displayLatencyFrames_;  // Open() で決めた実効値
+	int audioBufferFrames_;     // SDL が返してきたバッファ長
 	int DecodeThreadMain();
 	void PollStep(uint64_t frame);
 

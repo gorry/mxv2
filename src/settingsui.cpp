@@ -158,6 +158,15 @@ void DragToScroll(bool *dragging, bool *moved, bool hasTitleBar, bool fromItems)
 	*dragging = true;
 }
 
+// 画面の遅れ (ms) とサンプル数の相互変換。
+int MsToFrames(int ms, const Player *player) {
+	return ms * player->sampleRate() / 1000;
+}
+
+float FramesToMs(int frames, const Player *player) {
+	return frames * 1000.0f / (float)player->sampleRate();
+}
+
 // フォルダ名を並べるときの順。ファイラ (filer.cpp) と同じ規則。
 bool LessPathNoCase(const std::string &a, const std::string &b) {
 	return CompareNoCase(a, b) < 0;
@@ -561,6 +570,32 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 		ImGui::TextDisabled("実際の音量 = マスター %+d + メイン画面 %+d = %+d",
 		                    player->masterVolume(), player->mainVolume(),
 		                    player->effectiveVolume());
+
+		// 画面を音に合わせて遅らせる量。イベントはサンプル位置で打刻して
+		// あるので、ずれる原因はオーディオ装置のバッファぶんだけ。ふつうは
+		// 自動でよく、装置がさらに段を持っていて音が遅れて聞こえるときだけ
+		// 手で足す。
+		{
+			bool autoLatency = settings->latencyAuto;
+			if (ImGui::Checkbox("画面の遅れを音に合わせる", &autoLatency)) {
+				settings->latencyAuto = autoLatency;
+				changedFields_ |= Settings::kFieldLatency;
+				player->SetDisplayLatency(autoLatency,
+				                          MsToFrames(settings->latencyMs, player));
+			}
+			if (!autoLatency) {
+				int ms = settings->latencyMs;
+				if (ImGui::SliderInt("画面の遅れ (ms)", &ms, Settings::kLatencyMsMin,
+				                     Settings::kLatencyMsMax, "%+d")) {
+					settings->latencyMs = ms;
+					changedFields_ |= Settings::kFieldLatency;
+					player->SetDisplayLatency(false, MsToFrames(ms, player));
+				}
+			}
+			ImGui::TextDisabled("いま %+.1f ms（音の出るバッファ %d サンプル）",
+			                    FramesToMs(player->displayLatencyFrames(), player),
+			                    player->audioBufferFrames());
+		}
 
 		if (pdxPathBuf_[0] == '\0' && !settings->pdxPath.empty()) {
 			snprintf(pdxPathBuf_, sizeof(pdxPathBuf_), "%s", settings->pdxPath.c_str());

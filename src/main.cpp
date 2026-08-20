@@ -61,10 +61,12 @@ struct Options {
 	std::string target;  // MDX ファイルかディレクトリ。空ならカレント
 	std::vector<std::string> pdxSearchDirs;  // -pdxpath (複数指定可)
 	std::string assetsDir;
-	int latencyFrames;
+	// 表示を遅らせる時間 (ms)。指定が無ければ音の遅れに自動で合わせる。
+	int latencyMs;
+	bool latencySet;
 	bool quitOnEnd;
 
-	Options() : latencyFrames(0), quitOnEnd(true) {}
+	Options() : latencyMs(0), latencySet(false), quitOnEnd(true) {}
 };
 
 // 演奏位置の移動幅。, / . が普通、Shift 付きの < / > が高速。
@@ -124,7 +126,7 @@ void PrintUsage(const char *argv0) {
 	    "  -zoom <percent> 表示倍率 %% (100 でドット等倍。既定はシステムの拡大率)\n"
 	    "  -loops <n>      自動フェードアウトまでのループ数 (既定 2)\n"
 	    "  -nofade         自動フェードアウトしない\n"
-	    "  -latency <n>    表示を遅らせるサンプル数 (既定 0)\n"
+	    "  -latency <ms>   表示を遅らせる時間 ms (この起動だけ。ふつうは設定で)\n"
 	    "  -pdxpath <dir>  PDX の追加探索先\n"
 	    "  -assets <dir>   素材ビットマップの場所 (既定: 実行ファイルの隣の assets)\n"
 	    "  -skin <name>    スキン名 (assets/skin/<name>。既定: Default)\n"
@@ -157,7 +159,11 @@ bool ParseArgs(int argc, char **argv, Options *opt, mxv2::Settings *st) {
 		} else if (strcmp(a, "-loops") == 0 && i + 1 < argc) {
 			st->loops = atoi(argv[++i]);
 		} else if (strcmp(a, "-latency") == 0 && i + 1 < argc) {
-			opt->latencyFrames = atoi(argv[++i]);
+			// 桁を間違えても画面が止まったきりにならないよう、常識的な幅で頭打ち。
+			opt->latencyMs = atoi(argv[++i]);
+			if (opt->latencyMs > 10000) opt->latencyMs = 10000;
+			if (opt->latencyMs < -10000) opt->latencyMs = -10000;
+			opt->latencySet = true;
 		} else if (strcmp(a, "-pdxpath") == 0 && i + 1 < argc) {
 			opt->pdxSearchDirs.push_back(argv[++i]);
 		} else if (strcmp(a, "-assets") == 0 && i + 1 < argc) {
@@ -390,7 +396,11 @@ int main(int argc, char **argv) {
 		mxv2::Player::Config cfg;
 		cfg.maxLoops = settings.loops;
 		cfg.autoFadeout = settings.fadeout;
-		cfg.displayLatencyFrames = opt.latencyFrames;
+		// 画面の遅れは設定ウィンドウで決める。-latency はその場かぎりの
+		// 上書きで、ini には残さない（-nofade などと同じ扱い）。
+		const int latencyMs = opt.latencySet ? opt.latencyMs : settings.latencyMs;
+		cfg.displayLatencyAuto = opt.latencySet ? false : settings.latencyAuto;
+		cfg.displayLatencyFrames = latencyMs * cfg.sampleRate / 1000;
 		cfg.masterVolume = settings.masterVolume;
 
 		std::string err;
@@ -400,6 +410,10 @@ int main(int argc, char **argv) {
 			SDL_Quit();
 			return EXIT_FAILURE;
 		}
+		printf("audio    : %d Hz / buffer %d frames / 表示の遅らせ %d frames (%.1f ms)%s\n",
+		       cfg.sampleRate, player.audioBufferFrames(), player.displayLatencyFrames(),
+		       player.displayLatencyFrames() * 1000.0f / cfg.sampleRate,
+		       cfg.displayLatencyAuto ? " [自動]" : "");
 	}
 
 	mxv2::SettingsUi ui;

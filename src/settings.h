@@ -37,6 +37,14 @@ struct Settings {
 	// マスター音量 -100..+100 (0 = 中央)。メイン画面の音量はその場かぎりの
 	// 調整なので記録しない（起動時は必ず 0 から始まる）。
 	int masterVolume;
+	// 画面を音に合わせて遅らせる量。latencyAuto なら latencyMs は見ず、
+	// オーディオ装置のバッファ長をそのまま使う（既定）。
+	// 手動のときは ms で、正の値で表示が遅れ、負で先行する。
+	bool latencyAuto;
+	int latencyMs;
+	// 手動指定できる幅。設定ウィンドウのスライダもこの範囲。
+	static const int kLatencyMsMin = -200;
+	static const int kLatencyMsMax = 500;
 
 	// [Path]
 	std::string pdxPath;  // PDX の追加探索先（1 つ。複数は -pdxpath で足す）
@@ -60,6 +68,7 @@ struct Settings {
 		kFieldVolume = 1 << 8,
 		kFieldPdxPath = 1 << 9,
 		kFieldWindowPos = 1 << 10,
+		kFieldLatency = 1 << 11,
 	};
 
 	Settings();
