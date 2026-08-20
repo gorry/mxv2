@@ -12,6 +12,10 @@
 
 #include <SDL.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 #include "drawscreen.h"
 #include "fileutil.h"
 #include "filer.h"
@@ -55,6 +59,43 @@ const uint32_t kSettingsSaveDelayMs = 400;
 const uint16_t kMaskFm = 0x00ff;   // ch.1-8
 const uint16_t kMaskPcm = 0xff00;  // ch.P-W
 const uint16_t kMaskAll = 0xffff;
+
+// 標準出力の行き先を用意する。
+//
+// Windows では GUI アプリとしてリンクしてあるので、既定ではコンソールが無く
+// printf は捨てられる（黒いウィンドウを出さないため）。
+//   ・出力がすでにファイル等へ繋がっているなら何もしない（リダイレクト）
+//   ・端末から起動されたならその端末へ出す（新しい窓は開かない）
+//   ・それも無く wantConsole なら、新しくコンソールを開く（-console / -h）
+// Windows 以外は元から標準出力があるので何もしない。
+void SetupConsole(bool wantConsole) {
+#ifdef _WIN32
+	{
+		const HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
+		if (h != NULL && h != INVALID_HANDLE_VALUE) return;
+	}
+	if (!AttachConsole(ATTACH_PARENT_PROCESS)) {
+		if (!wantConsole) return;
+		if (!AllocConsole()) return;
+	}
+	FILE *f = 0;
+	freopen_s(&f, "CONOUT$", "w", stdout);
+	freopen_s(&f, "CONOUT$", "w", stderr);
+	// 日本語が化けないよう、コンソール側も UTF-8 にする。
+	SetConsoleOutputCP(CP_UTF8);
+#else
+	(void)wantConsole;
+#endif
+}
+
+// コンソールを出す指定があるか。設定を読む前に見たいので、ここだけ先に走らせる。
+bool WantsConsole(int argc, char **argv) {
+	for (int i = 1; i < argc; i++) {
+		if (strcmp(argv[i], "-console") == 0) return true;
+		if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "-help") == 0) return true;
+	}
+	return false;
+}
 
 // コマンドライン専用の指定。永続化する設定は Settings が持つ。
 struct Options {
@@ -131,7 +172,8 @@ void PrintUsage(const char *argv0) {
 	    "  -assets <dir>   素材ビットマップの場所 (既定: 実行ファイルの隣の assets)\n"
 	    "  -skin <name>    スキン名 (assets/skin/<name>。既定: Default)\n"
 	    "  -folderfirst    ファイラでフォルダを先に並べる\n"
-	    "  -noquit         演奏終了後も閉じない\n",
+	    "  -noquit         演奏終了後も閉じない\n"
+	    "  -console        ログを出すコンソールを開く (既定は開かない)\n",
 	    argv0);
 	printf("%s", kKeyHelpText);
 }
@@ -170,6 +212,8 @@ bool ParseArgs(int argc, char **argv, Options *opt, mxv2::Settings *st) {
 			opt->assetsDir = argv[++i];
 		} else if (strcmp(a, "-skin") == 0 && i + 1 < argc) {
 			st->skinName = argv[++i];
+		} else if (strcmp(a, "-console") == 0) {
+			// 実際の処理は main の先頭 (SetupConsole)。ここでは受け流すだけ。
 		} else if (strcmp(a, "-h") == 0 || strcmp(a, "-help") == 0) {
 			return false;
 		} else {
@@ -254,6 +298,9 @@ void StartPlay(const PlayContext &ctx, const std::string &path) {
 }  // namespace
 
 int main(int argc, char **argv) {
+	// ログの行き先を先に決める。既定ではコンソールを出さない。
+	SetupConsole(WantsConsole(argc, argv));
+
 	// 途中で終了させても情報が残るように行バッファにする
 	setvbuf(stdout, NULL, _IOLBF, 1024);
 

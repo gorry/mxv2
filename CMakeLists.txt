@@ -166,6 +166,14 @@ add_executable(mxv2
 )
 target_include_directories(mxv2 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(mxv2 PRIVATE portable_mdx sdl2 imgui)
+
+# Windows では GUI アプリとしてリンクする。コンソールアプリのままだと、
+# エクスプローラから起動したときに黒いコンソールウィンドウが一緒に出る。
+# main() は SDL2main が用意する WinMain から呼ばれるので、書き方は変わらない。
+# ログを見たいときは -console を付ける（src/main.cpp の SetupConsole）。
+if(WIN32)
+	set_target_properties(mxv2 PROPERTIES WIN32_EXECUTABLE TRUE)
+endif()
 if(MSVC)
 	target_compile_definitions(mxv2 PRIVATE _CRT_SECURE_NO_WARNINGS)
 	target_compile_options(mxv2 PRIVATE /W3)
