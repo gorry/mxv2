@@ -115,6 +115,15 @@ MouseRequest MouseInput::OnButtonDown(int x, int y, int clicks) {
 		}
 	}
 
+	// バナー。右クリックできない環境（スマートフォンなど）のために、
+	// ここを押すとコンテキストメニューを出す。実際に出すのは離したときで、
+	// 押した時点で出すと、その直後に届く「離した」がメニューの外を
+	// クリックした扱いになって即閉じてしまう。
+	if (draw_->HitCheckBanner(x, y)) {
+		captured_ = kCapturedBanner;
+		return kMouseRequestNone;
+	}
+
 	// プログレスバー
 	{
 		const int hit = draw_->HitCheckProgressBar(x, y);
@@ -173,6 +182,11 @@ MouseRequest MouseInput::OnButtonUp(int x, int y) {
 	const int captured = captured_;
 	const int hit = capturedHit_;
 	ReleaseAll();
+
+	// バナーは、押した場所で離したときだけメニューを出す。
+	if (captured == kCapturedBanner) {
+		return draw_->HitCheckBanner(x, y) ? kMouseRequestContextMenu : kMouseRequestNone;
+	}
 
 	if (captured != kCapturedPlayKey) return kMouseRequestNone;
 

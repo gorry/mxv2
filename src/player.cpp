@@ -424,6 +424,14 @@ void Player::ToggleChannel(int ch) {
 	SetChannelMask((uint16_t)(channelMask() ^ (1 << ch)));
 }
 
+void Player::ToggleChannelGroup(uint16_t bits) {
+	if (!opened_ || bits == 0) return;
+	const uint16_t now = channelMask();
+	uint16_t next = (uint16_t)(now & ~bits);
+	if ((now & bits) == 0) next = (uint16_t)(next | bits);
+	SetChannelMask(next);
+}
+
 void Player::SetFastPlay(bool on) {
 	if (!opened_) return;
 	Lock();

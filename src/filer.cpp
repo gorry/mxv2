@@ -204,6 +204,22 @@ void Filer::GoParent() {
 	SelectByPath(leaving);
 }
 
+void Filer::GoRoot() {
+	// 旧 mxv はカレントを 3 文字 ("C:\") へ切り詰めていたが、それだと
+	// Windows のドライブ名前提になる。変わらなくなるまで親を辿れば
+	// 他のプラットフォームでも "/" に行き着く。
+	std::string dir = currentDir_;
+	for (int i = 0; i < 64; i++) {
+		const std::string up = ParentDir(dir);
+		if (up.empty() || up == dir) break;
+		dir = up;
+	}
+	if (dir == currentDir_) return;
+	const std::string leaving = currentDir_;
+	SetCurrentDir(dir);
+	SelectByPath(leaving);
+}
+
 bool Filer::SelectByPath(const std::string &path) {
 	std::string want = path;
 	while (!want.empty() && (want[want.size() - 1] == '\\' || want[want.size() - 1] == '/')) {

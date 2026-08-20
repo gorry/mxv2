@@ -45,8 +45,65 @@ public:
 	bool wantCaptureMouse() const;
 	bool wantCaptureKeyboard() const;
 
-	void Toggle() { visible_ = !visible_; }
+	// ダイアログはすべてモーダルなので、一度に開けるのは 1 つだけ。
+	// 他が開いている間はキーを効かせない（先にそれを閉じてもらう）。
+	// ImGui のモーダルは入れ子が前提の作りで、別のモーダルへ直接
+	// 掛け替えようとすると開き直しに失敗する。
+	//
+	// F1 は開くだけ。閉じるのは ESC か × ボタン。
+	void OpenSettings() {
+		if (showTheme_ || showAbout_) return;
+		visible_ = true;
+	}
 	bool visible() const { return visible_; }
+
+	// テーマの色を編集するダイアログ (F2)。設定ウィンドウとは独立に開閉する。
+	// F2 も開くだけ。閉じるのは ESC か × ボタン（設定ウィンドウと同じ）。
+	void OpenTheme() {
+		if (visible_ || showAbout_) return;
+		showTheme_ = true;
+	}
+
+	// 開いているダイアログを閉じる。閉じるものが無ければ false。
+	// ESC 用。ImGui はキーボードナビを有効にしていないとポップアップを
+	// ESC で閉じてくれないので、こちらで面倒を見る。
+	bool CloseDialog() {
+		// コンテキストメニューも ESC で閉じる。閉じるのは ImGui の
+		// ポップアップの中からでないとできないので、ここでは印だけ付けて
+		// 実際の始末は Build() に任せる。
+		if (contextMenuOpen_) { closeContextMenu_ = true; return true; }
+		if (showAbout_) { showAbout_ = false; return true; }
+		if (showTheme_) { showTheme_ = false; return true; }
+		if (visible_) { visible_ = false; return true; }
+		return false;
+	}
+
+	// 右クリックで開くコンテキストメニュー（旧 mxv の TrackPopupMenu 相当）。
+	// 設定ウィンドウが閉じていても出す。
+	void OpenContextMenu() { openContextMenu_ = true; }
+
+	// バージョン情報の見出し（名前・版・ビルド日付・著作権表示）。
+	// 文言は main.cpp が持っているので渡してもらう。
+	void SetAboutHeader(const std::string &text) { aboutHeader_ = text; }
+
+	// メニューから出た「メインループにやってもらうこと」。読んだら消える。
+	// 演奏の開始・曲送り・終了はメインループが状態を持っているので、
+	// ここでは要求だけ返す。
+	enum Request {
+		kRequestNone = 0,
+		kRequestOpenCursor,   // ファイラのカーソルを開く
+		kRequestReplay,       // 今の曲を掛け直す
+		kRequestPrev,
+		kRequestNext,
+		kRequestToggleCont,
+		kRequestToggleRepeat,
+		kRequestQuit,
+	};
+	Request TakeRequest() {
+		const Request r = request_;
+		request_ = kRequestNone;
+		return r;
+	}
 
 	// 1 フレーム分の UI を組み立てる。設定の変更はその場で反映する。
 	// 非表示のときも ImGui のフレームは回す必要があるので毎フレーム呼ぶ。
@@ -112,6 +169,29 @@ private:
 
 	// ユーザーが触った項目。TakeChangedFields() で取り出す。
 	unsigned changedFields_;
+
+	// モーダルの開閉を ImGui のポップアップ状態と合わせる。
+	bool SyncModal(const char *title, bool *wanted);
+	// 自分が開けたモーダルの題名 (ポインタ比較)。0 なら開けていない。
+	const char *openedModal_;
+	// テーマの色のダイアログ
+	void BuildThemeWindow(Settings *settings, DrawScreen *draw, Player *player);
+	bool showTheme_;
+
+	// コンテキストメニュー
+	void BuildContextMenu(DrawScreen *draw, Player *player, Filer *filer);
+	bool openContextMenu_;
+	// 直前のフレームでメニューが開いていたか（ESC を食う判断に使う）と、
+	// ESC で閉じてほしいという印。
+	bool contextMenuOpen_;
+	bool closeContextMenu_;
+	Request request_;
+	bool showAbout_;
+	// 中身をドラッグしてスクロール中。ダイアログはモーダルで一度に 1 つしか
+	// 開かないので、どのダイアログでもこの 1 つを使い回す。
+	bool dragScroll_;
+	std::string aboutHeader_;  // 名前・版・ビルド日付・著作権表示
+	std::string aboutText_;    // NOTICE の中身（初回に読む）
 
 	SettingsUi(const SettingsUi &);
 	SettingsUi &operator=(const SettingsUi &);

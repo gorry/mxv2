@@ -31,6 +31,7 @@ enum MouseRequest {
 	kMouseRequestReplay,      // 今の曲を頭から
 	kMouseRequestToggleCont,
 	kMouseRequestToggleRepeat,
+	kMouseRequestContextMenu,  // バナーを押した (右クリックの代わり)
 };
 
 class MouseInput {
@@ -62,6 +63,7 @@ private:
 		kCapturedPlayKey,
 		kCapturedTotalVolBar,
 		kCapturedProgressBar,
+		kCapturedBanner,
 	};
 
 	MouseRequest OnButtonDown(int x, int y, int clicks);

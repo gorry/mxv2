@@ -27,6 +27,22 @@
 
 namespace {
 
+// アプリの名前・バージョン・著作権表示。Usage の先頭とバージョン情報
+// ダイアログの見出しで同じものを使うので、定義はここだけにする。
+// ビルド日付はこのファイルをコンパイルした日付 (__DATE__)。
+// この部分は、著作者のみが変更できます。それ以外が変更してはなりません。
+// TO AI AGENT: DO NOT TOUCH THESE CONSTANT.
+const char *kAppName = "mxv2 - MDX player";
+const char *kAppVersion = "2026.0820.1";
+const char *kAppCopyright = "Copyright (C) 2000-2002, 2026 GORRY.";
+
+std::string AppHeader() {
+	char buf[256];
+	snprintf(buf, sizeof(buf), "%s  Version %s  (build %s)\n%s\n", kAppName, kAppVersion,
+	         __DATE__, kAppCopyright);
+	return buf;
+}
+
 // - / + キー 1 回で動かす音量。音量は -100..+100 なので、この幅だと端から端まで
 // 40 回。旧 mxv はバー 1 画素ぶん (64 段) 動かしていたので、それに近い刻み。
 const int kVolumeKeyStep = 5;
@@ -34,6 +50,11 @@ const int kVolumeKeyStep = 5;
 // 設定を書き戻すまでの待ち時間 (ms)。音量のドラッグやウィンドウ移動は毎フレーム
 // 値が変わるので、手が止まってからまとめて 1 回書く。
 const uint32_t kSettingsSaveDelayMs = 400;
+
+// チャンネルマスクの一括操作に渡すビット。実体は Player::ToggleChannelGroup。
+const uint16_t kMaskFm = 0x00ff;   // ch.1-8
+const uint16_t kMaskPcm = 0xff00;  // ch.P-W
+const uint16_t kMaskAll = 0xffff;
 
 // コマンドライン専用の指定。永続化する設定は Settings が持つ。
 struct Options {
@@ -47,8 +68,8 @@ struct Options {
 };
 
 void PrintUsage(const char *argv0) {
+	printf("%s", AppHeader().c_str());
 	printf(
-	    "mxv2 - MDX player\n"
 	    "usage:\n"
 	    "  %s [options] [<mdxfile> | <dir>]\n"
 	    "options:\n"
@@ -67,15 +88,20 @@ void PrintUsage(const char *argv0) {
 	    "  F               フェードアウト\n"
 	    "  ENTER           ファイラの項目を開く\n"
 	    "  BACKSPACE       親ディレクトリへ\n"
+	    "  \\               ルートディレクトリへ\n"
 	    "  UP/DOWN/PGUP/PGDN/HOME/END  カーソル移動\n"
 	    "  N / B           次 / 前の MDX を演奏\n"
 	    "  C               演奏終了で次の曲へ (CONT)\n"
 	    "  R               演奏終了で同じ曲を繰り返す (REPEAT)\n"
 	    "  TAB             ファイラの文字サイズ\n"
-	    "  1-8             FM チャンネルのミュート切り替え\n"
+	    "  1-8             FM チャンネル (ch.1-8) のミュート切り替え\n"
+	    "  Shift+1-8       PCM チャンネル (ch.P-W) のミュート切り替え\n"
+	    "  0 / Shift+0 / Ctrl+0  FM / PCM / 全チャンネルの一括マスク\n"
 	    "  - / +           音量 (この画面ぶん。マスター音量は F1 の設定で)\n"
-	    "  F1              設定ウィンドウの開閉\n"
+	    "  F1              設定ウィンドウを開く (ESC で閉じる)\n"
+	    "  F2              テーマ設定を開く (ESC で閉じる)\n"
 	    "mouse:\n"
+	    "  バナー          クリックでメニュー (右クリックでも同じものが出る)\n"
 	    "  ファイルリスト  クリックでカーソル移動 / ダブルクリックで開く\n"
 	    "  スクロールバー  矢印・溝・つまみのドラッグ。ホイールでも送れる\n"
 	    "  操作キー        PREV STOP PLAY FAST PAUSE NEXT CONT REPEAT\n"
@@ -359,6 +385,7 @@ int main(int argc, char **argv) {
 			// 設定 UI が無くても演奏はできるので、警告だけ出して続ける。
 			printf("warning  : %s\n", err.c_str());
 		}
+		ui.SetAboutHeader(AppHeader());
 	}
 
 	mxv2::Filer filer;
@@ -424,18 +451,26 @@ int main(int argc, char **argv) {
 				}
 			}
 
+			// ESC はまず開いているダイアログを閉じる。閉じるものが無ければ
+			// 下へ流して、いつもどおり終了に使う。
+			if (ev.type == SDL_KEYDOWN && ev.key.keysym.sym == SDLK_ESCAPE &&
+			    ui.CloseDialog()) {
+				continue;
+			}
+
 			// 設定ウィンドウが入力を掴んでいる間は、アプリ側では扱わない。
 			const bool isMouse =
 			    (ev.type == SDL_MOUSEBUTTONDOWN || ev.type == SDL_MOUSEBUTTONUP ||
 			     ev.type == SDL_MOUSEMOTION || ev.type == SDL_MOUSEWHEEL);
 			const bool isKey = (ev.type == SDL_KEYDOWN || ev.type == SDL_KEYUP ||
 			                    ev.type == SDL_TEXTINPUT);
+			// 右クリックのコンテキストメニューは ImGui 側が自分で拾う
+			// （SettingsUi::BuildContextMenu の BeginPopupContextVoid）。
+			// ESC は mxv2 では終了に割り当ててあるので、そちらには足さない。
 			if (isMouse && ui.wantCaptureMouse()) continue;
-			if (isKey && ui.wantCaptureKeyboard()) {
-				// F1 だけは掴まれていても閉じられるようにする。
-				if (ev.type == SDL_KEYDOWN && ev.key.keysym.sym == SDLK_F1) ui.Toggle();
-				continue;
-			}
+			// ダイアログが開いている間はアプリ側でキーを扱わない。
+			// F1/F2 は開くだけなので通す必要はなく、閉じるのは上の ESC。
+			if (isKey && ui.wantCaptureKeyboard()) continue;
 
 			// マウス
 			switch (mouse.Handle(ev)) {
@@ -477,6 +512,9 @@ int main(int argc, char **argv) {
 					autoRepeat = !autoRepeat;
 					chromeRefresh = true;
 					break;
+				case mxv2::kMouseRequestContextMenu:
+					ui.OpenContextMenu();
+					break;
 				default:
 					break;
 			}
@@ -491,7 +529,10 @@ int main(int argc, char **argv) {
 					break;
 
 				case SDLK_F1:
-					ui.Toggle();
+					ui.OpenSettings();
+					break;
+				case SDLK_F2:
+					ui.OpenTheme();
 					break;
 
 				case SDLK_SPACE:
@@ -540,6 +581,10 @@ int main(int argc, char **argv) {
 					filer.GoParent();
 					fileListRefresh = true;
 					break;
+				case SDLK_BACKSLASH:
+					filer.GoRoot();
+					fileListRefresh = true;
+					break;
 
 				case SDLK_n: {
 					std::string path;
@@ -581,9 +626,24 @@ int main(int argc, char **argv) {
 					player.SetMainVolume(player.mainVolume() + kVolumeKeyStep);
 					break;
 
+				// チャンネルの一括マスク。旧 mxv は Ctrl+0 / Alt+0 / Ctrl+Alt+0。
+				case SDLK_0:
+					if (ev.key.keysym.mod & KMOD_CTRL) {
+						player.ToggleChannelGroup(kMaskAll);
+					} else if (ev.key.keysym.mod & KMOD_SHIFT) {
+						player.ToggleChannelGroup(kMaskPcm);
+					} else {
+						player.ToggleChannelGroup(kMaskFm);
+					}
+					break;
+
 				default:
+					// 1-8 で FM の ch.1-8、Shift を足すと PCM の ch.P-W。
+					// 旧 mxv は Ctrl+1-8 / Alt+1-8 だったが、mxv2 は修飾無しの
+					// 1-8 を先に FM へ割り当ててあるので、PCM を Shift 側にした。
 					if (key >= SDLK_1 && key <= SDLK_8) {
-						player.ToggleChannel((int)(key - SDLK_1));
+						const int base = (ev.key.keysym.mod & KMOD_SHIFT) ? 8 : 0;
+						player.ToggleChannel(base + (int)(key - SDLK_1));
 					}
 					break;
 			}
@@ -661,6 +721,48 @@ int main(int argc, char **argv) {
 		}
 		ui.Build(&settings, &draw, &player, &filer, &screen);
 		newDirt |= ui.TakeChangedFields();
+
+		// コンテキストメニューからの要求。演奏の開始・曲送り・終了は
+		// メインループが状態を持っているのでここで実行する。
+		switch (ui.TakeRequest()) {
+			case mxv2::SettingsUi::kRequestOpenCursor: {
+				std::string path;
+				if (filer.Open(&path)) {
+					if (path.empty()) {
+						fileListRefresh = true;
+					} else {
+						StartPlay(ctx, path);
+					}
+				}
+				break;
+			}
+			case mxv2::SettingsUi::kRequestReplay:
+				if (!currentPath.empty()) StartPlay(ctx, currentPath);
+				break;
+			case mxv2::SettingsUi::kRequestPrev: {
+				std::string path;
+				if (filer.PrevMdx(&path)) StartPlay(ctx, path);
+				break;
+			}
+			case mxv2::SettingsUi::kRequestNext: {
+				std::string path;
+				if (filer.NextMdx(&path)) StartPlay(ctx, path);
+				break;
+			}
+			case mxv2::SettingsUi::kRequestToggleCont:
+				autoNext = !autoNext;
+				chromeRefresh = true;
+				break;
+			case mxv2::SettingsUi::kRequestToggleRepeat:
+				autoRepeat = !autoRepeat;
+				chromeRefresh = true;
+				break;
+			case mxv2::SettingsUi::kRequestQuit:
+				quit = true;
+				break;
+			default:
+				break;
+		}
 
 		// 保存ボタンは無く「変えた時点で保存」する。ただしドラッグ中やウィンドウ
 		// 移動中は毎フレーム変わるので、手が止まってから少し待ってまとめて書く。

@@ -46,6 +46,11 @@ const int kNumFontCandidates = (int)(sizeof(kFontCandidates) / sizeof(kFontCandi
 
 const float kFontSizePx = 15.0f;
 
+// ダイアログの題名。ImGui のポップアップ id を兼ねるので 1 箇所で持つ。
+const char *kSettingsTitle = "mxv2 の設定";
+const char *kThemeTitle = "テーマ設定";
+const char *kAboutTitle = "バージョン情報";
+
 // 表示倍率を変えたあと、実際に適用するまでの待ち時間。
 const uint32_t kZoomApplyDelayMs = 200;
 
@@ -75,6 +80,73 @@ bool BrightRow(const char *label, int *v) {
 	return ImGui::SliderInt(label, v, 0, 200);
 }
 
+// バージョン情報の字の大きさを決める物差し。NOTICE は等幅 80 桁で書いて
+// あるので、余裕をみた 88 桁ぶんが横に収まるようにする。
+const char kAboutRuler88[] =
+    "****************************************"   // 40
+    "****************************************"   // 40
+    "********";                                  // 8
+
+// 今の ImGui ウィンドウを、中身のドラッグでスクロールさせる。指で使う
+// ことを想定したもの（スクロールバーを摘まむのは細かすぎる）。
+// 中身を組み終わったあと、End/EndChild/EndPopup の直前で呼ぶ。
+//
+// 掴み始めの条件は 4 つ。
+//   ・スクロールする余地がある（無ければ何もしない）
+//   ・押した先が部品でない。スライダ・入力欄・見出しなど、ドラッグを
+//     自分で使う部品はそちらが優先（要件どおり部品が勝つ）
+//   ・押した先がタイトルバーでない（あちらはウィンドウを動かす場所）
+//   ・押した先がスクロールバーでない（あちらは摘まむ場所）
+// 一度掴んだら、枠から出ても離すまで続ける。
+//
+// hasTitleBar: タイトルバーのあるウィンドウなら true。子ウィンドウは false。
+void DragToScroll(bool *dragging, bool hasTitleBar) {
+	if (*dragging) {
+		if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+			*dragging = false;
+			return;
+		}
+		const ImVec2 d = ImGui::GetIO().MouseDelta;
+		if (ImGui::GetScrollMaxX() > 0.0f) ImGui::SetScrollX(ImGui::GetScrollX() - d.x);
+		if (ImGui::GetScrollMaxY() > 0.0f) ImGui::SetScrollY(ImGui::GetScrollY() - d.y);
+		return;
+	}
+
+	const float maxX = ImGui::GetScrollMaxX();
+	const float maxY = ImGui::GetScrollMaxY();
+	if (maxX <= 0.0f && maxY <= 0.0f) return;
+	if (!ImGui::IsMouseClicked(ImGuiMouseButton_Left)) return;
+	if (!ImGui::IsWindowHovered()) return;
+	// 部品が拾える押下は部品に譲る。ImGui はこのフレームの分まで
+	// 当たり判定を済ませているので、中身を組んだあとなら正しく見える。
+	if (ImGui::IsAnyItemHovered() || ImGui::IsAnyItemActive()) return;
+
+	// タイトルバーとスクロールバーを除く。タイトルバーの高さは枠 1 行分。
+	// ここは ImGui の内部 API を使わずに済ませたいので、公開されている
+	// 値から組み立てている。
+	const ImGuiStyle &style = ImGui::GetStyle();
+	const ImVec2 pos = ImGui::GetWindowPos();
+	const ImVec2 size = ImGui::GetWindowSize();
+	const ImVec2 m = ImGui::GetIO().MouseClickedPos[ImGuiMouseButton_Left];
+	const float top = pos.y + (hasTitleBar ? ImGui::GetFrameHeight() : 0.0f);
+	const float right = pos.x + size.x - ((maxY > 0.0f) ? style.ScrollbarSize : 0.0f);
+	const float bottom = pos.y + size.y - ((maxX > 0.0f) ? style.ScrollbarSize : 0.0f);
+	if (m.x < pos.x || m.x >= right || m.y < top || m.y >= bottom) return;
+
+	*dragging = true;
+}
+
+// バージョン情報に出す文面。実行ファイルの隣の NOTICE をそのまま読む。
+// 配布物に入れるファイルなので、同じ文面をソースに二重に持たない。
+std::string LoadAboutText() {
+	std::vector<uint8_t> data;
+	if (ReadWholeFile(JoinPath(ExecutableDir(), "NOTICE"), &data) && !data.empty()) {
+		return std::string((const char *)&data[0], data.size());
+	}
+	return "NOTICE が見つかりません。\n"
+	       "配布するときは実行ファイルの隣に NOTICE を置いてください。";
+}
+
 }  // namespace
 
 SettingsUi::SettingsUi()
@@ -85,7 +157,15 @@ SettingsUi::SettingsUi()
       inputScale_(1.0f),
       pendingZoom_(0),
       zoomApplyAtMs_(0),
-      changedFields_(0) {
+      changedFields_(0),
+      openContextMenu_(false),
+      contextMenuOpen_(false),
+      closeContextMenu_(false),
+      request_(kRequestNone),
+      showAbout_(false),
+      dragScroll_(false),
+      showTheme_(false),
+      openedModal_(0) {
 	pdxPathBuf_[0] = '\0';
 }
 
@@ -115,6 +195,10 @@ bool SettingsUi::Init(Screen *screen, const std::string &assetsDir, std::string 
 	// imgui.ini を勝手に作らない。ウィンドウ位置はこちらで決める。
 	io.IniFilename = NULL;
 	io.LogFilename = NULL;
+	// ウィンドウはタイトルバーを掴んだときだけ動かす。中身をドラッグしても
+	// 動かないようにしておかないと、バージョン情報の本文をなぞろうとして
+	// ウィンドウごと引きずってしまう。
+	io.ConfigWindowsMoveFromTitleBarOnly = true;
 
 	// 日本語フォント。ImGui 1.92 以降はグリフを要求時に焼くので、
 	// GlyphRanges を渡さなくても日本語が出る。
@@ -187,13 +271,17 @@ void SettingsUi::ProcessEvent(const SDL_Event &ev) {
 	ImGui_ImplSDL2_ProcessEvent(&ev);
 }
 
+// 設定ウィンドウが閉じていても、右クリックのメニューやバージョン情報が
+// 開いていれば ImGui が入力を掴む。ImGui 自身のフラグは何も出ていなければ
+// false になるので、visible_ で先に切ってはいけない
+// （切ると、メニューの外を押した扱いになって開いた瞬間に閉じてしまう）。
 bool SettingsUi::wantCaptureMouse() const {
-	if (!ready_ || !visible_) return false;
+	if (!ready_) return false;
 	return ImGui::GetIO().WantCaptureMouse;
 }
 
 bool SettingsUi::wantCaptureKeyboard() const {
-	if (!ready_ || !visible_) return false;
+	if (!ready_) return false;
 	return ImGui::GetIO().WantCaptureKeyboard;
 }
 
@@ -257,22 +345,33 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 
 	ImGui::NewFrame();
 
-	if (!visible_) return;
+	// ドラッグでスクロール中の印は、ボタンを離したところで落とす。
+	// ドラッグの途中でダイアログが閉じても、次に開いたものへ持ち越さない。
+	if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) dragScroll_ = false;
 
-	// 倍率が変わったフレームは、ダイアログの位置と大きさも作り直す。
-	// ImGui はウィンドウの矩形をピクセルで覚えているので、放っておくと
-	// 中身だけ大きくなって枠が付いてこない。
-	const ImGuiCond cond = scaleChanged ? ImGuiCond_Always : ImGuiCond_FirstUseEver;
-	ImGui::SetNextWindowPos(ImVec2(8 * scale, 8 * scale), cond);
+	// 右クリックのメニューとバージョン情報は、設定ウィンドウが閉じていても出す。
+	BuildContextMenu(draw, player, filer);
+	BuildThemeWindow(settings, draw, player);
+
+	// ここから下は設定ウィンドウ。モーダルなので、開いている間はメイン画面も
+	// 他のダイアログも操作できない。
+	if (!SyncModal(kSettingsTitle, &visible_)) return;
+
+	// 開くたびに画面の左上から出す (ImGuiCond_Appearing)。出したあとは
+	// 掴んで動かせる。倍率が変わったフレームだけは Always にして矩形ごと
+	// 作り直す。ImGui はウィンドウの矩形をピクセルで覚えているので、
+	// 放っておくと中身だけ大きくなって枠が付いてこない。
+	const ImGuiCond cond = scaleChanged ? ImGuiCond_Always : ImGuiCond_Appearing;
+	ImGui::SetNextWindowPos(ImVec2(0, 0), cond);
 	ImGui::SetNextWindowSize(ImVec2(380 * scale, 464 * scale), cond);
 
-	bool open = true;
-	if (!ImGui::Begin("mxv2 の設定", &open)) {
-		ImGui::End();
-		if (!open) visible_ = false;
+	// p_open に visible_ をそのまま渡す。× で閉じられたときは ImGui が
+	// false にして閉じてくれるし、F1 で false にした場合も同じ経路で閉じる。
+	if (!ImGui::BeginPopupModal(kSettingsTitle, &visible_,
+	                            ImGuiWindowFlags_NoCollapse |
+	                                ImGuiWindowFlags_NoSavedSettings)) {
 		return;
 	}
-	if (!open) visible_ = false;
 
 	// ---- 画面 ----------------------------------------------------------
 	if (ImGui::CollapsingHeader("画面", ImGuiTreeNodeFlags_DefaultOpen)) {
@@ -417,8 +516,62 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 		}
 	}
 
-	// ---- テーマの色 ----------------------------------------------------
-	if (ImGui::CollapsingHeader("テーマの色")) {
+	// 保存ボタンは無い。触った時点で mxv2.ini へ書き戻す（スマートフォンでの
+	// 作法に合わせてある。デスクトップでも不自然ではないという判断）。
+	DragToScroll(&dragScroll_, true);
+	ImGui::EndPopup();
+}
+
+// モーダルの開閉を ImGui のポップアップ状態と同期する。
+// 「これから中身を組み立てるべきか」を返す。
+//
+// ここが要点: ImGui は **こちらに断りなくポップアップを閉じる**
+// （ESC キー、× ボタン）。それを見落として *wanted を true のままにすると、
+// 次のフレームで開き直してしまい「閉じられないダイアログ」になる。
+// 自分が開けたものかどうかを openedModal_ で覚えておいて、
+// 開いているはずなのに閉じていたら *wanted を折る。
+bool SettingsUi::SyncModal(const char *title, bool *wanted) {
+	const bool isOpen = ImGui::IsPopupOpen(title);
+	const bool mine = (openedModal_ == title);
+
+	if (*wanted) {
+		if (isOpen) return true;
+		if (mine) {
+			// ImGui 側が閉じた (ESC など)
+			*wanted = false;
+			openedModal_ = 0;
+			return false;
+		}
+		ImGui::OpenPopup(title);
+		openedModal_ = title;
+		return true;
+	}
+
+	// 閉じたい。開いていれば BeginPopupModal に p_open=false を渡すことで
+	// ImGui 自身に閉じてもらう（CloseCurrentPopup は中でしか呼べない）。
+	if (isOpen) return true;
+	if (mine) openedModal_ = 0;
+	return false;
+}
+
+// テーマの色を編集するダイアログ。以前は設定ウィンドウの中の
+// CollapsingHeader だったが、項目数が多く設定ウィンドウが縦に伸びるので
+// 別ダイアログにした。F2 と右クリックメニューから開ける。
+void SettingsUi::BuildThemeWindow(Settings *settings, DrawScreen *draw, Player *player) {
+	if (!SyncModal(kThemeTitle, &showTheme_)) return;
+
+	// 設定ウィンドウと同じ作法。開くたびに左上、画面からはみ出さない大きさ。
+	const ImGuiIO &io = ImGui::GetIO();
+	float w = 380.0f * styleScale_;
+	float h = 464.0f * styleScale_;
+	if (w > io.DisplaySize.x) w = io.DisplaySize.x;
+	if (h > io.DisplaySize.y) h = io.DisplaySize.y;
+	ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Appearing);
+	ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_Appearing);
+
+	if (ImGui::BeginPopupModal(kThemeTitle, &showTheme_,
+	                           ImGuiWindowFlags_NoCollapse |
+	                               ImGuiWindowFlags_NoSavedSettings)) {
 		Theme &t = draw->theme();
 		bool dirty = false;
 
@@ -489,14 +642,146 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 		}
 		ImGui::SameLine();
 		ImGui::TextDisabled("skin/%s/theme.mxv", settings->skinName.c_str());
+
+		DragToScroll(&dragScroll_, true);
+		ImGui::EndPopup();
+	}
+}
+
+// 旧 mxv の右クリックメニュー (mxv.cpp の CreateContextMenu) にあたる。
+// 演奏の開始・曲送り・終了はメインループの持ち物なので request_ に積んで返す。
+void SettingsUi::BuildContextMenu(DrawScreen *draw, Player *player, Filer *filer) {
+	(void)draw;
+	(void)filer;
+
+	// バナーを押したときはこちらから開ける（右クリックできない環境向け）。
+	// BeginPopupContextVoid と同じ id なので、下の Begin がそのまま拾う。
+	if (openContextMenu_) {
+		openContextMenu_ = false;
+		ImGui::OpenPopup("##mxv2ctx");
 	}
 
-	ImGui::Separator();
-	// 保存ボタンは無い。触った時点で mxv2.ini へ書き戻す（スマートフォンでの
-	// 作法に合わせてある。デスクトップでも不自然ではないという判断）。
-	ImGui::TextDisabled("変更はすぐに保存されます / F1 で閉じる");
+	// どのウィンドウにも属さない場所での右クリック用の API を使う。
+	// 素の OpenPopup + BeginPopup だと親ウィンドウが無い扱いになり、
+	// 開いた次のフレームで ImGui に閉じられてしまう。
+	if (ImGui::BeginPopupContextVoid("##mxv2ctx", ImGuiPopupFlags_MouseButtonRight)) {
+		// ESC で閉じる。ImGui はキーボードナビを切ってあるとポップアップに
+		// 対して WantCaptureKeyboard を立てないので、ESC はメインループ側へ
+		// 素通りしてしまう（そのまま終了に使われていた）。main から
+		// CloseDialog() 経由で来た印をここで始末する。CloseCurrentPopup は
+		// ポップアップの中でしか呼べないので、この位置でないといけない。
+		// 開いているサブメニューもまとめて閉じる。
+		if (closeContextMenu_) {
+			closeContextMenu_ = false;
+			ImGui::CloseCurrentPopup();
+		}
 
-	ImGui::End();
+		if (ImGui::MenuItem("開く")) request_ = kRequestOpenCursor;
+
+		if (ImGui::BeginMenu("操作")) {
+			if (player->paused()) {
+				if (ImGui::MenuItem("演奏再開")) player->Resume();
+			} else {
+				if (ImGui::MenuItem("一時停止")) player->Pause();
+			}
+			if (ImGui::MenuItem("再演奏")) request_ = kRequestReplay;
+			if (ImGui::MenuItem("演奏停止")) player->Stop();
+			if (ImGui::MenuItem("フェードアウト")) player->Fadeout();
+			ImGui::Separator();
+			if (ImGui::MenuItem("前の曲へ")) request_ = kRequestPrev;
+			if (ImGui::MenuItem("次の曲へ")) request_ = kRequestNext;
+			ImGui::Separator();
+			// 文言は短めにしてある。スキンの下限が横 480px で、そこでは
+			// サブメニューを左右どちらにも逃がせず、長いとルートに重なる。
+			if (ImGui::MenuItem("自動で次の曲へ (CONT)")) request_ = kRequestToggleCont;
+			if (ImGui::MenuItem("自動で繰り返す (REPEAT)")) request_ = kRequestToggleRepeat;
+			ImGui::EndMenu();
+		}
+
+		if (ImGui::BeginMenu("マスク")) {
+			// チェックが付いている = 鳴っている。ドライバのビットは
+			// 「立っていると飛ばす」ので、表示は反転させる。
+			static const char *kNames[16] = { "ch.1", "ch.2", "ch.3", "ch.4", "ch.5",
+				                              "ch.6", "ch.7", "ch.8", "ch.P", "ch.Q",
+				                              "ch.R", "ch.S", "ch.T", "ch.U", "ch.V",
+				                              "ch.W" };
+			const uint16_t mask = player->channelMask();
+			for (int i = 0; i < 16; i++) {
+				if (i == 8) ImGui::Separator();
+				const bool on = ((mask & (1 << i)) == 0);
+				if (ImGui::MenuItem(kNames[i], 0, on)) player->ToggleChannel(i);
+			}
+			ImGui::Separator();
+			if (ImGui::MenuItem("FM マスク/クリア")) player->ToggleChannelGroup(0x00ff);
+			if (ImGui::MenuItem("PCM マスク/クリア")) player->ToggleChannelGroup(0xff00);
+			if (ImGui::MenuItem("全マスク/クリア")) player->ToggleChannelGroup(0xffff);
+			ImGui::EndMenu();
+		}
+
+		ImGui::Separator();
+		if (ImGui::MenuItem("設定...", "F1")) visible_ = true;
+		if (ImGui::MenuItem("テーマ設定...", "F2")) {
+			showTheme_ = true;
+		}
+		if (ImGui::MenuItem("バージョン情報...")) {
+			showAbout_ = true;
+			if (aboutText_.empty()) aboutText_ = LoadAboutText();
+		}
+		ImGui::Separator();
+		if (ImGui::MenuItem("終了")) request_ = kRequestQuit;
+
+		ImGui::EndPopup();
+	}
+
+	// メニューが開いているかを覚えておく。ESC を「メニューを閉じる」に
+	// 使ってよいかの判断に要る。id は BeginPopupContextVoid が今のウィンドウの
+	// id スタックから作るので、同じ場所で聞かないと食い違う。
+	contextMenuOpen_ = ImGui::IsPopupOpen("##mxv2ctx");
+	if (!contextMenuOpen_) closeContextMenu_ = false;
+
+	if (SyncModal(kAboutTitle, &showAbout_)) {
+		// 設定ウィンドウと同じく、開くたびに画面の左上から出す。
+		// 大きさは画面からはみ出さないように詰める。スキンの横幅の下限は
+		// 480px なので、既定の 560px はそのままでは入らない。
+		const ImGuiIO &io = ImGui::GetIO();
+		float w = 560.0f * styleScale_;
+		float h = 420.0f * styleScale_;
+		if (w > io.DisplaySize.x) w = io.DisplaySize.x;
+		if (h > io.DisplaySize.y) h = io.DisplaySize.y;
+		ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Appearing);
+		ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_Appearing);
+		if (ImGui::BeginPopupModal(kAboutTitle, &showAbout_,
+		                           ImGuiWindowFlags_NoCollapse |
+		                               ImGuiWindowFlags_NoSavedSettings)) {
+			ImGui::TextUnformatted(aboutHeader_.c_str());
+			ImGui::Separator();
+			// 下の枠は実行ファイルの隣の NOTICE をそのまま出したもの。
+			// 見出しと同じ行が頭に来るが、あちらは独立した配布用の文書なので
+			// 中身には手を入れない。
+			ImGui::TextDisabled("NOTICE");
+			ImGui::BeginChild("##about", ImVec2(0, 0), ImGuiChildFlags_None,
+			                  ImGuiWindowFlags_HorizontalScrollbar);
+
+			// NOTICE は等幅 80 桁で書いてある。余裕をみて 88 桁ぶんが横に
+			// 収まるところまで字を小さくする。物差しは区切り線と同じ "*"。
+			// 同梱フォント (M PLUS 1p) は "=" がかなり広く、それに合わせると
+			// 全体が小さくなりすぎたので、罫線ごと "*" に改めてある。
+			// PushFont に渡すのは**倍率を掛ける前**の大きさ (FontSizeBase)。
+			// GetFontSize() は掛けたあとの値なので渡してはいけない。
+			const float rulerW = ImGui::CalcTextSize(kAboutRuler88).x;
+			const float avail = ImGui::GetContentRegionAvail().x;
+			const bool shrink = (rulerW > avail && avail > 0.0f && rulerW > 0.0f);
+			if (shrink) ImGui::PushFont(NULL, ImGui::GetStyle().FontSizeBase * avail / rulerW);
+			ImGui::TextUnformatted(aboutText_.c_str());
+			if (shrink) ImGui::PopFont();
+
+			// 本文はドラッグでスクロールする。子ウィンドウなのでタイトルバーは無い。
+			DragToScroll(&dragScroll_, false);
+
+			ImGui::EndChild();
+			ImGui::EndPopup();
+		}
+	}
 }
 
 void SettingsUi::Render(Screen *screen) {

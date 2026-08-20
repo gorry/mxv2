@@ -70,6 +70,9 @@ public:
 	// 親ディレクトリへ。
 	void GoParent();
 
+	// ルートディレクトリへ（旧 mxv の "\" キー / MX_DoRootDirFileList）。
+	void GoRoot();
+
 	// フォルダを先に並べるか（旧 mxv の Filer/FolderFirst、既定 0）。
 	void SetFolderFirst(bool on);
 

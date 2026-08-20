@@ -873,6 +873,12 @@ int DrawScreen::HitCheckProgressBar(int x, int y) const {
 	return Max(0, Min(skin_->progW, x - skin_->progX));
 }
 
+bool DrawScreen::HitCheckBanner(int x, int y) const {
+	if (x < skin_->bannerX || x >= skin_->bannerX + skin_->bannerW) return false;
+	if (y < skin_->bannerY || y >= skin_->bannerY + skin_->bannerH) return false;
+	return true;
+}
+
 // 音量は -100..+100 で、-1 も正しい値なので「当たらなかった」を戻り値では
 // 表せない。真偽値で返して音量は out で渡す。
 bool DrawScreen::HitCheckTotalVolBar(int x, int y, int *volume) const {

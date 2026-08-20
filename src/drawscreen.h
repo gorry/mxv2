@@ -120,6 +120,9 @@ public:
 	int HitCheckFileList(int x, int y) const;
 	// バー内の x 位置 (0..kProgressBarWidth)。当たらなければ -1。
 	int HitCheckProgressBar(int x, int y) const;
+	// バナー。ここを押すとコンテキストメニューを出す（右クリックできない
+	// 環境やスマートフォン向け）。
+	bool HitCheckBanner(int x, int y) const;
 	// 音量バーに当たったら true を返し、*volume に -100..+100 を入れる。
 	// (-1 も正しい音量なので、戻り値では当たり外れを表せない)
 	bool HitCheckTotalVolBar(int x, int y, int *volume) const;
