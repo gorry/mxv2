@@ -88,6 +88,8 @@ public:
 	// ---- ファイラ ---------------------------------------------------
 	// 画面に収まる行数。Filer::SetVisibleRows へ渡す。
 	int fileListRows() const;
+	// 1 行の高さ (px)。ドラッグの移動量を行数へ直すのに要る。
+	int fileListItemH() const;
 	void PutFileList(const Filer &filer, bool refresh);
 	void PutScrollBar(int top, int itemCount, int visibleRows);
 

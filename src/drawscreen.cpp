@@ -537,6 +537,10 @@ int DrawScreen::fileListRows() const {
 	return skin_->fileListRows[fileListFontSize_ & 1];
 }
 
+int DrawScreen::fileListItemH() const {
+	return skin_->fileListItemH[fileListFontSize_ & 1];
+}
+
 void DrawScreen::SetFileListFontSize(int size) {
 	fileListFontSize_ = (size & 1);
 	fileListLast_.clear();

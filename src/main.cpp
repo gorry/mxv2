@@ -104,6 +104,7 @@ void PrintUsage(const char *argv0) {
 	    "mouse:\n"
 	    "  バナー          クリックでメニュー (右クリックでも同じものが出る)\n"
 	    "  ファイルリスト  クリックでカーソル移動 / ダブルクリックで開く\n"
+	    "                  ドラッグでスクロール\n"
 	    "  スクロールバー  矢印・溝・つまみのドラッグ。ホイールでも送れる\n"
 	    "  操作キー        PREV STOP PLAY FAST PAUSE NEXT CONT REPEAT\n"
 	    "  音量バー        クリックとドラッグ\n"

@@ -84,9 +84,18 @@ private:
 	uint32_t pressMask_;
 
 	int lastX_, lastY_;      // 直近のマウス位置（オートリピート用）
-	int dragOriginY_;        // つまみを掴んだ時のマウス y
+	int dragOriginY_;        // 掴んだ時のマウス y（つまみ / ファイルリスト共用）
 	int dragOriginThumb_;    // つまみを掴んだ時のつまみ位置
 	uint32_t nextRepeatMs_;  // 次のオートリピート時刻
+
+	// ファイルリストのドラッグスクロール。指で使うことを想定したもので、
+	// 1 行ぶん動くごとに送る（ホイールと同じ粒度）。
+	// カーソルは押した時点では動かさず、ドラッグせずに離したときだけ動かす
+	// （フォルダを開くダイアログと同じ作法。ドラッグしたつもりが選択に
+	// なってしまうのを避ける）。
+	int dragOriginTop_;   // 掴んだ時の Filer::top()
+	int pendingCursor_;   // 離したときに合わせる項目。-1 なら合わせない
+	bool dragMoved_;      // 実際にスクロールしたか
 
 	MouseInput(const MouseInput &);
 	MouseInput &operator=(const MouseInput &);

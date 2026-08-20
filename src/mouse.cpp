@@ -19,7 +19,10 @@ MouseInput::MouseInput(DrawScreen *draw, Filer *filer, Player *player)
       lastY_(0),
       dragOriginY_(0),
       dragOriginThumb_(0),
-      nextRepeatMs_(0) {}
+      nextRepeatMs_(0),
+      dragOriginTop_(0),
+      pendingCursor_(-1),
+      dragMoved_(false) {}
 
 MouseRequest MouseInput::Handle(const SDL_Event &ev) {
 	switch (ev.type) {
@@ -84,10 +87,20 @@ MouseRequest MouseInput::OnButtonDown(int x, int y, int clicks) {
 		const int row = draw_->HitCheckFileList(x, y);
 		if (row >= 0) {
 			const int index = filer_->top() + row;
-			if (index >= filer_->itemCount()) return kMouseRequestNone;  // 空行
 			captured_ = kCapturedFileList;
-			filer_->SetCursor(index);
-			if (clicks >= 2) return kMouseRequestOpenCursor;
+			dragOriginY_ = y;
+			dragOriginTop_ = filer_->top();
+			dragMoved_ = false;
+			// 空行 (項目より下) からでも掴めるようにする。指で送るときに
+			// 「下の余白は掴めない」となると使いにくい。選ぶものは無い。
+			pendingCursor_ = (index < filer_->itemCount()) ? index : -1;
+
+			// W クリックはその場で開く。カーソルは離したときに合わせるので、
+			// ここでは先に合わせておく。
+			if (clicks >= 2 && pendingCursor_ >= 0) {
+				filer_->SetCursor(pendingCursor_);
+				return kMouseRequestOpenCursor;
+			}
 			return kMouseRequestNone;
 		}
 	}
@@ -156,6 +169,20 @@ void MouseInput::OnMotion(int x, int y) {
 			// 矢印・ページ送りは Poll() 側で位置を見て打ち直す。
 			break;
 
+		case kCapturedFileList: {
+			// 掴んだ場所からの移動量を行数に直して送る。ピクセル単位の
+			// 表示ずらしは持っていないので、ホイールと同じ行単位になる。
+			const int itemH = draw_->fileListItemH();
+			if (itemH <= 0) break;
+			const int rows = (y - dragOriginY_) / itemH;
+			const int before = filer_->top();
+			filer_->SetTop(dragOriginTop_ - rows);
+			// 実際に動いたときだけ「ドラッグした」ことにする。指がぶれた
+			// 程度で選択できなくなると、ただのクリックが効かなくなる。
+			if (filer_->top() != before) dragMoved_ = true;
+			break;
+		}
+
 		case kCapturedPlayKey:
 			// ボタンから外れたら押下表示を戻す。
 			if (draw_->HitCheckPlayKey(x, y) == capturedHit_) {
@@ -181,7 +208,15 @@ void MouseInput::OnMotion(int x, int y) {
 MouseRequest MouseInput::OnButtonUp(int x, int y) {
 	const int captured = captured_;
 	const int hit = capturedHit_;
+	const int pending = pendingCursor_;
+	const bool moved = dragMoved_;
 	ReleaseAll();
+
+	// ファイルリストは、ドラッグせずに離したときだけカーソルを合わせる。
+	if (captured == kCapturedFileList) {
+		if (!moved && pending >= 0) filer_->SetCursor(pending);
+		return kMouseRequestNone;
+	}
 
 	// バナーは、押した場所で離したときだけメニューを出す。
 	if (captured == kCapturedBanner) {
@@ -290,6 +325,8 @@ void MouseInput::ReleaseAll() {
 	captured_ = kCapturedNone;
 	capturedHit_ = 0;
 	pressMask_ = 0;
+	pendingCursor_ = -1;
+	dragMoved_ = false;
 	draw_->SetScrollBarFlags(0);
 }
 
