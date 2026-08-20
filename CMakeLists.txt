@@ -202,3 +202,12 @@ add_custom_command(TARGET mxv2 POST_BUILD
 	COMMAND ${CMAKE_COMMAND} -E copy_directory
 		"${CMAKE_CURRENT_SOURCE_DIR}/assets" "$<TARGET_FILE_DIR:mxv2>/assets"
 )
+
+# LICENSE と NOTICE も実行ファイルの隣へ。NOTICE は「バージョン情報」が
+# 実行時に読んで表示するので、配布物にも必ず入れること。
+add_custom_command(TARGET mxv2 POST_BUILD
+	COMMAND ${CMAKE_COMMAND} -E copy_if_different
+		"${CMAKE_CURRENT_SOURCE_DIR}/NOTICE" "$<TARGET_FILE_DIR:mxv2>/NOTICE"
+	COMMAND ${CMAKE_COMMAND} -E copy_if_different
+		"${CMAKE_CURRENT_SOURCE_DIR}/LICENSE" "$<TARGET_FILE_DIR:mxv2>/LICENSE"
+)
