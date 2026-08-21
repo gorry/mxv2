@@ -99,7 +99,7 @@ bool WantsConsole(int argc, char **argv) {
 }
 
 // ユーザーフォルダの名前。Windows なら %APPDATA%\mxv2\ になる。
-// 設定 (mxv2.ini) と、ユーザーが足したスキン・テーマの置き場所。
+// 設定 (mxv2.ini) と、ユーザーが足したスキンの置き場所。
 const char *kUserDirName = "mxv2";
 
 // コマンドライン専用の指定。永続化する設定は Settings が持つ。
@@ -147,7 +147,7 @@ const char *kKeyHelpText =
 	    "  , / .           演奏位置を移動\n"
 	    "  < / >           演奏位置を高速移動\n"
 	    "  F1              [mxv の設定]ダイアログを開く\n"
-	    "  F2              [テーマ設定]ダイアログを開く\n"
+	    "  F2              [配色設定]ダイアログを開く\n"
 	    "  F11 / H         [操作方法]ダイアログを開く\n"
 	    "  F12 / A         [バージョン情報]ダイアログを開く\n"
 	    "マウス操作:\n"
@@ -694,7 +694,7 @@ int main(int argc, char **argv) {
 					ui.OpenSettings();
 					break;
 				case SDLK_F2:
-					ui.OpenTheme();
+					ui.OpenColors();
 					break;
 				case SDLK_F11:
 				case SDLK_h:
@@ -896,7 +896,7 @@ int main(int argc, char **argv) {
 
 		mouse.Poll(SDL_GetTicks());
 
-		// 設定 UI はここで組み立てる。テーマを変えると 640x480 の
+		// 設定 UI はここで組み立てる。配色を変えると 640x480 の
 		// オフスクリーンを作り直すので、下の描画より先に回す。
 		// キー操作でも変わる項目は、UI を開く前に拾っておく。
 		unsigned newDirt = 0;

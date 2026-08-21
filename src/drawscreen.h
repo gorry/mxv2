@@ -21,8 +21,8 @@
 #include "filer.h"
 #include "screen.h"
 #include "skin.h"
+#include "colors.h"
 #include "textlayer.h"
-#include "theme.h"
 
 namespace mxv2 {
 
@@ -32,7 +32,7 @@ public:
 	~DrawScreen();
 
 	// スキン (レイアウトと素材の置き場所) を受け取り、素材を読んで
-	// テーマを適用し、背景を合成する。skin は呼び出し側が保持し続けること。
+	// 配色を適用し、背景を合成する。skin は呼び出し側が保持し続けること。
 	bool Init(const Skin *skin, std::string *err);
 
 	int width() const { return skin_->screenW; }
@@ -42,7 +42,7 @@ public:
 	// 背景を作り直して全面を描き直す。
 	void Reload();
 
-	Theme &theme() { return theme_; }
+	Colors &colors() { return colors_; }
 	const Bitmap &screen() const { return screen_; }
 
 	// ファイラと曲名の文字は、キャンバスではなく出力解像度のレイヤーへ描く。
@@ -193,11 +193,11 @@ private:
 	void CompositeScrollBar(int x, int y, int w, int h);
 
 	const Skin *skin_;  // 呼び出し側の持ち物。寿命は DrawScreen より長いこと
-	Theme theme_;
+	Colors colors_;
 
 	Bitmap screen_;      // 表示用 24bpp
 	Bitmap back_;        // 合成済み背景 24bpp
-	Bitmap backBitmap_;  // テーマの背景画像 24bpp
+	Bitmap backBitmap_;  // 配色設定の背景画像 24bpp
 
 	Bitmap kb0_;              // 鍵盤の下地
 	Bitmap keyboard_[12];     // 各音の鍵

@@ -583,7 +583,7 @@ int Player::DecodeThreadMain() {
 // デコードスレッドから、MXDRV_GetPCM の外側で呼ばれる。この時点では OPM 割り込み
 // コールバックは走っていないので、MXDRV への制御呼び出しを安全に行える。
 void Player::PollStep(uint64_t frame) {
-	// テーマ変更などで画面を作り直したあとは、全ステータスを積み直す。
+	// 配色の変更などで画面を作り直したあとは、全ステータスを積み直す。
 	if (statusRefresh_.exchange(false, std::memory_order_relaxed)) {
 		watch_.ForgetLastValues();
 	}

@@ -86,8 +86,8 @@ bool DrawScreen::Init(const Skin *skin, std::string *err) {
 		return false;
 	}
 
-	theme_ = Theme();
-	theme_.Load(skin_->FindFile("theme.mxv"));
+	colors_ = Colors();
+	colors_.Load(skin_->FindColorsFile());
 
 	if (!LoadAssets(err)) return false;
 
@@ -187,7 +187,7 @@ void DrawScreen::CutKeyboardBitmap(Bitmap *out, const Bitmap &src, int xsrc, int
 
 void DrawScreen::LoadBackBitmap() {
 	BmpFill(&backBitmap_, 0, 0, width(), height(), 0, 0, 0, 100);
-	if (!theme_.back.bitmap) return;
+	if (!colors_.back.bitmap) return;
 
 	Bitmap image;
 	std::string err;
@@ -202,19 +202,19 @@ void DrawScreen::CompositeBanner() {
 void DrawScreen::CompositeStatusBack() {
 	for (int i = 0; i < 9; i++) {
 		BmpFill(&back_, skin_->statusX, skin_->statusY + skin_->chYOffset[i], skin_->statusBackW, skin_->statusBackH,
-		        theme_.status.backColor.r, theme_.status.backColor.g,
-		        theme_.status.backColor.b, theme_.status.backColorBright);
+		        colors_.status.backColor.r, colors_.status.backColor.g,
+		        colors_.status.backColor.b, colors_.status.backColorBright);
 	}
 }
 
 void DrawScreen::CompositeFileList() {
-	BmpFill(&back_, skin_->fileListX, skin_->fileListY, skin_->fileListW, skin_->fileListH, theme_.filer.backColor.r,
-	        theme_.filer.backColor.g, theme_.filer.backColor.b, theme_.filer.backColorBright);
+	BmpFill(&back_, skin_->fileListX, skin_->fileListY, skin_->fileListW, skin_->fileListH, colors_.filer.backColor.r,
+	        colors_.filer.backColor.g, colors_.filer.backColor.b, colors_.filer.backColorBright);
 }
 
 void DrawScreen::CompositeKeyboard() {
-	kb0_.SetPalette(1, theme_.kb.blackBright, theme_.kb.blackBright, theme_.kb.blackBright);
-	kb0_.SetPalette(2, theme_.kb.whiteBright, theme_.kb.whiteBright, theme_.kb.whiteBright);
+	kb0_.SetPalette(1, colors_.kb.blackBright, colors_.kb.blackBright, colors_.kb.blackBright);
+	kb0_.SetPalette(2, colors_.kb.whiteBright, colors_.kb.whiteBright, colors_.kb.whiteBright);
 	for (int i = 0; i < 9; i++) {
 		BmpCopy(&back_, skin_->kbX, skin_->kbY + skin_->chYOffset[i] + skin_->kbYOffset, kb0_.width(), kb0_.height(),
 		        &kb0_, 0, 0, kBlendMul);
@@ -223,9 +223,9 @@ void DrawScreen::CompositeKeyboard() {
 
 void DrawScreen::CompositeBack() {
 	BmpFill(&back_, 0, 0, width(), height(), 0, 0, 0, 100);
-	BmpCopy(&back_, 0, 0, width(), height(), &backBitmap_, 0, 0, theme_.back.bitmapBright);
-	BmpFill(&back_, 0, 0, width(), height(), theme_.back.color.r, theme_.back.color.g,
-	        theme_.back.color.b, theme_.back.colorBright);
+	BmpCopy(&back_, 0, 0, width(), height(), &backBitmap_, 0, 0, colors_.back.bitmapBright);
+	BmpFill(&back_, 0, 0, width(), height(), colors_.back.color.r, colors_.back.color.g,
+	        colors_.back.color.b, colors_.back.colorBright);
 
 	CompositeBanner();
 	CompositeStatusBack();
@@ -300,7 +300,7 @@ void DrawScreen::PrintCompose(int x, int y, const char *msg, const Rgb &color, i
 
 void DrawScreen::PutStatusText(int x, int y, int cells, const char *text) {
 	(void)cells;
-	PrintCompose(x, y, text, theme_.status.color, theme_.status.colorBright);
+	PrintCompose(x, y, text, colors_.status.color, colors_.status.colorBright);
 }
 
 // ---------------------------------------------------------------------------
@@ -321,7 +321,7 @@ void DrawScreen::PutNoteOn(int key, int row, int color, int bendMode) {
 	const int x = skin_->kbX + skin_->kbXOffset[note] + skin_->kbXOffset[12] * oct - skin_->kbXOffset[skin_->keyOffset];
 	const int y = skin_->kbY + skin_->chYOffset[row] + skin_->kbYOffset;
 	BmpCopyTransparent(&screen_, x, y, b.width(), b.height(), &b, 0, 0,
-	                   bendMode ? theme_.kb.bright / 2 : theme_.kb.bright);
+	                   bendMode ? colors_.kb.bright / 2 : colors_.kb.bright);
 }
 
 void DrawScreen::PutNoteOff(int key, int row) {
@@ -472,7 +472,7 @@ void DrawScreen::PutLevelMeter(const char *levelMeterInfo, int row) {
 	const int x = 26 + skin_->statusX;
 	const int y = skin_->chYOffset[row] + 0 + skin_->statusY;
 	BmpCopyComposite(&screen_, x, y, w, h, &levelMeter_, skip, 0, &back_, x, y,
-	                 theme_.status.colorBright);
+	                 colors_.status.colorBright);
 }
 
 // ---------------------------------------------------------------------------
@@ -510,9 +510,9 @@ void DrawScreen::PutMDXTitle(const std::string &titleUtf8) {
 
 	// 背景を戻してからタイトル欄の下地を敷く
 	BmpCopy(&screen_, skin_->titleX, skin_->titleY, skin_->titleW, skin_->titleH, &back_, skin_->titleX, skin_->titleY, 100);
-	BmpFill(&screen_, skin_->titleX, skin_->titleY, skin_->titleW, skin_->titleH, theme_.mdxTitle.backColor.r,
-	        theme_.mdxTitle.backColor.g, theme_.mdxTitle.backColor.b,
-	        theme_.mdxTitle.backColorBright);
+	BmpFill(&screen_, skin_->titleX, skin_->titleY, skin_->titleW, skin_->titleH, colors_.mdxTitle.backColor.r,
+	        colors_.mdxTitle.backColor.g, colors_.mdxTitle.backColor.b,
+	        colors_.mdxTitle.backColorBright);
 
 	if (titleUtf8.empty()) return;
 
@@ -520,14 +520,14 @@ void DrawScreen::PutMDXTitle(const std::string &titleUtf8) {
 		// 文字はキャンバスではなく出力解像度のレイヤーへ描く。
 		textLayer_->ClearRect(skin_->titleX, skin_->titleY, skin_->titleW, skin_->titleH);
 		textLayer_->DrawText(skin_->titleX + 4, skin_->titleY, skin_->titleW - 8, skin_->titleH, titleUtf8,
-		                     theme_.mdxTitle.color, theme_.mdxTitle.colorBright);
+		                     colors_.mdxTitle.color, colors_.mdxTitle.colorBright);
 		return;
 	}
 
 	// フォントが読めなかったときの非常用。5x7 は本来ビジュアライザ用なので、
 	// ここへ落ちている時点で assets の同梱フォントが失われている。
 	Print(skin_->titleX + 4, skin_->titleY + 3, ToAscii(titleUtf8, kMaxAsciiChars).c_str(),
-	      theme_.mdxTitle.color, theme_.mdxTitle.colorBright);
+	      colors_.mdxTitle.color, colors_.mdxTitle.colorBright);
 }
 
 // ---------------------------------------------------------------------------
@@ -609,29 +609,29 @@ void DrawScreen::PutFileList(const Filer &filer, bool refresh) {
 		// 背景とカーソルはキャンバス側、文字は出力解像度のレイヤー側。
 		BmpCopy(&screen_, x, y, skin_->fileListW, h, &back_, x, y, 100);
 		if (j == cursor && j < filer.itemCount()) {
-			BmpFill(&screen_, x, y, skin_->fileListW, h, theme_.filer.cursorBright.r,
-			        theme_.filer.cursorBright.g, theme_.filer.cursorBright.b, kBlendMul);
+			BmpFill(&screen_, x, y, skin_->fileListW, h, colors_.filer.cursorBright.r,
+			        colors_.filer.cursorBright.g, colors_.filer.cursorBright.b, kBlendMul);
 		}
 		if (textLayer_ != 0) textLayer_->ClearRect(x, y, skin_->fileListW, h);
 		if (shown.baseName.empty() && shown.title.empty()) continue;
 
 		// 種別で文字色を変える
-		Rgb color = theme_.filer.color;
+		Rgb color = colors_.filer.color;
 		if (shown.type & kFileItemDrive) {
-			color = theme_.filer.driveColor;
+			color = colors_.filer.driveColor;
 		} else if (shown.type & kFileItemDir) {
-			color = theme_.filer.folderColor;
+			color = colors_.filer.folderColor;
 		}
 
 		if (textLayer_ != 0 && textLayer_->available()) {
 			// 字は切る前の行位置 (rowY) に置き、はみ出しは y..y+h で切る。
 			textLayer_->DrawText(x + skin_->fileListBaseNameX[fs], rowY,
 			                     skin_->fileListBaseNameW[fs], itemH, shown.baseName, color,
-			                     theme_.filer.colorBright, y, h);
+			                     colors_.filer.colorBright, y, h);
 			if (!shown.title.empty()) {
 				textLayer_->DrawText(x + skin_->fileListTitleX[fs], rowY,
 				                     skin_->fileListTitleW[fs], itemH, shown.title, color,
-				                     theme_.filer.colorBright, y, h);
+				                     colors_.filer.colorBright, y, h);
 			}
 		} else {
 			// フォントが読めなかったときの非常用（5x7 は本来ビジュアライザ用）。
@@ -639,11 +639,11 @@ void DrawScreen::PutFileList(const Filer &filer, bool refresh) {
 			if (h >= itemH) {
 				Print(x + skin_->fileListBaseNameX[fs], rowY + 1,
 				      ToAscii(shown.baseName, kMaxAsciiChars).c_str(), color,
-				      theme_.filer.colorBright);
+				      colors_.filer.colorBright);
 				if (!shown.title.empty()) {
 					Print(x + skin_->fileListTitleX[fs], rowY + 1,
 					      ToAscii(shown.title, kMaxAsciiChars).c_str(), color,
-					      theme_.filer.colorBright);
+					      colors_.filer.colorBright);
 				}
 			}
 		}
@@ -788,8 +788,8 @@ void DrawScreen::PutProgressBar(uint32_t nowTimeMs, uint32_t playTimeMs, bool re
 		char s[128];
 		snprintf(s, sizeof(s), "PLAY TIME: %02d:%02d / %02d:%02d", t / 60, t % 60, t2 / 60,
 		         t2 % 60);
-		PrintCompose(skin_->progX + skin_->progTimeXOfs, skin_->progY + skin_->progTimeYOfs, s, theme_.playKey.color,
-		             theme_.playKey.colorBright);
+		PrintCompose(skin_->progX + skin_->progTimeXOfs, skin_->progY + skin_->progTimeYOfs, s, colors_.playKey.color,
+		             colors_.playKey.colorBright);
 	}
 }
 
@@ -832,8 +832,8 @@ void DrawScreen::PutTotalVolBar(int volume, bool refresh) {
 	// 桁数は固定にする。短い文字列を書くと前の表示の末尾が残る。
 	char s[64];
 	snprintf(s, sizeof(s), "%c%03d", (volume >= 0) ? '+' : '-', abs(volume));
-	PrintCompose(skin_->volX + skin_->volTimeXOfs, skin_->volY + skin_->volTimeYOfs, s, theme_.playKey.color,
-	             theme_.playKey.colorBright);
+	PrintCompose(skin_->volX + skin_->volTimeXOfs, skin_->volY + skin_->volTimeYOfs, s, colors_.playKey.color,
+	             colors_.playKey.colorBright);
 }
 
 // ---------------------------------------------------------------------------
@@ -843,8 +843,8 @@ void DrawScreen::PutTotalVolBar(int volume, bool refresh) {
 void DrawScreen::PutPlayKey(uint32_t status, bool refresh) {
 	if (!playKey_.valid()) return;
 
-	playKey_.SetPalette(skin_->palPlayKeyKey, theme_.playKey.keyBright, theme_.playKey.keyBright,
-	                    theme_.playKey.keyBright);
+	playKey_.SetPalette(skin_->palPlayKeyKey, colors_.playKey.keyBright, colors_.playKey.keyBright,
+	                    colors_.playKey.keyBright);
 
 	struct LedMap {
 		uint32_t bit;

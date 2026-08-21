@@ -10,6 +10,9 @@
 
 namespace mxv2 {
 
+const char kColorsFile[] = "colors.ini";
+const char kLegacyColorsFile[] = "theme.mxv";
+
 namespace {
 
 // "0,3,6,9" のような並びを読む。足りない分は既定値のまま残す。
@@ -421,6 +424,16 @@ std::string Skin::FindFile(const std::string &name) const {
 	}
 	// 見つからなかったときは、エラー文言に出せるパスを返す。
 	return dirs_.empty() ? name : JoinPath(dirs_[0], name);
+}
+
+std::string Skin::FindColorsFile() const {
+	for (size_t i = 0; i < dirs_.size(); i++) {
+		std::string path = JoinPath(dirs_[i], kColorsFile);
+		if (FileExists(path)) return path;
+		path = JoinPath(dirs_[i], kLegacyColorsFile);
+		if (FileExists(path)) return path;
+	}
+	return std::string();
 }
 
 std::vector<std::string> FontSearchDirs(const Skin &skin, const AssetPaths &paths) {

@@ -1,6 +1,6 @@
-// mxv2 - テーマ（画面配色）
+// mxv2 - 画面の配色（スキンの colors.ini）
 
-#include "theme.h"
+#include "colors.h"
 
 #include "ini.h"
 
@@ -20,7 +20,7 @@ int ToColorRef(const Rgb &c) {
 
 }  // namespace
 
-Theme::Theme() {
+Colors::Colors() {
 	back.bitmap = 0;
 	back.bitmapBright = 50;
 	back.color = MakeRgb(0, 0, 255);
@@ -53,7 +53,7 @@ Theme::Theme() {
 	playKey.keyBright = 150;
 }
 
-bool Theme::Load(const std::string &path) {
+bool Colors::Load(const std::string &path) {
 	Ini ini;
 	if (!ini.Load(path)) return false;
 
@@ -97,7 +97,7 @@ bool Theme::Load(const std::string &path) {
 	return true;
 }
 
-bool Theme::Save(const std::string &path) const {
+bool Colors::Save(const std::string &path) const {
 	// 既存ファイルを読んでから上書きする。旧 mxv が書いていたキー以外
 	// （コメントは落ちるが、知らないキーは残る）。
 	Ini ini;

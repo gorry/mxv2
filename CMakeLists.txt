@@ -126,6 +126,7 @@ add_executable(mxv2
 	src/assetpath.cpp
 	src/bitmap.cpp
 	src/bmpfile.cpp
+	src/colors.cpp
 	src/drawscreen.cpp
 	src/filer.cpp
 	src/fileutil.cpp
@@ -141,11 +142,11 @@ add_executable(mxv2
 	src/text.cpp
 	src/textlayer.cpp
 	src/textrender.cpp
-	src/theme.cpp
 	src/visualizer.cpp
 	src/assetpath.h
 	src/bitmap.h
 	src/bmpfile.h
+	src/colors.h
 	src/dispqueue.h
 	src/drawscreen.h
 	src/filer.h
@@ -163,7 +164,6 @@ add_executable(mxv2
 	src/text.h
 	src/textlayer.h
 	src/textrender.h
-	src/theme.h
 	src/visualizer.h
 )
 target_include_directories(mxv2 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -207,7 +207,7 @@ if(WIN32)
 	endforeach()
 endif()
 
-# 素材ビットマップとテーマを実行ファイルの隣の assets/ へ置く
+# 素材ビットマップとスキンを実行ファイルの隣の assets/ へ置く
 add_custom_command(TARGET mxv2 POST_BUILD
 	COMMAND ${CMAKE_COMMAND} -E copy_directory
 		"${CMAKE_CURRENT_SOURCE_DIR}/assets" "$<TARGET_FILE_DIR:mxv2>/assets"

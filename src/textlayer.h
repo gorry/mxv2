@@ -52,7 +52,7 @@ public:
 	// 論理座標の矩形を透明に戻す。
 	void ClearRect(int x, int y, int width, int height);
 
-	// 論理座標に文字を描く。cellHeight は論理の行高、bright はテーマの
+	// 論理座標に文字を描く。cellHeight は論理の行高、bright は配色の
 	// Bright 値 (0..100)。
 	//
 	// clipY / clipH は書き込んでよい縦の範囲（論理座標）。ファイラを画素単位で

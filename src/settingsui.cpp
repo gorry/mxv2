@@ -18,6 +18,7 @@
 #include "player.h"
 #include "screen.h"
 #include "settings.h"
+#include "skin.h"
 
 namespace mxv2 {
 
@@ -50,7 +51,7 @@ const float kFontSizePx = 15.0f;
 
 // ダイアログの題名。ImGui のポップアップ id を兼ねるので 1 箇所で持つ。
 const char *kSettingsTitle = "mxv2 の設定";
-const char *kThemeTitle = "テーマ設定";
+const char *kColorsTitle = "配色設定";
 const char *kOverwriteTitle = "上書きの確認";
 // "###" 以降が ImGui の id。見出しだけ用途で変えて、ポップアップとしては
 // 同じものとして扱う。
@@ -228,9 +229,9 @@ SettingsUi::SettingsUi()
       showAbout_(false),
       dragScroll_(false),
       dragMoved_(false),
-      showTheme_(false),
-      themeNameReset_(true),
-      themeErrorFresh_(false),
+      showColors_(false),
+      skinNameReset_(true),
+      saveErrorFresh_(false),
       openOverwrite_(false),
       overwriteOpen_(false),
       closeOverwrite_(false),
@@ -242,7 +243,7 @@ SettingsUi::SettingsUi()
       openedModal_(0) {
 	pdxPathBuf_[0] = '\0';
 	folderPathBuf_[0] = '\0';
-	themeNameBuf_[0] = '\0';
+	skinNameBuf_[0] = '\0';
 }
 
 SettingsUi::~SettingsUi() {
@@ -378,8 +379,8 @@ void SettingsUi::ScanSkins() {
 	paths_.ListSkinRefs(&skinNames_);
 }
 
-// 同梱のスキンは読み取り専用なので、テーマはユーザーフォルダ側の
-// skin/<名前>/ へ書く。次に読むときは、そちらが同梱の theme.mxv より
+// 同梱のスキンは読み取り専用なので、配色はユーザーフォルダ側の
+// skin/<名前>/ へ書く。次に読むときは、そちらが同梱の colors.ini より
 // 先に見つかる (Skin::FindFile)。
 //
 // 保存先は必ずユーザーフォルダ側のスキンなので、名前に "assets:" は付かない。
@@ -387,8 +388,8 @@ void SettingsUi::ScanSkins() {
 // 今のスキンを土台にした layout.ini も置く。レイアウトと素材は元のスキンの
 // ものがそのまま使われる（Default-Midnight と同じ作り）。同梱スキンを
 // 編集していたときは Base が "assets:<名前>" になる。
-void SettingsUi::SaveThemeAs(const std::string &name, Settings *settings, DrawScreen *draw) {
-	themeError_.clear();
+void SettingsUi::SaveColorsAs(const std::string &name, Settings *settings, DrawScreen *draw) {
+	saveError_.clear();
 
 	const bool isNewSkin = !paths_.UserSkinExists(name);
 	// 土台には、今のスキンが実際に指しているフォルダを名指しする ref を書く
@@ -402,21 +403,25 @@ void SettingsUi::SaveThemeAs(const std::string &name, Settings *settings, DrawSc
 	const std::string dir = paths_.UserSkinDir(name);
 
 	if (!MakeDirectories(dir)) {
-		themeError_ = "フォルダを作れません: " + dir;
+		saveError_ = "フォルダを作れません: " + dir;
 		return;
 	}
 	if (isNewSkin && !isCurrent && !baseRef.empty()) {
 		Ini ini;
 		ini.SetString("Skin", "Base", baseRef);
 		if (!ini.Save(JoinPath(dir, "layout.ini"))) {
-			themeError_ = "layout.ini を書けません: " + dir;
+			saveError_ = "layout.ini を書けません: " + dir;
 			return;
 		}
 	}
-	if (!draw->theme().Save(JoinPath(dir, "theme.mxv"))) {
-		themeError_ = "テーマを保存できません: " + JoinPath(dir, "theme.mxv");
+	if (!draw->colors().Save(JoinPath(dir, kColorsFile))) {
+		saveError_ = "配色を保存できません: " + JoinPath(dir, kColorsFile);
 		return;
 	}
+	// 旧い名前のファイルが残っていると、colors.ini に隠れて読まれなくなる。
+	// 手で直しても何も変わらない罠になるので、書き換えたこの場で片付ける
+	// （消すのはユーザーフォルダ側だけ。同梱ぶんには触っていない）。
+	RemoveFile(JoinPath(dir, kLegacyColorsFile));
 
 	// ユーザーフォルダ側に新しくフォルダができることがある。
 	ScanSkins();
@@ -476,7 +481,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 
 	// 右クリックのメニューとバージョン情報は、設定ウィンドウが閉じていても出す。
 	BuildContextMenu(draw, player, filer);
-	BuildThemeWindow(settings, draw, player);
+	BuildColorsWindow(settings, draw, player);
 
 	// 設定ウィンドウの [参照...] から来た往復。ImGui のポップアップは
 	// 同じ階層で掛け替えられないので、片方が閉じきってからもう片方を開く。
@@ -742,11 +747,11 @@ bool SettingsUi::SyncModal(const char *title, bool *wanted) {
 	return false;
 }
 
-// テーマの色を編集するダイアログ。以前は設定ウィンドウの中の
+// スキンの配色を編集するダイアログ。以前は設定ウィンドウの中の
 // CollapsingHeader だったが、項目数が多く設定ウィンドウが縦に伸びるので
 // 別ダイアログにした。F2 と右クリックメニューから開ける。
-void SettingsUi::BuildThemeWindow(Settings *settings, DrawScreen *draw, Player *player) {
-	if (!SyncModal(kThemeTitle, &showTheme_)) return;
+void SettingsUi::BuildColorsWindow(Settings *settings, DrawScreen *draw, Player *player) {
+	if (!SyncModal(kColorsTitle, &showColors_)) return;
 
 	// 設定ウィンドウと同じ作法。開くたびに左上、画面からはみ出さない大きさ。
 	const ImGuiIO &io = ImGui::GetIO();
@@ -757,24 +762,24 @@ void SettingsUi::BuildThemeWindow(Settings *settings, DrawScreen *draw, Player *
 	ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Appearing);
 	ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_Appearing);
 
-	if (ImGui::BeginPopupModal(kThemeTitle, &showTheme_,
+	if (ImGui::BeginPopupModal(kColorsTitle, &showColors_,
 	                           ImGuiWindowFlags_NoCollapse |
 	                               ImGuiWindowFlags_NoSavedSettings)) {
 		// 開いた直後は、保存先の名前を今のスキン名にしておく。書き込み先は
 		// 必ずユーザーフォルダなので "assets:" は外す（同梱スキンを編集して
 		// いるときは、同じ名前のユーザースキンが作られることになる）。
-		if (themeNameReset_) {
-			themeNameReset_ = false;
-			snprintf(themeNameBuf_, sizeof(themeNameBuf_), "%s",
+		if (skinNameReset_) {
+			skinNameReset_ = false;
+			snprintf(skinNameBuf_, sizeof(skinNameBuf_), "%s",
 			         SkinRefName(settings->skinName).c_str());
-			themeError_.clear();
+			saveError_.clear();
 		}
 
 		// 保存まわりはダイアログの先頭に置く。色の項目は縦に長く、
 		// 下に置くと毎回スクロールしないと届かない。
-		BuildThemeSaveRow(settings, draw);
+		BuildSkinSaveRow(settings, draw);
 
-		Theme &t = draw->theme();
+		Colors &t = draw->colors();
 		bool dirty = false;
 
 		ImGui::SeparatorText("背景");
@@ -839,22 +844,22 @@ void SettingsUi::BuildThemeWindow(Settings *settings, DrawScreen *draw, Player *
 	}
 }
 
-// テーマのダイアログの先頭。保存先の名前と、保存・読み直しのボタン。
+// 配色設定の先頭。保存先のスキン名と、保存・読み直しのボタン。
 //
 // 保存先はスキンの名前で指定する。今のスキンの名前のままなら上書き、
 // 別の名前にすれば「名前を付けて保存」で新しいスキンができる。
 // 同梱ぶんは読み取り専用なので、書き込み先は必ずユーザーフォルダ側。
-void SettingsUi::BuildThemeSaveRow(Settings *settings, DrawScreen *draw) {
-	ImGui::Text("テーマ名");
+void SettingsUi::BuildSkinSaveRow(Settings *settings, DrawScreen *draw) {
+	ImGui::Text("スキン名");
 	ImGui::SameLine();
 	ImGui::SetNextItemWidth(-FLT_MIN);
-	const bool entered = ImGui::InputText("##themename", themeNameBuf_, sizeof(themeNameBuf_),
+	const bool entered = ImGui::InputText("##skinname", skinNameBuf_, sizeof(skinNameBuf_),
 	                                      ImGuiInputTextFlags_EnterReturnsTrue);
 
 	if (ImGui::Button("保存") || entered) {
-		const std::string name = TrimSpaces(themeNameBuf_);
-		themeError_.clear();
-		if (!CheckSkinName(name, &themeError_)) {
+		const std::string name = TrimSpaces(skinNameBuf_);
+		saveError_.clear();
+		if (!CheckSkinName(name, &saveError_)) {
 			// 文言は CheckSkinName が入れている
 		} else if (paths_.UserSkinExists(name)) {
 			// すでにある名前。上書きしてよいか訊く。同梱ぶんに同じ名前が
@@ -862,9 +867,9 @@ void SettingsUi::BuildThemeSaveRow(Settings *settings, DrawScreen *draw) {
 			overwriteName_ = name;
 			openOverwrite_ = true;
 		} else {
-			SaveThemeAs(name, settings, draw);
+			SaveColorsAs(name, settings, draw);
 		}
-		themeErrorFresh_ = !themeError_.empty();
+		saveErrorFresh_ = !saveError_.empty();
 	}
 	ImGui::SameLine();
 	if (ImGui::Button("読み直す")) {
@@ -872,10 +877,10 @@ void SettingsUi::BuildThemeSaveRow(Settings *settings, DrawScreen *draw) {
 	}
 	ImGui::SameLine();
 	{
-		const std::string name = TrimSpaces(themeNameBuf_);
-		ImGui::TextDisabled("skin/%s/theme.mxv", name.c_str());
+		const std::string name = TrimSpaces(skinNameBuf_);
+		ImGui::TextDisabled("skin/%s/colors.ini", name.c_str());
 		if (ImGui::IsItemHovered()) {
-			ImGui::SetTooltip("%s", JoinPath(paths_.UserSkinDir(name), "theme.mxv").c_str());
+			ImGui::SetTooltip("%s", JoinPath(paths_.UserSkinDir(name), kColorsFile).c_str());
 		}
 	}
 
@@ -892,16 +897,16 @@ void SettingsUi::BuildThemeSaveRow(Settings *settings, DrawScreen *draw) {
 		}
 	}
 
-	if (!themeError_.empty()) {
-		ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "%s", themeError_.c_str());
-		if (themeErrorFresh_) {
-			themeErrorFresh_ = false;
+	if (!saveError_.empty()) {
+		ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "%s", saveError_.c_str());
+		if (saveErrorFresh_) {
+			saveErrorFresh_ = false;
 			ImGui::SetScrollHereY(0.0f);
 		}
 	}
 }
 
-// 上書きの確認。テーマのダイアログの**中で**開く。ImGui のモーダルは
+// 上書きの確認。配色設定の**中で**開く。ImGui のモーダルは
 // 入れ子なら素直に重なる（同じ階層で掛け替えようとすると失敗する）。
 void SettingsUi::BuildOverwriteWindow(Settings *settings, DrawScreen *draw) {
 	if (openOverwrite_) {
@@ -923,11 +928,11 @@ void SettingsUi::BuildOverwriteWindow(Settings *settings, DrawScreen *draw) {
 	}
 
 	ImGui::Text("スキン \"%s\" はすでにあります。", overwriteName_.c_str());
-	ImGui::Text("テーマを上書きしますか？");
+	ImGui::Text("配色を上書きしますか？");
 	ImGui::Separator();
 	if (ImGui::Button("上書き")) {
-		SaveThemeAs(overwriteName_, settings, draw);
-		themeErrorFresh_ = !themeError_.empty();
+		SaveColorsAs(overwriteName_, settings, draw);
+		saveErrorFresh_ = !saveError_.empty();
 		ImGui::CloseCurrentPopup();
 	}
 	ImGui::SameLine();
@@ -1313,9 +1318,8 @@ void SettingsUi::BuildContextMenu(DrawScreen *draw, Player *player, Filer *filer
 
 		ImGui::Separator();
 		if (ImGui::MenuItem("設定...", "F1")) visible_ = true;
-		if (ImGui::MenuItem("テーマ設定...", "F2")) {
-			showTheme_ = true;
-		}
+		// F2 と同じ経路を通す（スキン名の欄を埋め直すため）。
+		if (ImGui::MenuItem("配色設定...", "F2")) OpenColors();
 		if (ImGui::MenuItem("操作方法...", "F11")) showHelp_ = true;
 		if (ImGui::MenuItem("バージョン情報...", "F12")) showAbout_ = true;
 		ImGui::Separator();

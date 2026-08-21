@@ -21,6 +21,9 @@ bool WriteWholeFile(const std::string &path, const std::vector<uint8_t> &data);
 // ファイルが存在し、読み込めるか。
 bool FileExists(const std::string &path);
 
+// ファイルを消す。もともと無ければ true。
+bool RemoveFile(const std::string &path);
+
 // パス末尾の区切りまで（区切りを含む）を返す。区切りが無ければ空文字列。
 std::string DirNameOf(const std::string &path);
 

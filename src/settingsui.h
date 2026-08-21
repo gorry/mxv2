@@ -1,6 +1,6 @@
 // mxv2 - 設定 UI（Dear ImGui）
 //
-// 旧 mxv のプロパティシート (mxvprop.cpp) と、テーマ (.mxv) の編集にあたる。
+// 旧 mxv のプロパティシート (mxvprop.cpp) と、配色 (<テーマ名>.mxv) の編集にあたる。
 // F1 で開閉する。開いている間だけ ImGui がキーとマウスを横取りする。
 //
 // ImGui は実解像度で描く。SDL_RenderSetLogicalSize が入っているせいで
@@ -59,13 +59,13 @@ public:
 	}
 	bool visible() const { return visible_; }
 
-	// テーマの色を編集するダイアログ (F2)。設定ウィンドウとは独立に開閉する。
+	// スキンの配色を編集するダイアログ (F2)。設定ウィンドウとは独立に開閉する。
 	// F2 も開くだけ。閉じるのは ESC か × ボタン（設定ウィンドウと同じ）。
-	void OpenTheme() {
+	void OpenColors() {
 		if (busy()) return;
-		showTheme_ = true;
+		showColors_ = true;
 		// 名前の欄は、開いたときに今のスキン名で埋め直す。
-		themeNameReset_ = true;
+		skinNameReset_ = true;
 	}
 
 	// フォルダを選ぶダイアログ (L)。旧 mxv の MX_GetNewDirFileList にあたる。
@@ -100,12 +100,12 @@ public:
 		// ポップアップの中からでないとできないので、ここでは印だけ付けて
 		// 実際の始末は Build() に任せる。
 		if (contextMenuOpen_) { closeContextMenu_ = true; return true; }
-		// 上書き確認はテーマのダイアログの中に入れ子で開くので、先に閉じる。
+		// 上書き確認は配色設定の中に入れ子で開くので、先に閉じる。
 		if (overwriteOpen_) { closeOverwrite_ = true; return true; }
 		if (showAbout_) { showAbout_ = false; return true; }
 		if (showHelp_) { showHelp_ = false; return true; }
 		if (showFolder_) { showFolder_ = false; return true; }
-		if (showTheme_) { showTheme_ = false; return true; }
+		if (showColors_) { showColors_ = false; return true; }
 		if (visible_) { visible_ = false; return true; }
 		return false;
 	}
@@ -180,11 +180,11 @@ private:
 	// 作り直したあとは Player に積み直しを頼む。
 	void Rebuild(DrawScreen *draw, Player *player);
 
-	// 今の配色を skin/<名前>/theme.mxv として保存する。書き込み先は
+	// 今の配色を skin/<名前>/colors.ini として保存する。書き込み先は
 	// ユーザーフォルダ側（同梱ぶんは読み取り専用なので触らない）。
 	// 名前が今のスキンと違えば、今のスキンを土台にした新しいスキンを作り、
 	// 保存したあとそのスキンへ切り替える。
-	void SaveThemeAs(const std::string &name, Settings *settings, DrawScreen *draw);
+	void SaveColorsAs(const std::string &name, Settings *settings, DrawScreen *draw);
 
 	bool ready_;
 	bool visible_;
@@ -220,7 +220,7 @@ private:
 	// どれか 1 つでもダイアログが開いているか。モーダルなので、開いている
 	// 間は別のものを開けない（先にそれを閉じてもらう）。
 	bool busy() const {
-		return visible_ || showTheme_ || showAbout_ || showFolder_ || showHelp_;
+		return visible_ || showColors_ || showAbout_ || showFolder_ || showHelp_;
 	}
 
 	// 操作方法のダイアログ。
@@ -239,19 +239,19 @@ private:
 	bool showHelp_;
 	std::vector<HelpRow> helpRows_;
 
-	// テーマの色のダイアログ
-	void BuildThemeWindow(Settings *settings, DrawScreen *draw, Player *player);
-	// その先頭。テーマ名・保存・読み直す・参照元のスキン。
-	void BuildThemeSaveRow(Settings *settings, DrawScreen *draw);
-	bool showTheme_;
+	// 配色設定のダイアログ
+	void BuildColorsWindow(Settings *settings, DrawScreen *draw, Player *player);
+	// その先頭。スキン名・保存・読み直す・参照元のスキン。
+	void BuildSkinSaveRow(Settings *settings, DrawScreen *draw);
+	bool showColors_;
 	// 保存先のスキン名。開いたときに今のスキン名で埋め直す。
-	char themeNameBuf_[128];
-	bool themeNameReset_;
-	std::string themeError_;  // 保存できなかった理由（ダイアログに出す）
+	char skinNameBuf_[128];
+	bool skinNameReset_;
+	std::string saveError_;  // 保存できなかった理由（ダイアログに出す）
 	// 文言は一番下に出るので、出したフレームだけそこまでスクロールする
 	// （ダイアログは縦がいっぱいで、足すと画面の外へ出てしまう）。
-	bool themeErrorFresh_;
-	// 上書き確認。テーマのダイアログの中に入れ子で開く。
+	bool saveErrorFresh_;
+	// 上書き確認。配色設定の中に入れ子で開く。
 	void BuildOverwriteWindow(Settings *settings, DrawScreen *draw);
 	std::string overwriteName_;  // 確認中の名前
 	bool openOverwrite_;         // 次のフレームで開く

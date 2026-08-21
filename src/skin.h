@@ -6,7 +6,7 @@
 //
 //   skin/<名前>/
 //       layout.ini     画面サイズと各部品の座標（このファイルが読むもの）
-//       theme.mxv      配色（theme.* が読む。設定ウィンドウで編集・保存できる）
+//       colors.ini     配色（colors.* が読む。[配色設定] で編集・保存できる）
 //       font.ttf       文字描画に使うフォント（省略可）
 //       *.bmp          素材ビットマップ
 //
@@ -18,7 +18,7 @@
 // 土台の layout.ini を読んでから自分の値で上書きし、ファイル（.bmp や
 // font.ttf）も自分のフォルダに無ければ土台のフォルダを見に行く。
 // 配色だけ変えたスキンなら 2 ファイルで済む。土台の土台も辿る
-// （「名前を付けて保存」したテーマが、土台つきのスキンからでも作れるように）。
+// （「名前を付けて保存」した配色が、土台つきのスキンからでも作れるように）。
 // 循環したところで打ち切る。
 
 #ifndef MXV2_SKIN_H
@@ -34,6 +34,12 @@ namespace mxv2 {
 struct Xywh {
 	int x, y, w, h;
 };
+
+// 配色ファイルの名前。旧 mxv の <テーマ名>.mxv をそのまま持ってきていたのを
+// 2026-08-21 に layout.ini と揃えた。**書くのは新しい名前だけ**で、
+// 旧い名前は読むためだけに残してある。
+extern const char kColorsFile[];        // "colors.ini"
+extern const char kLegacyColorsFile[];  // "theme.mxv"
 
 struct Skin {
 	// ---- 画面 --------------------------------------------------------
@@ -140,6 +146,11 @@ struct Skin {
 	// 素材を探す。dirs() の並び順（自分 -> 土台 -> その土台 …）。
 	// 見つからなければ先頭のフォルダのパスを返す（呼び出し側でエラーにする）。
 	std::string FindFile(const std::string &name) const;
+
+	// 配色ファイルを探す。フォルダごとに colors.ini -> theme.mxv (旧名) の順に
+	// 見るので、土台に新しい名前があっても自分の旧い名前が勝つ。
+	// どこにも無ければ空文字列。
+	std::string FindColorsFile() const;
 
 	const std::string &ref() const { return ref_; }
 	// layout.ini の [Skin] Base に書いてあったもの。無ければ空。

@@ -161,6 +161,17 @@ bool FileExists(const std::string &path) {
 	return true;
 }
 
+bool RemoveFile(const std::string &path) {
+	if (!FileExists(path)) return true;
+#ifdef _WIN32
+	std::wstring w = Utf8ToWide(path);
+	if (w.empty()) return false;
+	return DeleteFileW(w.c_str()) != 0;
+#else
+	return unlink(path.c_str()) == 0;
+#endif
+}
+
 std::string DirNameOf(const std::string &path) {
 	for (size_t i = path.size(); i > 0; i--) {
 		if (IsSeparator(path[i - 1])) return path.substr(0, i);
