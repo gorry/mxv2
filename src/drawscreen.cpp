@@ -615,8 +615,9 @@ void DrawScreen::PutFileList(const Filer &filer, bool refresh) {
 		// 背景とカーソルはキャンバス側、文字は出力解像度のレイヤー側。
 		BmpCopy(&screen_, x, y, skin_->fileListW, h, &back_, x, y, 100);
 		if (j == cursor && j < filer.itemCount()) {
-			BmpFill(&screen_, x, y, skin_->fileListW, h, colors_.filer.cursorBright.r,
-			        colors_.filer.cursorBright.g, colors_.filer.cursorBright.b, kBlendMul);
+			BmpFillMul(&screen_, x, y, skin_->fileListW, h, colors_.filer.cursorColor.r,
+			           colors_.filer.cursorColor.g, colors_.filer.cursorColor.b,
+			           colors_.filer.cursorColorBright);
 		}
 		if (textLayer_ != 0) textLayer_->ClearRect(x, y, skin_->fileListW, h);
 		if (shown.baseName.empty() && shown.title.empty()) continue;

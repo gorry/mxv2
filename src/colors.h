@@ -6,6 +6,13 @@
 //
 // Bright 系の値は「合成の強さ」で、0..100 が alpha、それ以上は
 // AlphaMul（100 未満で暗く、100 より大きいと明るく）として使われる。
+//
+// [配色設定] のスライダは、**同じ Bright でも 2 通りに分けてある**。
+//   ・文字と背景の濃さ (colorBright / backColorBright / back の 2 つ) は
+//     alpha なので **0..100**
+//   ・素材へ掛けるゲイン (kb の 3 つ / playKey.keyBright) は 100 が素通しで、
+//     上へ振ると明るくなるので **0..200**
+// ファイルの値そのものはどちらも同じ型なので、手で書けば範囲外も入る。
 
 #ifndef MXV2_COLORS_H
 #define MXV2_COLORS_H
@@ -25,9 +32,9 @@ struct Colors {
 	} back;
 
 	struct {
-		int blackBright;
-		int whiteBright;
-		int bright;
+		int blackBright;  // 鍵盤の下地（黒鍵側）
+		int whiteBright;  // 鍵盤の下地（白鍵側）
+		int bright;       // 押している鍵。ベンド中は半分になる
 	} kb;
 
 	struct {
@@ -45,7 +52,11 @@ struct Colors {
 	} mdxTitle;
 
 	struct {
-		Rgb cursorBright;
+		// カーソルは背景に対する**ゲイン**（100 が素通し。既定は青へ寄せる
+		// (50,50,200)）。cursorColorBright はそれをどれだけ効かせるかで、
+		// 100 なら素の乗算、0 ならカーソルが出ない。
+		Rgb cursorColor;
+		int cursorColorBright;
 		Rgb color;
 		int colorBright;
 		Rgb folderColor;

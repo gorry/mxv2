@@ -127,4 +127,15 @@ void Ini::SetString(const std::string &section, const std::string &key,
 	s->values[key] = value;
 }
 
+void Ini::Remove(const std::string &section, const std::string &key) {
+	SectionData *s = Find(section);
+	if (s == 0) return;
+	if (s->values.erase(key) == 0) return;
+	for (size_t i = 0; i < s->order.size(); i++) {
+		if (s->order[i] != key) continue;
+		s->order.erase(s->order.begin() + (ptrdiff_t)i);
+		break;
+	}
+}
+
 }  // namespace mxv2

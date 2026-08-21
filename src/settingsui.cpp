@@ -84,8 +84,16 @@ bool ColorRow(const char *label, Rgb *c) {
 	return true;
 }
 
-// Bright 値（0..100 が alpha、それ以上は乗算）。変わったら true。
-bool BrightRow(const char *label, int *v) {
+// Bright 値のスライダ。同じ「強さ」でも意味が 2 通りあるので、行の種類を
+// 分けてある（colors.h 参照）。変わったら true。
+//
+// 合成の強さ。背景に対する alpha なので 0..100 で意味が閉じている。
+bool AlphaRow(const char *label, int *v) {
+	return ImGui::SliderInt(label, v, 0, 100);
+}
+
+// 素材に掛ける乗算ゲイン。100 が素通しで、それより上は明るくなる。
+bool GainRow(const char *label, int *v) {
 	return ImGui::SliderInt(label, v, 0, 200);
 }
 
@@ -789,50 +797,52 @@ void SettingsUi::BuildColorsWindow(Settings *settings, DrawScreen *draw, Player 
 				t.back.bitmap = useBitmap ? 1 : 0;
 				dirty = true;
 			}
-			if (BrightRow("画像の明るさ", &t.back.bitmapBright)) dirty = true;
+			if (AlphaRow("画像の明るさ", &t.back.bitmapBright)) dirty = true;
 			if (ColorRow("背景色", &t.back.color)) dirty = true;
-			if (BrightRow("背景色の強さ", &t.back.colorBright)) dirty = true;
+			if (AlphaRow("背景色の強さ", &t.back.colorBright)) dirty = true;
 		}
 
 		ImGui::SeparatorText("鍵盤");
 		{
-			if (BrightRow("黒鍵", &t.kb.blackBright)) dirty = true;
-			if (BrightRow("白鍵", &t.kb.whiteBright)) dirty = true;
-			if (BrightRow("全体", &t.kb.bright)) dirty = true;
+			if (GainRow("黒鍵", &t.kb.blackBright)) dirty = true;
+			if (GainRow("白鍵", &t.kb.whiteBright)) dirty = true;
+			if (GainRow("押鍵", &t.kb.bright)) dirty = true;
 		}
 
 		ImGui::SeparatorText("ステータス");
 		{
 			if (ColorRow("文字色##st", &t.status.color)) dirty = true;
-			if (BrightRow("文字の強さ##st", &t.status.colorBright)) dirty = true;
+			if (AlphaRow("文字の強さ##st", &t.status.colorBright)) dirty = true;
 			if (ColorRow("背景色##st", &t.status.backColor)) dirty = true;
-			if (BrightRow("背景の強さ##st", &t.status.backColorBright)) dirty = true;
+			if (AlphaRow("背景の強さ##st", &t.status.backColorBright)) dirty = true;
 		}
 
 		ImGui::SeparatorText("曲名");
 		{
 			if (ColorRow("文字色##ti", &t.mdxTitle.color)) dirty = true;
-			if (BrightRow("文字の強さ##ti", &t.mdxTitle.colorBright)) dirty = true;
+			if (AlphaRow("文字の強さ##ti", &t.mdxTitle.colorBright)) dirty = true;
 			if (ColorRow("背景色##ti", &t.mdxTitle.backColor)) dirty = true;
-			if (BrightRow("背景の強さ##ti", &t.mdxTitle.backColorBright)) dirty = true;
+			if (AlphaRow("背景の強さ##ti", &t.mdxTitle.backColorBright)) dirty = true;
 		}
 
 		ImGui::SeparatorText("ファイラー");
 		{
-			if (ColorRow("カーソル##fi", &t.filer.cursorBright)) dirty = true;
+			if (ColorRow("カーソル##fi", &t.filer.cursorColor)) dirty = true;
+			if (AlphaRow("カーソルの強さ##fi", &t.filer.cursorColorBright)) dirty = true;
+			// 「文字の強さ」は下の 3 つの色すべてに効くので、そのあとに置く。
 			if (ColorRow("文字色##fi", &t.filer.color)) dirty = true;
-			if (BrightRow("文字の強さ##fi", &t.filer.colorBright)) dirty = true;
-			if (ColorRow("フォルダ##fi", &t.filer.folderColor)) dirty = true;
-			if (ColorRow("ドライブ##fi", &t.filer.driveColor)) dirty = true;
+			if (ColorRow("フォルダ文字色##fi", &t.filer.folderColor)) dirty = true;
+			if (ColorRow("ドライブ文字色##fi", &t.filer.driveColor)) dirty = true;
+			if (AlphaRow("文字の強さ##fi", &t.filer.colorBright)) dirty = true;
 			if (ColorRow("背景色##fi", &t.filer.backColor)) dirty = true;
-			if (BrightRow("背景の強さ##fi", &t.filer.backColorBright)) dirty = true;
+			if (AlphaRow("背景の強さ##fi", &t.filer.backColorBright)) dirty = true;
 		}
 
 		ImGui::SeparatorText("操作ボタン");
 		{
 			if (ColorRow("文字色##pk", &t.playKey.color)) dirty = true;
-			if (BrightRow("文字の強さ##pk", &t.playKey.colorBright)) dirty = true;
-			if (BrightRow("ボタンの明るさ##pk", &t.playKey.keyBright)) dirty = true;
+			if (AlphaRow("文字の強さ##pk", &t.playKey.colorBright)) dirty = true;
+			if (GainRow("ボタンの明るさ##pk", &t.playKey.keyBright)) dirty = true;
 		}
 
 		if (dirty) Rebuild(draw, player);

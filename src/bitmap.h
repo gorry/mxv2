@@ -93,6 +93,13 @@ void InitBlendTables();
 void BmpFill(Bitmap *dst, int xdst, int ydst, int width, int height,
              int r, int g, int b, int alpha);
 
+// 乗算で塗り潰したうえで、その結果を alpha (0..100) で元の画素と混ぜる。
+// r,g,b は色ではなく**背景に対するゲイン**（100 が素通し）。alpha=100 なら
+// 素の乗算（kBlendMul）と同じで、0 なら何もしない。
+// ファイラーのカーソルのように「乗算をどれだけ効かせるか」を持つもの用。
+void BmpFillMul(Bitmap *dst, int xdst, int ydst, int width, int height,
+                int r, int g, int b, int alpha);
+
 // 矩形コピー。
 void BmpCopy(Bitmap *dst, int xdst, int ydst, int width, int height,
              const Bitmap *src, int xsrc, int ysrc, int alpha);

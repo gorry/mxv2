@@ -213,6 +213,43 @@ void BmpFill(Bitmap *dst, int xdst, int ydst, int width, int height,
 	}
 }
 
+void BmpFillMul(Bitmap *dst, int xdst, int ydst, int width, int height,
+                int r, int g, int b, int alpha) {
+	if (dst == 0 || !dst->valid()) return;
+	if (alpha <= 0) return;
+	// 素の乗算と同じになるので、そちらへ流す（8bpp の扱いも合わせられる）。
+	if (alpha >= 100) {
+		BmpFill(dst, xdst, ydst, width, height, r, g, b, kBlendMul);
+		return;
+	}
+
+	if (xdst < 0) {
+		width += xdst;
+		xdst = 0;
+	}
+	if (ydst < 0) {
+		height += ydst;
+		ydst = 0;
+	}
+	if (width > dst->width() - xdst) width = dst->width() - xdst;
+	if (height > dst->height() - ydst) height = dst->height() - ydst;
+	if (width <= 0 || height <= 0) return;
+
+	// 8bpp はパレット番号を敷くだけで合成できないので、混ぜようがない。
+	if (dst->bitCount() == 8) return;
+
+	for (int y = 0; y < height; y++) {
+		uint8_t *q = dst->RowFromTop(ydst + y) + (size_t)xdst * 3;
+		for (int x = 0; x < width; x++) {
+			// 乗算した色を作り、それを元の画素へ alpha で乗せる。
+			q[0] = BlendChannel(alpha, q[0], BlendChannel(kBlendMul, q[0], b));
+			q[1] = BlendChannel(alpha, q[1], BlendChannel(kBlendMul, q[1], g));
+			q[2] = BlendChannel(alpha, q[2], BlendChannel(kBlendMul, q[2], r));
+			q += 3;
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // カバレッジ合成（アンチエイリアス文字）
 // ---------------------------------------------------------------------------

@@ -40,7 +40,8 @@ Colors::Colors() {
 	mdxTitle.backColor = MakeRgb(0, 0, 0);
 	mdxTitle.backColorBright = 50;
 
-	filer.cursorBright = MakeRgb(50, 50, 200);
+	filer.cursorColor = MakeRgb(50, 50, 200);
+	filer.cursorColorBright = 100;
 	filer.color = MakeRgb(255, 255, 255);
 	filer.colorBright = 100;
 	filer.folderColor = MakeRgb(128, 255, 128);
@@ -79,8 +80,16 @@ bool Colors::Load(const std::string &path) {
 	mdxTitle.backColorBright =
 	    ini.GetInt("MDXTitle", "BackColorBright", mdxTitle.backColorBright);
 
-	filer.cursorBright =
-	    FromColorRef(ini.GetInt("Filer", "CursorBright", ToColorRef(filer.cursorBright)));
+	{
+		// 旧 mxv 以来、カーソルの色は CursorBright という名前だった
+		// （中身は色なので、他と揃えて CursorColor に改めた）。
+		// 旧い名前も読む。両方あれば新しい方が勝つ。
+		int ref = ini.GetInt("Filer", "CursorBright", ToColorRef(filer.cursorColor));
+		ref = ini.GetInt("Filer", "CursorColor", ref);
+		filer.cursorColor = FromColorRef(ref);
+	}
+	filer.cursorColorBright =
+	    ini.GetInt("Filer", "CursorColorBright", filer.cursorColorBright);
 	filer.color = FromColorRef(ini.GetInt("Filer", "Color", ToColorRef(filer.color)));
 	filer.colorBright = ini.GetInt("Filer", "ColorBright", filer.colorBright);
 	filer.folderColor =
@@ -122,7 +131,9 @@ bool Colors::Save(const std::string &path) const {
 	ini.SetInt("MDXTitle", "BackColor", ToColorRef(mdxTitle.backColor));
 	ini.SetInt("MDXTitle", "BackColorBright", mdxTitle.backColorBright);
 
-	ini.SetInt("Filer", "CursorBright", ToColorRef(filer.cursorBright));
+	ini.Remove("Filer", "CursorBright");  // 旧い名前。残すと紛らわしい
+	ini.SetInt("Filer", "CursorColor", ToColorRef(filer.cursorColor));
+	ini.SetInt("Filer", "CursorColorBright", filer.cursorColorBright);
 	ini.SetInt("Filer", "Color", ToColorRef(filer.color));
 	ini.SetInt("Filer", "ColorBright", filer.colorBright);
 	ini.SetInt("Filer", "FolderColor", ToColorRef(filer.folderColor));

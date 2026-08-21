@@ -34,6 +34,10 @@ public:
 	void SetString(const std::string &section, const std::string &key,
 	               const std::string &value);
 
+	// キーを消す。無ければ何もしない。書き戻すときに、名前を変えた古いキーを
+	// 残さないために使う。
+	void Remove(const std::string &section, const std::string &key);
+
 private:
 	typedef std::map<std::string, std::string> Values;
 
