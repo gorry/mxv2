@@ -770,6 +770,10 @@ void SettingsUi::BuildThemeWindow(Settings *settings, DrawScreen *draw, Player *
 			themeError_.clear();
 		}
 
+		// 保存まわりはダイアログの先頭に置く。色の項目は縦に長く、
+		// 下に置くと毎回スクロールしないと届かない。
+		BuildThemeSaveRow(settings, draw);
+
 		Theme &t = draw->theme();
 		bool dirty = false;
 
@@ -828,56 +832,72 @@ void SettingsUi::BuildThemeWindow(Settings *settings, DrawScreen *draw, Player *
 
 		if (dirty) Rebuild(draw, player);
 
-		ImGui::Separator();
-		// 保存先はスキンの名前で指定する。今のスキンの名前のままなら上書き、
-		// 別の名前にすれば「名前を付けて保存」で新しいスキンができる。
-		// 同梱ぶんは読み取り専用なので、書き込み先は必ずユーザーフォルダ側。
-		ImGui::Text("名前");
-		ImGui::SameLine();
-		ImGui::SetNextItemWidth(-FLT_MIN);
-		const bool entered =
-		    ImGui::InputText("##themename", themeNameBuf_, sizeof(themeNameBuf_),
-		                     ImGuiInputTextFlags_EnterReturnsTrue);
-
-		if (ImGui::Button("保存") || entered) {
-			const std::string name = TrimSpaces(themeNameBuf_);
-			themeError_.clear();
-			if (!CheckSkinName(name, &themeError_)) {
-				// 文言は CheckSkinName が入れている
-			} else if (paths_.UserSkinExists(name)) {
-				// すでにある名前。上書きしてよいか訊く。同梱ぶんに同じ名前が
-				// あっても、そちらは別のスキン (assets:<名前>) なので訊かない。
-				overwriteName_ = name;
-				openOverwrite_ = true;
-			} else {
-				SaveThemeAs(name, settings, draw);
-			}
-			themeErrorFresh_ = !themeError_.empty();
-		}
-		ImGui::SameLine();
-		if (ImGui::Button("読み直す")) {
-			pendingSkin_ = settings->skinName;
-		}
-		ImGui::SameLine();
-		{
-			const std::string name = TrimSpaces(themeNameBuf_);
-			ImGui::TextDisabled("skin/%s/theme.mxv", name.c_str());
-			if (ImGui::IsItemHovered()) {
-				ImGui::SetTooltip("%s", JoinPath(paths_.UserSkinDir(name), "theme.mxv").c_str());
-			}
-		}
-		if (!themeError_.empty()) {
-			ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "%s", themeError_.c_str());
-			if (themeErrorFresh_) {
-				themeErrorFresh_ = false;
-				ImGui::SetScrollHereY(1.0f);
-			}
-		}
-
 		BuildOverwriteWindow(settings, draw);
 
 		DragToScroll(&dragScroll_, &dragMoved_, true, false);
 		ImGui::EndPopup();
+	}
+}
+
+// テーマのダイアログの先頭。保存先の名前と、保存・読み直しのボタン。
+//
+// 保存先はスキンの名前で指定する。今のスキンの名前のままなら上書き、
+// 別の名前にすれば「名前を付けて保存」で新しいスキンができる。
+// 同梱ぶんは読み取り専用なので、書き込み先は必ずユーザーフォルダ側。
+void SettingsUi::BuildThemeSaveRow(Settings *settings, DrawScreen *draw) {
+	ImGui::Text("テーマ名");
+	ImGui::SameLine();
+	ImGui::SetNextItemWidth(-FLT_MIN);
+	const bool entered = ImGui::InputText("##themename", themeNameBuf_, sizeof(themeNameBuf_),
+	                                      ImGuiInputTextFlags_EnterReturnsTrue);
+
+	if (ImGui::Button("保存") || entered) {
+		const std::string name = TrimSpaces(themeNameBuf_);
+		themeError_.clear();
+		if (!CheckSkinName(name, &themeError_)) {
+			// 文言は CheckSkinName が入れている
+		} else if (paths_.UserSkinExists(name)) {
+			// すでにある名前。上書きしてよいか訊く。同梱ぶんに同じ名前が
+			// あっても、そちらは別のスキン (assets:<名前>) なので訊かない。
+			overwriteName_ = name;
+			openOverwrite_ = true;
+		} else {
+			SaveThemeAs(name, settings, draw);
+		}
+		themeErrorFresh_ = !themeError_.empty();
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("読み直す")) {
+		pendingSkin_ = settings->skinName;
+	}
+	ImGui::SameLine();
+	{
+		const std::string name = TrimSpaces(themeNameBuf_);
+		ImGui::TextDisabled("skin/%s/theme.mxv", name.c_str());
+		if (ImGui::IsItemHovered()) {
+			ImGui::SetTooltip("%s", JoinPath(paths_.UserSkinDir(name), "theme.mxv").c_str());
+		}
+	}
+
+	// 土台にしているスキン (layout.ini の [Skin] Base)。レイアウトと素材が
+	// どこから来ているかは、配色をいじるときに知りたいことが多い。
+	{
+		const std::string &base = draw->skin().baseRef();
+		ImGui::Text("参照元のスキン");
+		ImGui::SameLine();
+		if (base.empty()) {
+			ImGui::TextDisabled("(なし)");
+		} else {
+			ImGui::TextDisabled("%s", base.c_str());
+		}
+	}
+
+	if (!themeError_.empty()) {
+		ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "%s", themeError_.c_str());
+		if (themeErrorFresh_) {
+			themeErrorFresh_ = false;
+			ImGui::SetScrollHereY(0.0f);
+		}
 	}
 }
 

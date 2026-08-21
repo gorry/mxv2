@@ -265,6 +265,7 @@ bool Skin::Load(const AssetPaths &paths, const std::string &ref, std::string *er
 		visited.push_back(current);
 
 		const std::string base = ReadBaseRef(dir);
+		if (depth == 0) baseRef_ = base;  // 自分の Base だけは表示に使う
 		if (base.empty()) break;
 		bool loop = false;
 		for (size_t i = 0; i < visited.size() && !loop; i++) {

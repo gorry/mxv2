@@ -142,6 +142,8 @@ struct Skin {
 	std::string FindFile(const std::string &name) const;
 
 	const std::string &ref() const { return ref_; }
+	// layout.ini の [Skin] Base に書いてあったもの。無ければ空。
+	const std::string &baseRef() const { return baseRef_; }
 	// このスキンのファイルを探す場所。優先度の高い順。
 	const std::vector<std::string> &dirs() const { return dirs_; }
 
@@ -159,6 +161,7 @@ private:
 	void ApplyLayout(const std::string &skinDir);
 
 	std::string ref_;
+	std::string baseRef_;
 	std::vector<std::string> dirs_;
 };
 

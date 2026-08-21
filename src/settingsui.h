@@ -241,6 +241,8 @@ private:
 
 	// テーマの色のダイアログ
 	void BuildThemeWindow(Settings *settings, DrawScreen *draw, Player *player);
+	// その先頭。テーマ名・保存・読み直す・参照元のスキン。
+	void BuildThemeSaveRow(Settings *settings, DrawScreen *draw);
 	bool showTheme_;
 	// 保存先のスキン名。開いたときに今のスキン名で埋め直す。
 	char themeNameBuf_[128];
