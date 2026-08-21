@@ -36,8 +36,18 @@ std::string JoinPath(const std::string &dir, const std::string &name);
 // 実行ファイルのあるディレクトリ（末尾に区切りを含む）。取得できなければ "./"。
 std::string ExecutableDir();
 
+// アプリごとの書き込み可能なフォルダ（末尾に区切りを含む）。
+//
+// 実行ファイルの隣は書けるとは限らない（Program Files の下、Android の apk の
+// 中）ので、設定やユーザーが足した素材はこちらへ置く。appName はフォルダ名に
+// そのまま使う。取得できなければ実行ファイルの隣を返す。
+std::string UserDataDir(const std::string &appName);
+
 // ディレクトリか。
 bool IsDirectory(const std::string &path);
+
+// ディレクトリを作る。途中のものもまとめて作る。すでにあれば true。
+bool MakeDirectories(const std::string &path);
 
 struct DirEntry {
 	std::string name;  // ファイル名のみ (UTF-8)

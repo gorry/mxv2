@@ -20,6 +20,8 @@
 
 #include "imgui.h"
 
+#include "assetpath.h"
+
 namespace mxv2 {
 
 class DrawScreen;
@@ -33,8 +35,8 @@ public:
 	SettingsUi();
 	~SettingsUi();
 
-	// ImGui の初期化。assetsDir の下の skin/ からスキンを探す。
-	bool Init(Screen *screen, const std::string &assetsDir, std::string *err);
+	// ImGui の初期化。スキンとフォントは paths から探す。
+	bool Init(Screen *screen, const AssetPaths &paths, std::string *err);
 	void Shutdown();
 
 	// SDL イベントを ImGui へ渡す。
@@ -62,6 +64,8 @@ public:
 	void OpenTheme() {
 		if (busy()) return;
 		showTheme_ = true;
+		// 名前の欄は、開いたときに今のスキン名で埋め直す。
+		themeNameReset_ = true;
 	}
 
 	// フォルダを選ぶダイアログ (L)。旧 mxv の MX_GetNewDirFileList にあたる。
@@ -96,6 +100,8 @@ public:
 		// ポップアップの中からでないとできないので、ここでは印だけ付けて
 		// 実際の始末は Build() に任せる。
 		if (contextMenuOpen_) { closeContextMenu_ = true; return true; }
+		// 上書き確認はテーマのダイアログの中に入れ子で開くので、先に閉じる。
+		if (overwriteOpen_) { closeOverwrite_ = true; return true; }
 		if (showAbout_) { showAbout_ = false; return true; }
 		if (showHelp_) { showHelp_ = false; return true; }
 		if (showFolder_) { showFolder_ = false; return true; }
@@ -174,7 +180,11 @@ private:
 	// 作り直したあとは Player に積み直しを頼む。
 	void Rebuild(DrawScreen *draw, Player *player);
 
-	std::string SkinDir(const std::string &name) const;
+	// 今の配色を skin/<名前>/theme.mxv として保存する。書き込み先は
+	// ユーザーフォルダ側（同梱ぶんは読み取り専用なので触らない）。
+	// 名前が今のスキンと違えば、今のスキンを土台にした新しいスキンを作り、
+	// 保存したあとそのスキンへ切り替える。
+	void SaveThemeAs(const std::string &name, Settings *settings, DrawScreen *draw);
 
 	bool ready_;
 	bool visible_;
@@ -193,8 +203,7 @@ private:
 	int pendingZoom_;         // 0 = 適用待ちなし
 	uint32_t zoomApplyAtMs_;  // 0 = 適用待ちなし
 
-	std::string assetsDir_;
-	std::string skinRootDir_;
+	AssetPaths paths_;
 	std::vector<std::string> skinNames_;
 	std::string pendingSkin_;
 
@@ -233,6 +242,19 @@ private:
 	// テーマの色のダイアログ
 	void BuildThemeWindow(Settings *settings, DrawScreen *draw, Player *player);
 	bool showTheme_;
+	// 保存先のスキン名。開いたときに今のスキン名で埋め直す。
+	char themeNameBuf_[128];
+	bool themeNameReset_;
+	std::string themeError_;  // 保存できなかった理由（ダイアログに出す）
+	// 文言は一番下に出るので、出したフレームだけそこまでスクロールする
+	// （ダイアログは縦がいっぱいで、足すと画面の外へ出てしまう）。
+	bool themeErrorFresh_;
+	// 上書き確認。テーマのダイアログの中に入れ子で開く。
+	void BuildOverwriteWindow(Settings *settings, DrawScreen *draw);
+	std::string overwriteName_;  // 確認中の名前
+	bool openOverwrite_;         // 次のフレームで開く
+	bool overwriteOpen_;         // いま開いている（ESC の判断に使う）
+	bool closeOverwrite_;        // ESC で閉じてほしい
 
 	// フォルダを選ぶダイアログ。選んだ結果の行き先は 2 つある。
 	//   kFolderTargetFiler … ファイラを動かす (L キー / メニュー)

@@ -123,6 +123,7 @@ endif()
 # ---------------------------------------------------------------------------
 add_executable(mxv2
 	src/main.cpp
+	src/assetpath.cpp
 	src/bitmap.cpp
 	src/bmpfile.cpp
 	src/drawscreen.cpp
@@ -142,6 +143,7 @@ add_executable(mxv2
 	src/textrender.cpp
 	src/theme.cpp
 	src/visualizer.cpp
+	src/assetpath.h
 	src/bitmap.h
 	src/bmpfile.h
 	src/dispqueue.h

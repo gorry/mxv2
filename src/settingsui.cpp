@@ -14,10 +14,10 @@
 #include "drawscreen.h"
 #include "fileutil.h"
 #include "filer.h"
+#include "ini.h"
 #include "player.h"
 #include "screen.h"
 #include "settings.h"
-#include "skin.h"
 
 namespace mxv2 {
 
@@ -25,6 +25,7 @@ namespace {
 
 // 同梱フォント。assets/ に置いてあるので、どのプラットフォームでも読める。
 // M PLUS 1p Regular (SIL OFL 1.1)。ライセンス全文は assets/MPLUS1p-OFL.txt。
+// 差し替え用の font.ttf は、ユーザーフォルダ側に置いても効く (AssetPaths)。
 // JIS 第1+2水準を含み、CP932 変換で出る U+FF5E (～) や U+2015 (―) も持つ。
 const char *kBundledFont = "MPLUS1p-Regular.ttf";
 
@@ -50,6 +51,7 @@ const float kFontSizePx = 15.0f;
 // ダイアログの題名。ImGui のポップアップ id を兼ねるので 1 箇所で持つ。
 const char *kSettingsTitle = "mxv2 の設定";
 const char *kThemeTitle = "テーマ設定";
+const char *kOverwriteTitle = "上書きの確認";
 // "###" 以降が ImGui の id。見出しだけ用途で変えて、ポップアップとしては
 // 同じものとして扱う。
 const char *kFolderTitle = "フォルダを開く###mxv2folder";
@@ -183,6 +185,31 @@ std::string LoadAboutText() {
 	       "配布するときは実行ファイルの隣に NOTICE を置いてください。";
 }
 
+std::string TrimSpaces(const std::string &s) {
+	size_t b = 0;
+	size_t e = s.size();
+	while (b < e && (unsigned char)s[b] <= ' ') b++;
+	while (e > b && (unsigned char)s[e - 1] <= ' ') e--;
+	return s.substr(b, e - b);
+}
+
+// スキン名はそのままフォルダ名になるので、使えないものを弾く。
+bool CheckSkinName(const std::string &name, std::string *err) {
+	if (name.empty()) {
+		*err = "名前を入れてください。";
+		return false;
+	}
+	if (name == "." || name == ".." || name[name.size() - 1] == '.') {
+		*err = "その名前は使えません。";
+		return false;
+	}
+	if (name.find_first_of("\\/:*?\"<>|") != std::string::npos) {
+		*err = "名前に \\ / : * ? \" < > | は使えません。";
+		return false;
+	}
+	return true;
+}
+
 }  // namespace
 
 SettingsUi::SettingsUi()
@@ -202,6 +229,11 @@ SettingsUi::SettingsUi()
       dragScroll_(false),
       dragMoved_(false),
       showTheme_(false),
+      themeNameReset_(true),
+      themeErrorFresh_(false),
+      openOverwrite_(false),
+      overwriteOpen_(false),
+      closeOverwrite_(false),
       showHelp_(false),
       showFolder_(false),
       folderTarget_(kFolderTargetFiler),
@@ -210,21 +242,21 @@ SettingsUi::SettingsUi()
       openedModal_(0) {
 	pdxPathBuf_[0] = '\0';
 	folderPathBuf_[0] = '\0';
+	themeNameBuf_[0] = '\0';
 }
 
 SettingsUi::~SettingsUi() {
 	Shutdown();
 }
 
-bool SettingsUi::Init(Screen *screen, const std::string &assetsDir, std::string *err) {
+bool SettingsUi::Init(Screen *screen, const AssetPaths &paths, std::string *err) {
 	if (ready_) return true;
 	if (screen == 0 || screen->window() == 0 || screen->renderer() == 0) {
 		*err = "設定 UI の初期化にはウィンドウが要ります。";
 		return false;
 	}
 
-	assetsDir_ = assetsDir;
-	skinRootDir_ = JoinPath(assetsDir_, "skin");
+	paths_ = paths;
 	ScanSkins();
 
 	// 最初のイベントが来る前に倍率を知っておく。
@@ -246,9 +278,8 @@ bool SettingsUi::Init(Screen *screen, const std::string &assetsDir, std::string 
 	// 日本語フォント。ImGui 1.92 以降はグリフを要求時に焼くので、
 	// GlyphRanges を渡さなくても日本語が出る。
 	{
-		std::string path = JoinPath(assetsDir_, kUserFont);
-		if (!FileExists(path)) path = JoinPath(assetsDir_, kBundledFont);
-		if (!FileExists(path)) path.clear();
+		std::string path = paths_.Find(kUserFont);
+		if (path.empty()) path = paths_.Find(kBundledFont);
 		for (int i = 0; path.empty() && i < kNumFontCandidates; i++) {
 			if (FileExists(kFontCandidates[i])) path = kFontCandidates[i];
 		}
@@ -344,11 +375,59 @@ bool SettingsUi::ApplyScale(float scale) {
 // ---------------------------------------------------------------------------
 
 void SettingsUi::ScanSkins() {
-	ListSkins(skinRootDir_, &skinNames_);
+	paths_.ListSkinRefs(&skinNames_);
 }
 
-std::string SettingsUi::SkinDir(const std::string &name) const {
-	return JoinPath(skinRootDir_, name);
+// 同梱のスキンは読み取り専用なので、テーマはユーザーフォルダ側の
+// skin/<名前>/ へ書く。次に読むときは、そちらが同梱の theme.mxv より
+// 先に見つかる (Skin::FindFile)。
+//
+// 保存先は必ずユーザーフォルダ側のスキンなので、名前に "assets:" は付かない。
+// それが今のスキンでなければ「名前を付けて保存」で、まだ無い名前なら
+// 今のスキンを土台にした layout.ini も置く。レイアウトと素材は元のスキンの
+// ものがそのまま使われる（Default-Midnight と同じ作り）。同梱スキンを
+// 編集していたときは Base が "assets:<名前>" になる。
+void SettingsUi::SaveThemeAs(const std::string &name, Settings *settings, DrawScreen *draw) {
+	themeError_.clear();
+
+	const bool isNewSkin = !paths_.UserSkinExists(name);
+	// 土台には、今のスキンが実際に指しているフォルダを名指しする ref を書く
+	// （同梱ぶんなら "assets:X"）。ここで接頭辞を落とすと、いま作ろうと
+	// している同名のユーザースキン自身を指してしまう。
+	const std::string baseRef = paths_.CanonicalSkinRef(settings->skinName);
+	// 今のスキンそのものへの保存か。同梱ぶんを編集していたのなら、
+	// 保存先のユーザースキンは別のスキンになる。
+	const bool isCurrent =
+	    !IsBundledSkinRef(baseRef) && CompareNoCase(name, SkinRefName(baseRef)) == 0;
+	const std::string dir = paths_.UserSkinDir(name);
+
+	if (!MakeDirectories(dir)) {
+		themeError_ = "フォルダを作れません: " + dir;
+		return;
+	}
+	if (isNewSkin && !isCurrent && !baseRef.empty()) {
+		Ini ini;
+		ini.SetString("Skin", "Base", baseRef);
+		if (!ini.Save(JoinPath(dir, "layout.ini"))) {
+			themeError_ = "layout.ini を書けません: " + dir;
+			return;
+		}
+	}
+	if (!draw->theme().Save(JoinPath(dir, "theme.mxv"))) {
+		themeError_ = "テーマを保存できません: " + JoinPath(dir, "theme.mxv");
+		return;
+	}
+
+	// ユーザーフォルダ側に新しくフォルダができることがある。
+	ScanSkins();
+
+	// 別名で保存したのなら、そのスキンへ移る。ここで移らないと、編集した
+	// 配色は「今のスキン」には保存されていないままなので、閉じて開き直すと
+	// 元に戻ってしまう。
+	if (!isCurrent) {
+		pendingSkin_ = name;
+		changedFields_ |= Settings::kFieldSkin;
+	}
 }
 
 void SettingsUi::Rebuild(DrawScreen *draw, Player *player) {
@@ -681,6 +760,16 @@ void SettingsUi::BuildThemeWindow(Settings *settings, DrawScreen *draw, Player *
 	if (ImGui::BeginPopupModal(kThemeTitle, &showTheme_,
 	                           ImGuiWindowFlags_NoCollapse |
 	                               ImGuiWindowFlags_NoSavedSettings)) {
+		// 開いた直後は、保存先の名前を今のスキン名にしておく。書き込み先は
+		// 必ずユーザーフォルダなので "assets:" は外す（同梱スキンを編集して
+		// いるときは、同じ名前のユーザースキンが作られることになる）。
+		if (themeNameReset_) {
+			themeNameReset_ = false;
+			snprintf(themeNameBuf_, sizeof(themeNameBuf_), "%s",
+			         SkinRefName(settings->skinName).c_str());
+			themeError_.clear();
+		}
+
 		Theme &t = draw->theme();
 		bool dirty = false;
 
@@ -740,21 +829,93 @@ void SettingsUi::BuildThemeWindow(Settings *settings, DrawScreen *draw, Player *
 		if (dirty) Rebuild(draw, player);
 
 		ImGui::Separator();
-		// 保存先は「今のスキンのフォルダ」。土台から継承していても、
-		// 書き込むのは自分のフォルダ側。
-		if (ImGui::Button("テーマを保存")) {
-			draw->theme().Save(JoinPath(SkinDir(settings->skinName), "theme.mxv"));
+		// 保存先はスキンの名前で指定する。今のスキンの名前のままなら上書き、
+		// 別の名前にすれば「名前を付けて保存」で新しいスキンができる。
+		// 同梱ぶんは読み取り専用なので、書き込み先は必ずユーザーフォルダ側。
+		ImGui::Text("名前");
+		ImGui::SameLine();
+		ImGui::SetNextItemWidth(-FLT_MIN);
+		const bool entered =
+		    ImGui::InputText("##themename", themeNameBuf_, sizeof(themeNameBuf_),
+		                     ImGuiInputTextFlags_EnterReturnsTrue);
+
+		if (ImGui::Button("保存") || entered) {
+			const std::string name = TrimSpaces(themeNameBuf_);
+			themeError_.clear();
+			if (!CheckSkinName(name, &themeError_)) {
+				// 文言は CheckSkinName が入れている
+			} else if (paths_.UserSkinExists(name)) {
+				// すでにある名前。上書きしてよいか訊く。同梱ぶんに同じ名前が
+				// あっても、そちらは別のスキン (assets:<名前>) なので訊かない。
+				overwriteName_ = name;
+				openOverwrite_ = true;
+			} else {
+				SaveThemeAs(name, settings, draw);
+			}
+			themeErrorFresh_ = !themeError_.empty();
 		}
 		ImGui::SameLine();
 		if (ImGui::Button("読み直す")) {
 			pendingSkin_ = settings->skinName;
 		}
 		ImGui::SameLine();
-		ImGui::TextDisabled("skin/%s/theme.mxv", settings->skinName.c_str());
+		{
+			const std::string name = TrimSpaces(themeNameBuf_);
+			ImGui::TextDisabled("skin/%s/theme.mxv", name.c_str());
+			if (ImGui::IsItemHovered()) {
+				ImGui::SetTooltip("%s", JoinPath(paths_.UserSkinDir(name), "theme.mxv").c_str());
+			}
+		}
+		if (!themeError_.empty()) {
+			ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "%s", themeError_.c_str());
+			if (themeErrorFresh_) {
+				themeErrorFresh_ = false;
+				ImGui::SetScrollHereY(1.0f);
+			}
+		}
+
+		BuildOverwriteWindow(settings, draw);
 
 		DragToScroll(&dragScroll_, &dragMoved_, true, false);
 		ImGui::EndPopup();
 	}
+}
+
+// 上書きの確認。テーマのダイアログの**中で**開く。ImGui のモーダルは
+// 入れ子なら素直に重なる（同じ階層で掛け替えようとすると失敗する）。
+void SettingsUi::BuildOverwriteWindow(Settings *settings, DrawScreen *draw) {
+	if (openOverwrite_) {
+		openOverwrite_ = false;
+		ImGui::OpenPopup(kOverwriteTitle);
+	}
+
+	overwriteOpen_ = ImGui::IsPopupOpen(kOverwriteTitle);
+	if (!overwriteOpen_) {
+		closeOverwrite_ = false;
+		return;
+	}
+
+	ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Appearing);
+	if (!ImGui::BeginPopupModal(kOverwriteTitle, NULL,
+	                            ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
+	                                ImGuiWindowFlags_AlwaysAutoResize)) {
+		return;
+	}
+
+	ImGui::Text("スキン \"%s\" はすでにあります。", overwriteName_.c_str());
+	ImGui::Text("テーマを上書きしますか？");
+	ImGui::Separator();
+	if (ImGui::Button("上書き")) {
+		SaveThemeAs(overwriteName_, settings, draw);
+		themeErrorFresh_ = !themeError_.empty();
+		ImGui::CloseCurrentPopup();
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("やめる") || closeOverwrite_) {
+		closeOverwrite_ = false;
+		ImGui::CloseCurrentPopup();
+	}
+	ImGui::EndPopup();
 }
 
 // 子フォルダの一覧だけ作り直す。毎フレーム読み直すと重いので、

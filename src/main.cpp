@@ -16,6 +16,7 @@
 #include <windows.h>
 #endif
 
+#include "assetpath.h"
 #include "drawscreen.h"
 #include "fileutil.h"
 #include "filer.h"
@@ -97,11 +98,16 @@ bool WantsConsole(int argc, char **argv) {
 	return false;
 }
 
+// ユーザーフォルダの名前。Windows なら %APPDATA%\mxv2\ になる。
+// 設定 (mxv2.ini) と、ユーザーが足したスキン・テーマの置き場所。
+const char *kUserDirName = "mxv2";
+
 // コマンドライン専用の指定。永続化する設定は Settings が持つ。
 struct Options {
 	std::string target;  // MDX ファイルかディレクトリ。空ならカレント
 	std::vector<std::string> pdxSearchDirs;  // -pdxpath (複数指定可)
 	std::string assetsDir;
+	std::string userDir;
 	// 表示を遅らせる時間 (ms)。指定が無ければ音の遅れに自動で合わせる。
 	int latencyMs;
 	bool latencySet;
@@ -169,13 +175,39 @@ void PrintUsage(const char *argv0) {
 	    "  -nofade         自動フェードアウトしない\n"
 	    "  -latency <ms>   表示を遅らせる時間 ms (この起動だけ。ふつうは設定で)\n"
 	    "  -pdxpath <dir>  PDX の追加探索先\n"
-	    "  -assets <dir>   素材ビットマップの場所 (既定: 実行ファイルの隣の assets)\n"
-	    "  -skin <name>    スキン名 (assets/skin/<name>。既定: Default)\n"
+	    "  -assets <dir>   同梱素材の場所 (既定: 実行ファイルの隣の assets)\n"
+	    "  -userdir <dir>  設定とユーザー素材の場所 (既定: OS のユーザーフォルダ)\n"
+	    "  -skin <name>    スキン名 (assets:<name> で同梱ぶんを名指し。既定: Default)\n"
 	    "  -folderfirst    ファイラでフォルダを先に並べる\n"
 	    "  -noquit         演奏終了後も閉じない\n"
 	    "  -console        ログを出すコンソールを開く (既定は開かない)\n",
 	    argv0);
 	printf("%s", kKeyHelpText);
+}
+
+// 素材と設定の置き場所を決めるオプションだけ先に見る。mxv2.ini はここで
+// 決まったユーザーフォルダから読むので、ParseArgs より前に要る
+// （-console と同じ理由）。
+void PrescanDirs(int argc, char **argv, Options *opt) {
+	for (int i = 1; i + 1 < argc; i++) {
+		if (strcmp(argv[i], "-assets") == 0) {
+			opt->assetsDir = argv[++i];
+		} else if (strcmp(argv[i], "-userdir") == 0) {
+			opt->userDir = argv[++i];
+		}
+	}
+}
+
+// 旧い版は実行ファイルの隣に mxv2.ini を置いていた。ユーザーフォルダ側が
+// まだ無ければ、そこから 1 度だけ引き取る（元は残す）。
+void MigrateLegacySettings(const std::string &newPath) {
+	if (mxv2::FileExists(newPath)) return;
+
+	const std::string oldPath = mxv2::JoinPath(mxv2::ExecutableDir(), "mxv2.ini");
+	std::vector<uint8_t> data;
+	if (!mxv2::FileExists(oldPath) || !mxv2::ReadWholeFile(oldPath, &data)) return;
+	if (!mxv2::WriteWholeFile(newPath, data)) return;
+	printf("settings : %s を引き継ぎました\n", oldPath.c_str());
 }
 
 // mxv2.ini から読んだ設定を、コマンドラインで上書きする。
@@ -209,7 +241,10 @@ bool ParseArgs(int argc, char **argv, Options *opt, mxv2::Settings *st) {
 		} else if (strcmp(a, "-pdxpath") == 0 && i + 1 < argc) {
 			opt->pdxSearchDirs.push_back(argv[++i]);
 		} else if (strcmp(a, "-assets") == 0 && i + 1 < argc) {
-			opt->assetsDir = argv[++i];
+			// 実際の処理は PrescanDirs（設定を読む前に要る）。ここでは受け流す。
+			i++;
+		} else if (strcmp(a, "-userdir") == 0 && i + 1 < argc) {
+			i++;  // 同上
 		} else if (strcmp(a, "-skin") == 0 && i + 1 < argc) {
 			st->skinName = argv[++i];
 		} else if (strcmp(a, "-console") == 0) {
@@ -304,18 +339,35 @@ int main(int argc, char **argv) {
 	// 途中で終了させても情報が残るように行バッファにする
 	setvbuf(stdout, NULL, _IOLBF, 1024);
 
+	// 素材の置き場所。同梱ぶん (assets) は読むだけで、書くのはユーザー
+	// フォルダ側。詳しくは assetpath.h。
+	Options opt;
+	PrescanDirs(argc, argv, &opt);
+
+	mxv2::AssetPaths paths;
+	paths.bundledDir = opt.assetsDir.empty()
+	                       ? mxv2::JoinPath(mxv2::ExecutableDir(), "assets")
+	                       : opt.assetsDir;
+	paths.userDir = opt.userDir.empty() ? mxv2::UserDataDir(kUserDirName) : opt.userDir;
+	if (!mxv2::MakeDirectories(paths.userDir)) {
+		printf("warning  : ユーザーフォルダを作れません: %s\n", paths.userDir.c_str());
+	}
 	// 設定 -> コマンドラインの順に読む（後勝ち）。
 	mxv2::Settings settings;
-	const std::string settingsPath = mxv2::Settings::DefaultPath();
+	const std::string settingsPath = mxv2::Settings::PathIn(paths.userDir);
+	MigrateLegacySettings(settingsPath);
 	settings.Load(settingsPath);
 	// ini に倍率が無かったかどうかを覚えておく（終了時に書き残すため）。
 	const int legacyScale = settings.legacyScale;
 
-	Options opt;
 	if (!ParseArgs(argc, argv, &opt, &settings)) {
 		PrintUsage(argc > 0 ? argv[0] : "mxv2");
 		return EXIT_FAILURE;
 	}
+
+	// 使い方を出すだけのときに邪魔をしないよう、ここまで来てから出す。
+	printf("assets   : %s\n", paths.bundledDir.c_str());
+	printf("userdir  : %s\n", paths.userDir.c_str());
 
 	// 対象がファイルならその曲を、ディレクトリならそこを開く。
 	// 対象を省略したときは、前回開いていたディレクトリへ戻る。
@@ -376,18 +428,25 @@ int main(int argc, char **argv) {
 		       settings.zoomPercent);
 	}
 
-	std::string assetsDir = opt.assetsDir;
-	if (assetsDir.empty()) assetsDir = mxv2::JoinPath(mxv2::ExecutableDir(), "assets");
-	const std::string skinRootDir = mxv2::JoinPath(assetsDir, "skin");
+	// うまくいかないときの逃げ場。同梱ぶんは必ずあるはずなので名指しする。
+	const std::string kFallbackSkin = mxv2::MakeBundledSkinRef("Default");
 
 	// スキンが画面サイズを決めるので、ウィンドウより先に読む。
+	// 指定のスキンが無ければ同梱の Default へ落ちる（ini に書かれたスキンの
+	// フォルダをユーザーが消しても起動できるように）。
 	mxv2::Skin skin;
 	{
 		std::string err;
-		if (!skin.Load(mxv2::JoinPath(skinRootDir, settings.skinName), &err)) {
-			printf("ERROR: %s\n", err.c_str());
-			SDL_Quit();
-			return EXIT_FAILURE;
+		if (!skin.Load(paths, settings.skinName, &err)) {
+			printf("warning  : %s\n", err.c_str());
+			settings.skinName = kFallbackSkin;
+			dirtyFields |= mxv2::Settings::kFieldSkin;
+			if (!skin.Load(paths, settings.skinName, &err)) {
+				printf("ERROR: %s\n", err.c_str());
+				printf("       -assets <dir> で同梱素材の場所を指定してください。\n");
+				SDL_Quit();
+				return EXIT_FAILURE;
+			}
 		}
 	}
 
@@ -414,12 +473,13 @@ int main(int argc, char **argv) {
 	mxv2::TextLayer textLayer;
 	{
 		std::string err;
-		if (!textLayer.Init(&screen, skin.dir(), assetsDir, &err)) {
+		if (!textLayer.Init(&screen, mxv2::FontSearchDirs(skin, paths), &err)) {
 			printf("warning  : %s\n", err.c_str());
 		} else if (!textLayer.available()) {
 			printf("warning  : 日本語フォントが読めません。assets/ に "
 			       "MPLUS1p-Regular.ttf があるか確認してください"
-			       "（assets/font.ttf かスキンの font.ttf を置けばそちらが使われます）。\n");
+			       "（font.ttf をユーザーフォルダかスキンに置けば"
+			       "そちらが使われます）。\n");
 		}
 	}
 
@@ -428,12 +488,28 @@ int main(int argc, char **argv) {
 		std::string err;
 		draw.SetTextLayer(&textLayer);
 		if (!draw.Init(&skin, &err)) {
-			printf("ERROR: %s\n", err.c_str());
-			printf("       -assets <dir> で素材の場所を、-skin <name> でスキンを"
-			       "指定してください。\n");
-			screen.Close();
-			SDL_Quit();
-			return EXIT_FAILURE;
+			// 素材の足りないスキンでも起動できなくならないよう、同梱の
+			// Default へ逃がす（layout.ini を書かずに theme.mxv だけ置いた
+			// ユーザースキンなど）。
+			printf("warning  : スキン %s を使えません: %s\n", settings.skinName.c_str(),
+			       err.c_str());
+			const bool retry = (settings.skinName != kFallbackSkin) &&
+			                   skin.Load(paths, kFallbackSkin, &err);
+			if (retry) {
+				settings.skinName = kFallbackSkin;
+				dirtyFields |= mxv2::Settings::kFieldSkin;
+				screen.Resize(skin.screenW, skin.screenH, &err);
+				textLayer.SetFontDirs(mxv2::FontSearchDirs(skin, paths));
+				textLayer.Rebuild(&screen, &err);
+			}
+			if (!retry || !draw.Init(&skin, &err)) {
+				printf("ERROR: %s\n", err.c_str());
+				printf("       -assets <dir> で同梱素材の場所を、-skin <name> でスキンを"
+				       "指定してください。\n");
+				screen.Close();
+				SDL_Quit();
+				return EXIT_FAILURE;
+			}
 		}
 		draw.SetFileListFontSize(settings.fileListFontSize);
 	}
@@ -466,7 +542,7 @@ int main(int argc, char **argv) {
 	mxv2::SettingsUi ui;
 	{
 		std::string err;
-		if (!ui.Init(&screen, assetsDir, &err)) {
+		if (!ui.Init(&screen, paths, &err)) {
 			// 設定 UI が無くても演奏はできるので、警告だけ出して続ける。
 			printf("warning  : %s\n", err.c_str());
 		}
@@ -783,7 +859,7 @@ int main(int argc, char **argv) {
 
 			mxv2::Skin next;
 			std::string err;
-			if (!next.Load(mxv2::JoinPath(skinRootDir, name), &err)) {
+			if (!next.Load(paths, name, &err)) {
 				printf("warning  : スキン %s を読めません: %s\n", name.c_str(), err.c_str());
 			} else {
 				const mxv2::Skin prev = skin;
@@ -794,7 +870,7 @@ int main(int argc, char **argv) {
 				// 描き直すので、その前にレイヤーを作り直しておく。
 				bool ok = screen.Resize(skin.screenW, skin.screenH, &err);
 				if (ok) {
-					textLayer.SetSkinDir(skin.dir());
+					textLayer.SetFontDirs(mxv2::FontSearchDirs(skin, paths));
 					textLayer.Rebuild(&screen, &err);
 					ok = draw.Init(&skin, &err);
 				}
@@ -803,7 +879,7 @@ int main(int argc, char **argv) {
 					       err.c_str());
 					skin = prev;
 					screen.Resize(skin.screenW, skin.screenH, &err);
-					textLayer.SetSkinDir(skin.dir());
+					textLayer.SetFontDirs(mxv2::FontSearchDirs(skin, paths));
 					textLayer.Rebuild(&screen, &err);
 					draw.Init(&skin, &err);
 				} else {

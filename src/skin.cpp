@@ -65,6 +65,17 @@ std::string IndexedKey(const char *prefix, int i) {
 	return buf;
 }
 
+// 土台を辿る深さの上限（自分を含む）。循環は名前で弾くので、これは
+// 「異様に長い連鎖で時間を食わない」ための保険。
+const int kMaxSkinDepth = 8;
+
+// skinDir/layout.ini の [Skin] Base を読む。
+std::string ReadBaseRef(const std::string &skinDir) {
+	Ini ini;
+	if (!ini.Load(JoinPath(skinDir, "layout.ini"))) return std::string();
+	return ini.GetString("Skin", "Base", std::string());
+}
+
 }  // namespace
 
 Skin::Skin() {
@@ -228,32 +239,53 @@ Skin::Skin() {
 	scrollBarBitmap = "scrollbar.bmp";
 }
 
-bool Skin::Load(const std::string &skinDir, std::string *err) {
-	dir_ = skinDir;
-	baseDir_.clear();
-	return LoadInto(skinDir, err, 0);
-}
+bool Skin::Load(const AssetPaths &paths, const std::string &ref, std::string *err) {
+	*this = Skin();  // 既定値から組み立て直す
+	ref_ = ref;
 
-bool Skin::LoadInto(const std::string &skinDir, std::string *err, int depth) {
-	if (depth > 4) {
-		*err = "スキンの Base 指定が深すぎます（循環している可能性があります）。";
-		return false;
+	// 自分 -> 土台 -> その土台 … と辿って、探索先を並べる。
+	// 同じ指定へ戻ってきたら循環なので打ち切る。
+	std::vector<std::string> visited;
+	std::string current = ref;
+	for (int depth = 0; depth < kMaxSkinDepth; depth++) {
+		const std::string dir = paths.SkinDir(current);
+		if (dir.empty()) {
+			if (depth == 0) {
+				*err = "スキン " + ref + " が見つかりません。";
+				return false;
+			}
+			break;  // 土台が無いだけなら、そこまでで組み立てる
+		}
+		// 書き方違いで同じフォルダに戻ってくることがある
+		// （ユーザー側に無い "X" と "assets:X" は同じものを指す）。
+		bool already = false;
+		for (size_t i = 0; i < dirs_.size() && !already; i++) already = (dirs_[i] == dir);
+		if (already) break;
+		dirs_.push_back(dir);
+		visited.push_back(current);
+
+		const std::string base = ReadBaseRef(dir);
+		if (base.empty()) break;
+		bool loop = false;
+		for (size_t i = 0; i < visited.size() && !loop; i++) {
+			loop = (CompareNoCase(visited[i], base) == 0);
+		}
+		if (loop) break;
+		current = base;
 	}
 
+	// 優先度の低い方から重ねる（後から読んだ値が勝つ）。
+	// dirs_ は「自分, 土台, その土台, …」の順なので、逆から回せば
+	// 一番遠い土台 -> … -> 自分 になる。
+	for (size_t i = dirs_.size(); i-- > 0;) ApplyLayout(dirs_[i]);
+	return true;
+}
+
+void Skin::ApplyLayout(const std::string &skinDir) {
 	Ini ini;
 	if (!ini.Load(JoinPath(skinDir, "layout.ini"))) {
 		// layout.ini が無いスキンは、既定レイアウトのまま使う。
-		return true;
-	}
-
-	// 土台があれば先に読む（自分の値で上書きするため）。
-	const std::string base = ini.GetString("Skin", "Base", std::string());
-	if (!base.empty() && depth == 0) {
-		const std::string parent = JoinPath(ParentDir(skinDir), base);
-		if (IsDirectory(parent)) {
-			baseDir_ = parent;
-			if (!LoadInto(parent, err, depth + 1)) return false;
-		}
+		return;
 	}
 
 	screenW = ini.GetInt("Screen", "Width", screenW);
@@ -379,27 +411,22 @@ bool Skin::LoadInto(const std::string &skinDir, std::string *err, int depth) {
 	palRed = ini.GetInt("PlayKey", "PalRed", palRed);
 	palGreen = ini.GetInt("PlayKey", "PalGreen", palGreen);
 	playKeyBitmap = ini.GetString("PlayKey", "ImgPlayKey", playKeyBitmap);
-
-	return true;
 }
 
 std::string Skin::FindFile(const std::string &name) const {
-	const std::string own = JoinPath(dir_, name);
-	if (FileExists(own)) return own;
-	if (!baseDir_.empty()) {
-		const std::string base = JoinPath(baseDir_, name);
-		if (FileExists(base)) return base;
+	for (size_t i = 0; i < dirs_.size(); i++) {
+		const std::string path = JoinPath(dirs_[i], name);
+		if (FileExists(path)) return path;
 	}
-	return own;
+	// 見つからなかったときは、エラー文言に出せるパスを返す。
+	return dirs_.empty() ? name : JoinPath(dirs_[0], name);
 }
 
-void ListSkins(const std::string &skinRootDir, std::vector<std::string> *out) {
-	out->clear();
-	std::vector<DirEntry> entries;
-	if (!ListDirectory(skinRootDir, &entries)) return;
-	for (size_t i = 0; i < entries.size(); i++) {
-		if (entries[i].isDir) out->push_back(entries[i].name);
-	}
+std::vector<std::string> FontSearchDirs(const Skin &skin, const AssetPaths &paths) {
+	std::vector<std::string> dirs = skin.dirs();
+	const std::vector<std::string> roots = paths.Roots();
+	dirs.insert(dirs.end(), roots.begin(), roots.end());
+	return dirs;
 }
 
 }  // namespace mxv2

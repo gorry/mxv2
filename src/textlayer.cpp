@@ -32,23 +32,21 @@ TextLayer::~TextLayer() {
 	Shutdown();
 }
 
-bool TextLayer::Init(Screen *screen, const std::string &skinDir, const std::string &assetsDir,
-                     std::string *err) {
+bool TextLayer::Init(Screen *screen, const std::vector<std::string> &fontDirs, std::string *err) {
 	if (screen == 0 || screen->renderer() == 0) {
 		*err = "文字レイヤーの初期化にはウィンドウが要ります。";
 		return false;
 	}
-	skinDir_ = skinDir;
-	assetsDir_ = assetsDir;
-	if (text_ == 0) text_ = CreateTextRenderer(skinDir_, assetsDir_);
+	fontDirs_ = fontDirs;
+	if (text_ == 0) text_ = CreateTextRenderer(fontDirs_);
 	return Resize(screen, err);
 }
 
-void TextLayer::SetSkinDir(const std::string &skinDir) {
-	if (skinDir == skinDir_ && text_ != 0) return;
-	skinDir_ = skinDir;
+void TextLayer::SetFontDirs(const std::vector<std::string> &fontDirs) {
+	if (fontDirs == fontDirs_ && text_ != 0) return;
+	fontDirs_ = fontDirs;
 	delete text_;
-	text_ = CreateTextRenderer(skinDir_, assetsDir_);
+	text_ = CreateTextRenderer(fontDirs_);
 }
 
 void TextLayer::Shutdown() {

@@ -33,10 +33,9 @@ public:
 	TextLayer();
 	~TextLayer();
 
-	// フォントを読み、出力解像度に合わせたバッファを作る。フォントは
-	// skinDir/font.ttf -> assetsDir/font.ttf -> 同梱フォント の順に探す。
-	bool Init(Screen *screen, const std::string &skinDir, const std::string &assetsDir,
-	          std::string *err);
+	// フォントを読み、出力解像度に合わせたバッファを作る。fontDirs は
+	// フォントを探す場所の並び（Skin と AssetPaths が決める）。
+	bool Init(Screen *screen, const std::vector<std::string> &fontDirs, std::string *err);
 	void Shutdown();
 
 	// フォントが読めたか。false なら呼び出し側が 5x7 の ASCII へ退避する。
@@ -66,14 +65,13 @@ public:
 	void Render(Screen *screen);
 
 	// スキンが変わったらフォントを読み直す。
-	void SetSkinDir(const std::string &skinDir);
+	void SetFontDirs(const std::vector<std::string> &fontDirs);
 
 private:
 	bool Resize(Screen *screen, std::string *err);
 	void Release();
 
-	std::string skinDir_;
-	std::string assetsDir_;
+	std::vector<std::string> fontDirs_;
 	TextRenderer *text_;
 	SDL_Texture *texture_;
 

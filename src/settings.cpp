@@ -23,8 +23,8 @@ Settings::Settings()
       windowX(-1),
       windowY(-1) {}
 
-std::string Settings::DefaultPath() {
-	return JoinPath(ExecutableDir(), "mxv2.ini");
+std::string Settings::PathIn(const std::string &dir) {
+	return JoinPath(dir, "mxv2.ini");
 }
 
 bool Settings::Load(const std::string &path) {

@@ -4,22 +4,30 @@
 // 埋め込んでいた。mxv2 ではそれをフォルダ単位の「スキン」へ出し、
 // 差し替えられるようにする。
 //
-//   assets/skin/<名前>/
+//   skin/<名前>/
 //       layout.ini     画面サイズと各部品の座標（このファイルが読むもの）
 //       theme.mxv      配色（theme.* が読む。設定ウィンドウで編集・保存できる）
 //       font.ttf       文字描画に使うフォント（省略可）
 //       *.bmp          素材ビットマップ
 //
+// skin/ は同梱ぶん (assets/) とユーザーフォルダの両方にある。1 つのスキンは
+// どちらか一方のフォルダのもので、指定は "<名前>"（ユーザーフォルダ。
+// 無ければ同梱）か "assets:<名前>"（同梱を名指し）。assetpath.h を見ること。
+//
 // layout.ini に `[Skin] Base=<名前>` を書くと、そのスキンを土台にできる。
 // 土台の layout.ini を読んでから自分の値で上書きし、ファイル（.bmp や
 // font.ttf）も自分のフォルダに無ければ土台のフォルダを見に行く。
-// 配色だけ変えたスキンなら 2 ファイルで済む。
+// 配色だけ変えたスキンなら 2 ファイルで済む。土台の土台も辿る
+// （「名前を付けて保存」したテーマが、土台つきのスキンからでも作れるように）。
+// 循環したところで打ち切る。
 
 #ifndef MXV2_SKIN_H
 #define MXV2_SKIN_H
 
 #include <string>
 #include <vector>
+
+#include "assetpath.h"
 
 namespace mxv2 {
 
@@ -123,16 +131,19 @@ struct Skin {
 
 	Skin();
 
-	// skinDir の layout.ini を読む。Base 指定があれば先に土台を読む。
-	// layout.ini が無くても既定値のまま true を返す（配色だけのスキン用）。
-	bool Load(const std::string &skinDir, std::string *err);
+	// スキンを読む。ref は "<名前>" か "assets:<名前>" (assetpath.h)。
+	// 既定値から組み立て直すので、使い回してよい。layout.ini が無くても、
+	// フォルダさえあれば既定レイアウトのまま true を返す（配色だけの
+	// スキン用）。フォルダが無ければ false。
+	bool Load(const AssetPaths &paths, const std::string &ref, std::string *err);
 
-	// 素材を探す。自分のフォルダ -> 土台のフォルダ の順。
-	// 見つからなければ自分のフォルダのパスを返す（呼び出し側でエラーにする）。
+	// 素材を探す。dirs() の並び順（自分 -> 土台 -> その土台 …）。
+	// 見つからなければ先頭のフォルダのパスを返す（呼び出し側でエラーにする）。
 	std::string FindFile(const std::string &name) const;
 
-	const std::string &dir() const { return dir_; }
-	const std::string &baseDir() const { return baseDir_; }
+	const std::string &ref() const { return ref_; }
+	// このスキンのファイルを探す場所。優先度の高い順。
+	const std::vector<std::string> &dirs() const { return dirs_; }
 
 	// ---- 導出値 -------------------------------------------------------
 	int fileListMaxItemH() const {
@@ -144,14 +155,15 @@ struct Skin {
 	int volBarMovement() const { return volW - volNobW; }
 
 private:
-	bool LoadInto(const std::string &skinDir, std::string *err, int depth);
+	// skinDir/layout.ini を今の値の上に重ねる。無ければ何もしない。
+	void ApplyLayout(const std::string &skinDir);
 
-	std::string dir_;
-	std::string baseDir_;
+	std::string ref_;
+	std::vector<std::string> dirs_;
 };
 
-// assets/skin の下にあるスキン名を並べる。
-void ListSkins(const std::string &skinRootDir, std::vector<std::string> *out);
+// フォントを探す場所の並び。スキンのフォルダ -> 素材のルート。
+std::vector<std::string> FontSearchDirs(const Skin &skin, const AssetPaths &paths);
 
 }  // namespace mxv2
 

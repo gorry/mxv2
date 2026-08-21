@@ -1,6 +1,6 @@
 // mxv2 - 設定の保存と復元
 //
-// 旧 mxv の mxv.ini にあたる。実行ファイルの隣の mxv2.ini を読み書きする。
+// 旧 mxv の mxv.ini にあたる。ユーザーフォルダの mxv2.ini を読み書きする。
 // 旧 mxv にあった [Switch] の SampleRate / Between / PCMBuf / ROMEO は
 // mxv2 では固定（48000 / SDL 任せ / 非対応）なので持たない。
 //
@@ -15,7 +15,7 @@ namespace mxv2 {
 
 struct Settings {
 	// [Screen]
-	std::string skinName;  // assets/skin/<名前>
+	std::string skinName;  // skin/<名前>（同梱ぶんとユーザーぶんの両方から探す）
 	// 表示倍率 (%)。100 でドット等倍。0 なら「まだ決まっていない」で、
 	// 初回起動時にシステムの拡大率 (175% など) を拾って埋める。
 	int zoomPercent;
@@ -73,8 +73,9 @@ struct Settings {
 
 	Settings();
 
-	// 実行ファイルの隣の mxv2.ini のパス。
-	static std::string DefaultPath();
+	// dir に置く mxv2.ini のパス。dir はふつうユーザーフォルダ
+	// （UserDataDir()。実行ファイルの隣は書けないことがある）。
+	static std::string PathIn(const std::string &dir);
 
 	bool Load(const std::string &path);
 	bool Save(const std::string &path) const;

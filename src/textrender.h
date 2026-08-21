@@ -9,11 +9,11 @@
 // のは呼び出し側 (BmpBlendMask) の仕事。この形にしておくと、テーマの文字色と
 // Bright をそのまま使える。
 //
-// 実装は stb_truetype (third_party/imgui に同梱) と、assets の同梱フォント
-// だけで完結する。OS のフォント API に依存しないので、Windows / Android /
+// 実装は stb_truetype (third_party/imgui に同梱) と同梱フォントだけで
+// 完結する。OS のフォント API に依存しないので、Windows / Android /
 // Emscripten で同じ絵が出る。
 //
-// 5x7 フォント (assets/font5x7.bmp) はビジュアライザ用であって、ここの
+// 5x7 フォント (スキンの font5x7.bmp) はビジュアライザ用であって、ここの
 // 代わりにはならない。フォントが読めなかったときだけ、最低限の非常用として
 // 呼び出し側が使う。
 
@@ -21,6 +21,7 @@
 #define MXV2_TEXTRENDER_H
 
 #include <string>
+#include <vector>
 
 #include "bitmap.h"
 
@@ -41,10 +42,11 @@ public:
 	                  const std::string &utf8) = 0;
 };
 
-// 実装を作る。フォントは
-//   skinDir/font.ttf -> assetsDir/font.ttf -> assetsDir/同梱フォント
-// の順に探す。skinDir が空なら assets だけを見る。呼び出し側が delete する。
-TextRenderer *CreateTextRenderer(const std::string &skinDir, const std::string &assetsDir);
+// 実装を作る。searchDirs を順に見て font.ttf を探し、どこにも無ければ
+// 同じ順で同梱フォントを探す（差し替え用の font.ttf が常に優先されるよう、
+// 2 周に分けている）。並びは Skin と AssetPaths が決める (FontSearchDirs)。
+// 呼び出し側が delete する。
+TextRenderer *CreateTextRenderer(const std::vector<std::string> &searchDirs);
 
 }  // namespace mxv2
 

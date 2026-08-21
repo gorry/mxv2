@@ -5,6 +5,8 @@
 #include <cstdio>
 #include <cstring>
 
+#include <cstdlib>
+
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -13,6 +15,13 @@
 #include <limits.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#endif
+
+// Android と Web には「ユーザーフォルダ」の決まった作法が無いので、
+// そこだけ SDL に聞く。デスクトップは環境変数から自分で組み立てるので、
+// SDL を使わないツール (mxv2_chunktest) からもこのファイルを使える。
+#if defined(__ANDROID__) || defined(__EMSCRIPTEN__)
+#include <SDL.h>
 #endif
 
 namespace mxv2 {
@@ -68,6 +77,35 @@ bool IsSeparator(char c) {
 	return c == '\\' || c == '/';
 #else
 	return c == '/';
+#endif
+}
+
+// 末尾に区切りを 1 つだけ付ける。
+std::string WithSeparator(const std::string &dir) {
+	if (dir.empty()) return dir;
+	if (IsSeparator(dir[dir.size() - 1])) return dir;
+#ifdef _WIN32
+	return dir + "\\";
+#else
+	return dir + "/";
+#endif
+}
+
+// 環境変数。無ければ空文字列。Windows はワイド版で読んで UTF-8 に直す
+// （ユーザー名に非 ASCII が入っていると %APPDATA% がそうなる）。
+std::string EnvVar(const char *name) {
+#ifdef _WIN32
+	std::wstring wname(name, name + strlen(name));
+	DWORD n = GetEnvironmentVariableW(wname.c_str(), NULL, 0);
+	if (n == 0) return std::string();
+	std::wstring buf(n, L'\0');
+	DWORD got = GetEnvironmentVariableW(wname.c_str(), &buf[0], n);
+	if (got == 0 || got >= n) return std::string();
+	buf.resize(got);
+	return WideToUtf8(buf);
+#else
+	const char *v = getenv(name);
+	return (v != NULL) ? std::string(v) : std::string();
 #endif
 }
 
@@ -178,6 +216,35 @@ std::string ExecutableDir() {
 #endif
 }
 
+std::string UserDataDir(const std::string &appName) {
+#if defined(__ANDROID__) || defined(__EMSCRIPTEN__)
+	// 内部ストレージの場所は OS ごとに違ううえに実行時にしか分からない。
+	char *pref = SDL_GetPrefPath("", appName.c_str());
+	if (pref == NULL) return ExecutableDir();
+	std::string dir = WithSeparator(std::string(pref));
+	SDL_free(pref);
+	return dir;
+#elif defined(_WIN32)
+	// %APPDATA%\<appName>\ （ローミングする側。設定ファイルの定位置）。
+	const std::string base = EnvVar("APPDATA");
+	if (base.empty()) return ExecutableDir();
+	return WithSeparator(JoinPath(base, appName));
+#elif defined(__APPLE__)
+	const std::string home = EnvVar("HOME");
+	if (home.empty()) return ExecutableDir();
+	return WithSeparator(JoinPath(JoinPath(home, "Library/Application Support"), appName));
+#else
+	// XDG Base Directory の作法。$XDG_DATA_HOME が無ければ ~/.local/share。
+	std::string base = EnvVar("XDG_DATA_HOME");
+	if (base.empty()) {
+		const std::string home = EnvVar("HOME");
+		if (home.empty()) return ExecutableDir();
+		base = JoinPath(home, ".local/share");
+	}
+	return WithSeparator(JoinPath(base, appName));
+#endif
+}
+
 bool IsDirectory(const std::string &path) {
 #ifdef _WIN32
 	std::wstring w = Utf8ToWide(path);
@@ -188,6 +255,38 @@ bool IsDirectory(const std::string &path) {
 	struct stat st;
 	if (stat(path.c_str(), &st) != 0) return false;
 	return S_ISDIR(st.st_mode);
+#endif
+}
+
+bool MakeDirectories(const std::string &pathIn) {
+	if (pathIn.empty()) return false;
+
+	// 末尾の区切りは落としておく（"C:\" や "/" のように、落とすと意味が
+	// 変わるものは除く）。
+	std::string path = pathIn;
+	while (path.size() > 1 && IsSeparator(path[path.size() - 1])) {
+		const char prev = path[path.size() - 2];
+		if (IsSeparator(prev) || prev == ':') break;
+		path.erase(path.size() - 1);
+	}
+
+	if (IsDirectory(path)) return true;
+
+	// 親を先に作る。ParentDir はルートまで来ると同じものを返すので、
+	// それを打ち止めにする。
+	const std::string parent = ParentDir(path);
+	if (parent != path && !parent.empty() && !IsDirectory(parent)) {
+		if (!MakeDirectories(parent)) return false;
+	}
+
+#ifdef _WIN32
+	std::wstring w = Utf8ToWide(path);
+	if (w.empty()) return false;
+	if (CreateDirectoryW(w.c_str(), NULL)) return true;
+	return GetLastError() == ERROR_ALREADY_EXISTS;
+#else
+	if (mkdir(path.c_str(), 0755) == 0) return true;
+	return IsDirectory(path);
 #endif
 }
 

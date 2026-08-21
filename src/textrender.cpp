@@ -28,6 +28,16 @@ const char *kBundledFont = "MPLUS1p-Regular.ttf";
 // 内部でやっているのと同じ狙い）。1.0 で素のまま、小さいほど太くなる。
 const float kCoverageGamma = 0.72f;
 
+// 渡された順にディレクトリを見て、最初に見つかったものを返す。
+std::string FindFirst(const std::vector<std::string> &dirs, const char *name) {
+	for (size_t i = 0; i < dirs.size(); i++) {
+		if (dirs[i].empty()) continue;
+		const std::string path = JoinPath(dirs[i], name);
+		if (FileExists(path)) return path;
+	}
+	return std::string();
+}
+
 const uint8_t *CoverageTable() {
 	static uint8_t table[256];
 	static bool ready = false;
@@ -98,11 +108,10 @@ public:
 		memset(&font_, 0, sizeof(font_));
 	}
 
-	bool Load(const std::string &skinDir, const std::string &assetsDir) {
-		std::string path;
-		if (!skinDir.empty()) path = JoinPath(skinDir, kUserFont);
-		if (path.empty() || !FileExists(path)) path = JoinPath(assetsDir, kUserFont);
-		if (!FileExists(path)) path = JoinPath(assetsDir, kBundledFont);
+	bool Load(const std::vector<std::string> &searchDirs) {
+		std::string path = FindFirst(searchDirs, kUserFont);
+		if (path.empty()) path = FindFirst(searchDirs, kBundledFont);
+		if (path.empty()) return false;
 		if (!ReadWholeFile(path, &data_) || data_.empty()) return false;
 
 		const int offset = stbtt_GetFontOffsetForIndex(&data_[0], 0);
@@ -244,9 +253,9 @@ private:
 
 }  // namespace
 
-TextRenderer *CreateTextRenderer(const std::string &skinDir, const std::string &assetsDir) {
+TextRenderer *CreateTextRenderer(const std::vector<std::string> &searchDirs) {
 	StbTextRenderer *r = new StbTextRenderer();
-	if (r->Load(skinDir, assetsDir)) return r;
+	if (r->Load(searchDirs)) return r;
 	delete r;
 	return new NullTextRenderer();
 }
