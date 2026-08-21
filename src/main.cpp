@@ -2,7 +2,7 @@
 //
 // 使い方:
 //   mxv2 [オプション] [<mdxfile> | <ディレクトリ>]
-// 引数を省略するとカレントディレクトリのファイラだけを開く。
+// 引数を省略するとカレントディレクトリのファイラーだけを開く。
 
 #include <cstdio>
 #include <cstdlib>
@@ -178,7 +178,7 @@ void PrintUsage(const char *argv0) {
 	    "  -assets <dir>   同梱素材の場所 (既定: 実行ファイルの隣の assets)\n"
 	    "  -userdir <dir>  設定とユーザー素材の場所 (既定: OS のユーザーフォルダ)\n"
 	    "  -skin <name>    スキン名 (assets:<name> で同梱ぶんを名指し。既定: Default)\n"
-	    "  -folderfirst    ファイラでフォルダを先に並べる\n"
+	    "  -folderfirst    ファイラーでフォルダを先に並べる\n"
 	    "  -noquit         演奏終了後も閉じない\n"
 	    "  -console        ログを出すコンソールを開く (既定は開かない)\n",
 	    argv0);
@@ -469,7 +469,7 @@ int main(int argc, char **argv) {
 		settings.scaleFilter = resolved;
 	}
 
-	// ファイラと曲名の文字は、キャンバスとは別に出力解像度で描いて重ねる。
+	// ファイラーと曲名の文字は、キャンバスとは別に出力解像度で描いて重ねる。
 	mxv2::TextLayer textLayer;
 	{
 		std::string err;

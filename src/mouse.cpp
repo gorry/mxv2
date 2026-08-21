@@ -93,9 +93,9 @@ MouseRequest MouseInput::OnButtonDown(int x, int y, int clicks) {
 
 	// スクロールバー
 	//
-	// ファイルリストより先に見ること。スキンによっては [FileList] の矩形が
+	// ファイラーより先に見ること。スキンによっては [FileList] の矩形が
 	// [ScrollBar] の矩形を含んでいることがあり（Phone がそうだった）、
-	// 順番が逆だとスクロールバーのクリックがファイルリストに食われて
+	// 順番が逆だとスクロールバーのクリックがファイラーに食われて
 	// 「触っても反応しない」状態になる。描画はスクロールバーが上に来るので、
 	// 当たり判定もそれに合わせる。
 	{
@@ -111,7 +111,7 @@ MouseRequest MouseInput::OnButtonDown(int x, int y, int clicks) {
 		}
 	}
 
-	// ファイルリスト
+	// ファイラー
 	{
 		const int row = draw_->HitCheckFileList(x, y);
 		if (row >= 0) {
@@ -258,7 +258,7 @@ MouseRequest MouseInput::OnButtonUp(int x, int y) {
 	const bool moved = dragMoved_;
 	ReleaseAll();
 
-	// ファイルリストは、ドラッグせずに離したときだけカーソルを合わせる。
+	// ファイラーは、ドラッグせずに離したときだけカーソルを合わせる。
 	if (captured == kCapturedFileList) {
 		if (!moved) {
 			if (pending >= 0) filer_->SetCursor(pending);

@@ -1,4 +1,4 @@
-// mxv2 - ファイラ（旧 mxv/Filer.cpp の移植）
+// mxv2 - ファイラー（旧 mxv/Filer.cpp の移植）
 
 #include "filer.h"
 

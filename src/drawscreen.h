@@ -45,7 +45,7 @@ public:
 	Colors &colors() { return colors_; }
 	const Bitmap &screen() const { return screen_; }
 
-	// ファイラと曲名の文字は、キャンバスではなく出力解像度のレイヤーへ描く。
+	// ファイラーと曲名の文字は、キャンバスではなく出力解像度のレイヤーへ描く。
 	// 設定しない場合は 5x7 フォントの ASCII 表示へ退避する。
 	void SetTextLayer(TextLayer *layer) { textLayer_ = layer; }
 
@@ -85,7 +85,7 @@ public:
 	void PutTotalVolBar(int volume, bool refresh);
 	void PutPlayKey(uint32_t status, bool refresh);
 
-	// ---- ファイラ ---------------------------------------------------
+	// ---- ファイラー ---------------------------------------------------
 	// 画面に収まる行数。Filer::SetViewMetrics へ渡す。
 	int fileListRows() const;
 	// 1 行の高さ (px)。Filer::SetViewMetrics へ渡す（画素スクロールに要る）。
@@ -188,7 +188,7 @@ private:
 	// ステータス欄の共通処理: 背景を戻してから文字を合成する。
 	void PutStatusText(int x, int y, int cells, const char *text);
 
-	// スクロールバーの一部分を画面へ合成する（ファイルリストと重なる列を
+	// スクロールバーの一部分を画面へ合成する（ファイラーと重なる列を
 	// 避けて描くために分割して呼ぶ）。
 	void CompositeScrollBar(int x, int y, int w, int h);
 

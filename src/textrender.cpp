@@ -159,7 +159,7 @@ private:
 		Glyph() : w(0), h(0), xoff(0), yoff(0), advance(0) {}
 	};
 
-	// 焼いたグリフは使い回す。曲名 (14px) とファイルリスト (10/13px) が
+	// 焼いたグリフは使い回す。曲名 (14px) とファイラーの行 (10/13px) が
 	// 交互に来るので、サイズごとに持たないと焼き直しになる。
 	typedef std::map<uint32_t, Glyph> GlyphMap;
 

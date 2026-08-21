@@ -170,7 +170,7 @@ float FramesToMs(int frames, const Player *player) {
 	return frames * 1000.0f / (float)player->sampleRate();
 }
 
-// フォルダ名を並べるときの順。ファイラ (filer.cpp) と同じ規則。
+// フォルダ名を並べるときの順。ファイラー (filer.cpp) と同じ規則。
 bool LessPathNoCase(const std::string &a, const std::string &b) {
 	return CompareNoCase(a, b) < 0;
 }
@@ -487,7 +487,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	// 同じ階層で掛け替えられないので、片方が閉じきってからもう片方を開く。
 	if (folderOpenPending_ && !ImGui::IsPopupOpen(kSettingsTitle)) {
 		folderOpenPending_ = false;
-		// PDX の探索先が入っていればそこから、無ければファイラの今の場所から。
+		// PDX の探索先が入っていればそこから、無ければファイラーの今の場所から。
 		const std::string start =
 		    IsDirectory(pdxPathBuf_) ? std::string(pdxPathBuf_) : filer->currentDir();
 		SetFolderDir(start);
@@ -608,8 +608,8 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 		}
 	}
 
-	// ---- ファイラ ------------------------------------------------------
-	if (ImGui::CollapsingHeader("ファイラ", ImGuiTreeNodeFlags_DefaultOpen)) {
+	// ---- ファイラー ------------------------------------------------------
+	if (ImGui::CollapsingHeader("ファイラー", ImGuiTreeNodeFlags_DefaultOpen)) {
 		bool largeFont = (settings->fileListFontSize != 0);
 		if (ImGui::Checkbox("大きい文字で表示する", &largeFont)) {
 			settings->fileListFontSize = largeFont ? 1 : 0;
@@ -817,7 +817,7 @@ void SettingsUi::BuildColorsWindow(Settings *settings, DrawScreen *draw, Player 
 			if (BrightRow("背景の強さ##ti", &t.mdxTitle.backColorBright)) dirty = true;
 		}
 
-		ImGui::SeparatorText("ファイルリスト");
+		ImGui::SeparatorText("ファイラー");
 		{
 			if (ColorRow("カーソル##fi", &t.filer.cursorBright)) dirty = true;
 			if (ColorRow("文字色##fi", &t.filer.color)) dirty = true;
@@ -966,7 +966,7 @@ void SettingsUi::SetFolderDir(const std::string &dir) {
 }
 
 // 一覧で選んだものを入力欄へ移すだけ。中へは入らない。
-// メイン画面のファイラと同じで、クリックは選ぶだけ・ダブルクリックで移動。
+// メイン画面のファイラーと同じで、クリックは選ぶだけ・ダブルクリックで移動。
 void SettingsUi::SelectFolderEntry(const std::string &path) {
 	folderSelected_ = path;
 	snprintf(folderPathBuf_, sizeof(folderPathBuf_), "%s", path.c_str());
@@ -977,7 +977,7 @@ void SettingsUi::SelectFolderEntry(const std::string &path) {
 // 原典は SHBrowseForFolder を出していたが、あれは Windows 専用なので、
 // パスの打ち込みと子フォルダの一覧を持つ自前のダイアログにしてある。
 // 決まった行き先は request_ に積んで、実際の移動はメインループに任せる
-// （ファイラの持ち物はあちらなので、コンテキストメニューと同じ作法）。
+// （ファイラーの持ち物はあちらなので、コンテキストメニューと同じ作法）。
 // -h と同じ文面を、キー名と説明に切り分けて持つ。
 //   ・行頭が空白でない行は見出し（「キー操作:」など）
 //   ・それ以外は「空白 2 個以上」で左右に割る
@@ -1151,7 +1151,7 @@ void SettingsUi::BuildFolderWindow(Settings *settings) {
 	}
 
 	// 子フォルダの一覧。クリックで選ぶだけ、ダブルクリックでその中へ入る。
-	// メイン画面のファイラと同じ操作感にしてある。
+	// メイン画面のファイラーと同じ操作感にしてある。
 	// 一覧の作り直しは回している最中にやってはいけないので、行き先を
 	// 控えてから動かす。
 	std::string nextDir;
@@ -1184,7 +1184,7 @@ void SettingsUi::BuildFolderWindow(Settings *settings) {
 				pick = path;
 			}
 		}
-		// ドライブ (Windows のみ)。旧 mxv のファイラが末尾に並べていたのと同じ。
+		// ドライブ (Windows のみ)。旧 mxv のファイラーが末尾に並べていたのと同じ。
 		const std::vector<std::string> drives = ListDrives();
 		if (!drives.empty()) {
 			ImGui::Separator();
@@ -1231,7 +1231,7 @@ void SettingsUi::BuildFolderWindow(Settings *settings) {
 			changedFields_ |= Settings::kFieldPdxPath;
 			showFolder_ = false;
 		} else {
-			// ファイラを動かすのはメインループの持ち物なので、要求だけ積む。
+			// ファイラーを動かすのはメインループの持ち物なので、要求だけ積む。
 			requestedFolder_ = AbsolutePath(want);
 			request_ = kRequestSetFolder;
 			showFolder_ = false;

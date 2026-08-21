@@ -62,7 +62,7 @@ git clone --depth 1 --branch v1.92.4 https://github.com/ocornut/imgui.git third_
 - `imstb_truetype.h`
 
 **最後の `imstb_truetype.h` に注意。** これは設定ウィンドウのためではなく、
-`src/textrender.cpp` がファイラと曲名の文字を焼くために直接 include している。
+`src/textrender.cpp` がファイラーと曲名の文字を焼くために直接 include している。
 **設定ウィンドウを使わなくても Dear ImGui は必須。**
 
 版を下げると通らない。`ImGuiStyle::FontScaleDpi` とグリフの動的追加を使って

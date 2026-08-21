@@ -34,7 +34,7 @@ int GetIntList(const Ini &ini, const char *section, const char *key, int *out, i
 	return n;
 }
 
-// ファイルリストの「小さい文字, 大きい文字」の 2 つ組を読む。
+// ファイラーの「小さい文字, 大きい文字」の 2 つ組を読む。
 // 1 つしか書かれていなければ、その値が両方に効く。
 void GetFontSizePair(const Ini &ini, const char *section, const char *key, int *out) {
 	int v[2] = { out[0], out[1] };

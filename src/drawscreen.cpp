@@ -537,7 +537,7 @@ void DrawScreen::PutMDXTitle(const std::string &titleUtf8) {
 }
 
 // ---------------------------------------------------------------------------
-// ファイルリスト
+// ファイラー
 // ---------------------------------------------------------------------------
 
 int DrawScreen::fileListRows() const {
@@ -677,7 +677,7 @@ void DrawScreen::SetScrollBarThumb(int y) {
 }
 
 // topPx / maxTopPx は Filer のスクロール位置（画素）。行番号ではなく画素で
-// 受けるので、ファイラを画素単位で送るとつまみも同じだけ滑らかに動く。
+// 受けるので、ファイラーを画素単位で送るとつまみも同じだけ滑らかに動く。
 void DrawScreen::PutScrollBar(int topPx, int maxTopPx) {
 	if (!scrollBar_.valid()) return;
 
@@ -720,12 +720,12 @@ void DrawScreen::PutScrollBar(int topPx, int maxTopPx) {
 		        &scrollBarBase_, s.x, s.y, 100);
 	}
 
-	// ファイルリストと重なっている列には触らない。
+	// ファイラーと重なっている列には触らない。
 	//
 	// BmpCopyComposite はパレット 0（透明）の画素に背景 (back_) をそのまま
 	// 敷く。つまり「毎フレーム背景で塗り直してから絵を載せる」ので、
-	// スクロールバーの矩形がファイルリストへ食い込んでいると、
-	// ファイルリストが差分描画で置いたカーソルの右端がそこだけ消えてしまう
+	// スクロールバーの矩形がファイラーへ食い込んでいると、
+	// ファイラーが差分描画で置いたカーソルの右端がそこだけ消えてしまう
 	// （Phone は指で掴みやすいよう、左側 12px を透明な当たり判定にしている。
 	//  [FileList] は x 4..464、[ScrollBar] は x 452..476 で 12px 重なる）。
 	// 重なりぶんは絵が無いので、描かずに残すのが正しい。
@@ -742,7 +742,7 @@ void DrawScreen::PutScrollBar(int topPx, int maxTopPx) {
 		CompositeScrollBar(sx, sy, sw, sh);
 		return;
 	}
-	// 縦に重なっている帯だけ、ファイルリストより右の列に限る。
+	// 縦に重なっている帯だけ、ファイラーより右の列に限る。
 	if (iy0 > sy) CompositeScrollBar(sx, sy, sw, iy0 - sy);
 	const int cx = Min(listRight, sx + sw);
 	if (cx < sx + sw) CompositeScrollBar(cx, iy0, sx + sw - cx, iy1 - iy0);

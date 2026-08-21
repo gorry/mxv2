@@ -71,7 +71,7 @@ public:
 	// フォルダを選ぶダイアログ (L)。旧 mxv の MX_GetNewDirFileList にあたる。
 	// 原典は SHBrowseForFolder だったが Windows 専用なので、パスの打ち込みと
 	// フォルダ一覧を持つ自前のダイアログにしてある。
-	// dir は最初に見せるフォルダ（ふつうはファイラの今の場所）。
+	// dir は最初に見せるフォルダ（ふつうはファイラーの今の場所）。
 	void OpenFolder(const std::string &dir) {
 		if (busy()) return;
 		folderTarget_ = kFolderTargetFiler;
@@ -127,13 +127,13 @@ public:
 	// ここでは要求だけ返す。
 	enum Request {
 		kRequestNone = 0,
-		kRequestOpenCursor,   // ファイラのカーソルを開く
+		kRequestOpenCursor,   // ファイラーのカーソルを開く
 		kRequestReplay,       // 今の曲を掛け直す
 		kRequestPrev,
 		kRequestNext,
 		kRequestToggleCont,
 		kRequestToggleRepeat,
-		kRequestSetFolder,    // ファイラを requestedFolder() へ移す
+		kRequestSetFolder,    // ファイラーを requestedFolder() へ移す
 		kRequestQuit,
 	};
 	Request TakeRequest() {
@@ -259,7 +259,7 @@ private:
 	bool closeOverwrite_;        // ESC で閉じてほしい
 
 	// フォルダを選ぶダイアログ。選んだ結果の行き先は 2 つある。
-	//   kFolderTargetFiler … ファイラを動かす (L キー / メニュー)
+	//   kFolderTargetFiler … ファイラーを動かす (L キー / メニュー)
 	//   kFolderTargetPdx   … PDX の探索先に入れる (設定ウィンドウの [参照...])
 	enum FolderTarget {
 		kFolderTargetFiler = 0,
