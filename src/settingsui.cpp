@@ -309,6 +309,10 @@ bool SettingsUi::Init(Screen *screen, const AssetPaths &paths, std::string *err)
 		style.ItemSpacing = ImVec2(6, 3);
 		style.ScrollbarSize = 12.0f;
 		style.Colors[ImGuiCol_WindowBg].w = 0.94f;
+		// モーダルの背後を曇らせない（ImGui の既定は白を薄く被せる）。
+		// ダイアログが手前にあるのは見れば分かるし、[配色設定] で色を
+		// 詰めているときに元の画面が白っぽくなるのは邪魔でしかない。
+		style.Colors[ImGuiCol_ModalWindowDimBg] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
 		baseStyle_ = style;  // 拡大率が変わったらここから作り直す
 	}
 
