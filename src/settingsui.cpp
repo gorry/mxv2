@@ -828,11 +828,11 @@ void SettingsUi::BuildColorsWindow(Settings *settings, DrawScreen *draw, Player 
 			if (BrightRow("背景の強さ##fi", &t.filer.backColorBright)) dirty = true;
 		}
 
-		ImGui::SeparatorText("操作キー");
+		ImGui::SeparatorText("操作ボタン");
 		{
 			if (ColorRow("文字色##pk", &t.playKey.color)) dirty = true;
 			if (BrightRow("文字の強さ##pk", &t.playKey.colorBright)) dirty = true;
-			if (BrightRow("キーの明るさ##pk", &t.playKey.keyBright)) dirty = true;
+			if (BrightRow("ボタンの明るさ##pk", &t.playKey.keyBright)) dirty = true;
 		}
 
 		if (dirty) Rebuild(draw, player);

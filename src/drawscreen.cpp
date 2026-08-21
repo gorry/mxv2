@@ -25,6 +25,12 @@ const size_t kMaxAsciiChars = 128;
 // 音量の「まだ一度も描いていない」印。-100..+100 のどれとも重ならない値。
 const int kVolumeNever = -1000;
 
+// 操作ボタンの「まだ一度も描いていない」印。
+// **0 を使ってはいけない**。全ボタンが上がっていて LED も消えている状態が
+// ちょうど 0 なので、背景を描き直した直後（演奏前など）に PutPlayKey を
+// 呼んでも「前回と同じ」と見なされ、ボタンが消えたままになる。
+const uint32_t kPlayKeyStatusNever = 0xffffffffu;
+
 // スクロールバーの部品の当たり判定。pos は {x, y}、src の w/h を大きさに使う。
 bool InRect(int x, int y, const int pos[2], const Xywh &src) {
 	return x >= pos[0] && x < pos[0] + src.w && y >= pos[1] && y < pos[1] + src.h;
@@ -59,7 +65,7 @@ DrawScreen::DrawScreen()
       fileListFontSize_(0),
       scrollBarFlags_(0),
       scrollBarThumb_(0),
-      playKeyStatusLast_(0),
+      playKeyStatusLast_(kPlayKeyStatusNever),
       progressBarLenLast_(-1),
       progressNowSecLast_(-1),
       totalVolBarLast_(kVolumeNever),
@@ -159,7 +165,7 @@ bool DrawScreen::LoadAssets(std::string *err) {
 	}
 	memcpy(scrollBar_.palette(), scrollBarBase_.palette(), sizeof(Rgb) * 256);
 
-	// 操作キーの LED は消灯状態から始める
+	// 操作ボタンの LED は消灯状態から始める
 	playKey_.SetPalette(skin_->palPlayLed, 25, 25, 25);
 	playKey_.SetPalette(skin_->palPauseLed, 25, 25, 25);
 	playKey_.SetPalette(skin_->palContLed, 25, 25, 25);
@@ -241,7 +247,7 @@ void DrawScreen::Reload() {
 	// 文字レイヤーも一度消す。行と曲名はこの後で描き直される。
 	if (textLayer_ != 0) textLayer_->ClearAll();
 
-	playKeyStatusLast_ = 0;
+	playKeyStatusLast_ = kPlayKeyStatusNever;
 	progressBarLenLast_ = -1;
 	progressNowSecLast_ = -1;
 	totalVolBarLast_ = kVolumeNever;
@@ -837,7 +843,7 @@ void DrawScreen::PutTotalVolBar(int volume, bool refresh) {
 }
 
 // ---------------------------------------------------------------------------
-// 操作キー
+// 操作ボタン
 // ---------------------------------------------------------------------------
 
 void DrawScreen::PutPlayKey(uint32_t status, bool refresh) {

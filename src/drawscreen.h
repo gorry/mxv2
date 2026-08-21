@@ -94,7 +94,7 @@ public:
 	void PutScrollBar(int topPx, int maxTopPx);
 
 	// ---- ヒットチェック (旧 mxv の Screen_HitCheck_*) ----------------
-	// 操作キー。戻り値は旧 mxv の MX_HITCODE_PLAYKEY_* と同じ並びで、
+	// 操作ボタン。戻り値は旧 mxv の MX_HITCODE_PLAYKEY_* と同じ並びで、
 	// 押下ビットは (1 << (hit-1)) = PlayKeyStatus の下位ビットに対応する。
 	enum PlayKeyHit {
 		kHitPlayKeyNone = 0,
@@ -148,7 +148,7 @@ public:
 	void SetFileListFontSize(int size);
 	int fileListFontSize() const { return fileListFontSize_; }
 
-	// 操作キーの状態ビット。旧 mxv の MX_PUTPLAYKEY_STATUS_* と同じ。
+	// 操作ボタンの状態ビット。旧 mxv の MX_PUTPLAYKEY_STATUS_* と同じ。
 	enum PlayKeyStatus {
 		kPlayKeyPrev = 1 << 0,
 		kPlayKeyStop = 1 << 1,
@@ -204,7 +204,7 @@ private:
 	Bitmap font_;             // 5x7 フォント
 	Bitmap levelMeter_;       // レベルメータ
 	Bitmap banner_;           // バナー
-	Bitmap playKey_;          // 操作キー
+	Bitmap playKey_;          // 操作ボタン
 	Bitmap progressBarBase_;  // プログレスバー素材
 	Bitmap progressBar_;      // プログレスバー組み立て用
 	Bitmap totalVolBarBase_;

@@ -139,7 +139,7 @@ MouseRequest MouseInput::OnButtonDown(int x, int y, int clicks) {
 		}
 	}
 
-	// 操作キー
+	// 操作ボタン
 	{
 		const int hit = draw_->HitCheckPlayKey(x, y);
 		if (hit != DrawScreen::kHitPlayKeyNone) {

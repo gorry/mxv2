@@ -108,9 +108,9 @@ struct Skin {
 	int volNobW;
 	Xywh volRect[2];  // volbar.bmp 内の つまみ / スライド
 
-	// ---- 操作キー -----------------------------------------------------
+	// ---- 操作ボタン -----------------------------------------------------
 	int playKeyX, playKeyY;
-	int numPlayKeys;         // 使うキーの数（SHUFFLE を含めるなら 9）
+	int numPlayKeys;         // 使うボタンの数（SHUFFLE を含めるなら 9）
 	Xywh playKeyRect[9];     // playkey.bmp 内の位置と大きさ
 	int playKeyPos[9][2];    // 画面上の配置（playKeyX/Y からの相対）
 
@@ -130,7 +130,7 @@ struct Skin {
 	std::string font5x7Bitmap;      // ビジュアライザ用の 5x7 フォント
 	std::string levelMeterBitmap;   // レベルメータ
 	std::string bannerBitmap;       // バナー
-	std::string playKeyBitmap;      // 操作キー
+	std::string playKeyBitmap;      // 操作ボタン
 	std::string progressBarBitmap;  // プログレスバー
 	std::string volBarBitmap;       // 音量バー
 	std::string scrollBarBitmap;    // スクロールバー

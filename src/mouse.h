@@ -44,7 +44,7 @@ public:
 	// 矢印・ページ送りの押しっぱなしオートリピート。毎フレーム 1 回呼ぶ。
 	void Poll(uint32_t nowMs);
 
-	// 操作キーの押下表示ビット。DrawScreen::PutPlayKey の status へ足す。
+	// 操作ボタンの押下表示ビット。DrawScreen::PutPlayKey の status へ足す。
 	uint32_t playKeyPressMask() const { return pressMask_; }
 
 	// 旧 mxv のオートリピート。20ms タイマで「10 回待って以降 2 回ごと」

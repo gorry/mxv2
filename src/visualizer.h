@@ -24,10 +24,10 @@ public:
 	// 再生位置 visualFrame に追いついたイベントを描画する。
 	void Consume(DispQueue *queue, uint64_t visualFrame);
 
-	// 進捗バー・操作キー・音量バーの更新。
+	// 進捗バー・操作ボタン・音量バーの更新。
 	//   autoNext   = CONT LED (演奏終了で次の曲へ)
 	//   autoRepeat = REPEAT LED
-	//   pressMask  = マウスで押されている操作キーのビット (MouseInput から)
+	//   pressMask  = マウスで押されている操作ボタンのビット (MouseInput から)
 	void UpdateChrome(const Player &player, bool refresh, bool autoNext, bool autoRepeat,
 	                  uint32_t pressMask);
 
