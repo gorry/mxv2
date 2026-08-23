@@ -89,6 +89,15 @@ mxv2 はそちらを使わない。
 
 `-DPORTABLE_MDX_DIR=<パス>` で別の場所を指定できる。
 
+### Get Ultimate Sound Amusement with G.
+
+MDX のサンプルファイル。バイナリパッケージのみに含み、リポジトリには含まない。
+個別のファイルとしては以下から取得できるが、再配布には許可を得る必要がある。
+
+- 作品全体 https://x.haun.org/dtm/gusa_indexg.html
+- 個別のMDXファイル https://x.haun.org/dtm/
+- third_party/GUSA-CDg/ArctanX に展開する。
+
 ## 3. ビルド
 
 `mxv2/` で実行する。
@@ -107,6 +116,8 @@ cmake --build build --config Release
 | `simple_mdx_player.exe` `simple_mdx2wav.exe` | portable_mdx 付属サンプル |
 | `SDL2.dll` | 自動コピー |
 | `assets/` | 素材一式を自動コピー |
+| `assets/mdx` | 自動作成 |
+| `assets/mdx/ArctanX` | third_party/GUSA-CDg/ArctanX から自動コピー、なければ無視 |
 
 `assets/` は毎回のビルドでコピーされるが、**削除はされない**ので、
 実験で置いたファイルは残る。おかしくなったら `build/` ごと捨てる。
