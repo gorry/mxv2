@@ -26,6 +26,9 @@
 #include <SDL.h>
 #include <mxdrv.h>
 #include <mxdrv_context.h>
+// 出力レートの選択肢を知るために直接読む。X68SOUND_SUPPORT_96KHZ が
+// 定義されていれば、その portable_mdx は 96kHz 出力に対応している。
+#include <x68sound.h>
 
 #include "dispqueue.h"
 #include "mdxsong.h"
@@ -35,8 +38,31 @@ namespace mxv2 {
 
 class Player {
 public:
+	// 出力サンプリングレート。
+	//
+	// x68sound は OPM も ADPCM も常に 62500Hz で合成し、最終段のポリフェーズ
+	// FIR だけで出力レートへ変換する。持っている FIR の表が対応レートを決める
+	// ので、96kHz を選べるかどうかは portable_mdx 側の版による。
+	// `X68SOUND_SUPPORT_96KHZ` を持たない版（本家など）と繋いでも、そのまま
+	// 48kHz で動く。
+	//
+	// 既定は 48kHz。96kHz はユーザーが [mxv2 の設定] で選んだときだけ。
+	static const int kDefaultSampleRate = 48000;
+#ifdef X68SOUND_SUPPORT_96KHZ
+	static const bool kSupports96kHz = true;
+#else
+	static const bool kSupports96kHz = false;
+#endif
+	// 指定できるレートか。x68sound は知らない値を黙って 22050 に落とすので、
+	// 渡す前にここで弾く。
+	static bool IsSupportedSampleRate(int rate) {
+		if (rate == 44100 || rate == 48000) return true;
+		return kSupports96kHz && rate == 96000;
+	}
+
 	struct Config {
-		int sampleRate;         // 48000 固定（CLAUDE.md の確定事項）
+		// 出力サンプリングレート。既定は kDefaultSampleRate。
+		int sampleRate;
 		int audioBlockFrames;   // SDL コールバック 1 回分のフレーム数
 		int numAudioBlocks;     // リングバッファのブロック数
 		int memoryPoolBytes;    // MxdrvContext のメモリプール

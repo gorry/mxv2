@@ -231,6 +231,7 @@ SettingsUi::SettingsUi()
       styleScale_(0.0f),
       inputScale_(1.0f),
       vfs_(0),
+      pendingSampleRate_(0),
       pendingZoom_(0),
       zoomApplyAtMs_(0),
       changedFields_(0),
@@ -656,6 +657,25 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 
 	// ---- 演奏 ----------------------------------------------------------
 	if (ImGui::CollapsingHeader("演奏", ImGuiTreeNodeFlags_DefaultOpen)) {
+		// 出力サンプリングレート。96kHz を選べるのは、繋いでいる
+		// portable_mdx が対応している版のときだけ（player.h の
+		// X68SOUND_SUPPORT_96KHZ）。対応していなければ項目自体を出さない。
+		if (Player::kSupports96kHz) {
+			int idx = (player->sampleRate() == 96000) ? 1 : 0;
+			if (ImGui::Combo("出力レート", &idx, "48000 Hz\0" "96000 Hz\0")) {
+				const int rate = idx ? 96000 : 48000;
+				if (rate != player->sampleRate()) {
+					// 実際の切り替え（MXDRV とオーディオ装置の開き直し）は
+					// メインループがやる。
+					pendingSampleRate_ = rate;
+				}
+				settings->sampleRate = rate;
+				changedFields_ |= Settings::kFieldSampleRate;
+			}
+			ImGui::TextDisabled("96000 は音の作り方は変わらず、"
+			                    "最後の変換だけが変わります");
+		}
+
 		int loops = settings->loops;
 		if (ImGui::SliderInt("ループ数", &loops, 1, 10)) {
 			settings->loops = loops;

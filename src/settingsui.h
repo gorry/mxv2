@@ -186,6 +186,12 @@ public:
 	// スキンの一覧を取り直す（フォルダを足したとき用）。
 	void ScanSkins();
 
+	// 出力サンプリングレートが選ばれたらここに入る。0 なら変更なし。
+	// レートを変えるには MXDRV とオーディオ装置を開き直すしかないので、
+	// 実際の入れ替えはメインループに任せる（スキンの pendingSkin_ と同じ作法）。
+	int pendingSampleRate() const { return pendingSampleRate_; }
+	void ClearPendingSampleRate() { pendingSampleRate_ = 0; }
+
 	// 日本語フォントが読めたか。読めなければ ImGui 既定の ASCII フォント。
 	bool hasJapaneseFont() const { return hasJapaneseFont_; }
 
@@ -223,6 +229,7 @@ private:
 	Vfs *vfs_;
 	std::vector<std::string> skinNames_;
 	std::string pendingSkin_;
+	int pendingSampleRate_;
 
 	// PDX パスの入力欄。std::string を直接は編集できないので固定長で持つ。
 	char pdxPathBuf_[512];

@@ -33,6 +33,11 @@ struct Settings {
 	std::string lastDir;  // 最後に開いていたディレクトリ
 
 	// [Play]
+	// 出力サンプリングレート。既定は 48000 で、x68sound が 96kHz に対応して
+	// いる版（X68SOUND_SUPPORT_96KHZ）でだけ 96000 も選べる。対応していない
+	// 値が書かれていても捨てはしない（別のビルドで書いた値かもしれないので、
+	// そのときは Player 側が既定へ落として鳴らす）。
+	int sampleRate;
 	int loops;
 	bool fadeout;
 	// マスター音量 -100..+100 (0 = 中央)。メイン画面の音量はその場かぎりの
@@ -77,6 +82,7 @@ struct Settings {
 		kFieldWindowPos = 1 << 10,
 		kFieldLatency = 1 << 11,
 		kFieldFileSystems = 1 << 12,
+		kFieldSampleRate = 1 << 13,
 	};
 
 	Settings();

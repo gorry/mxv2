@@ -29,7 +29,7 @@ int MxdrvVolumeFromNormalized(int volume) {
 }  // namespace
 
 Player::Config::Config()
-    : sampleRate(48000),
+    : sampleRate(kDefaultSampleRate),
       audioBlockFrames(512),
       numAudioBlocks(4),
       memoryPoolBytes(8 * 1024 * 1024),
@@ -96,6 +96,11 @@ bool Player::Open(const Config &config, std::string *err) {
 	}
 
 	config_ = config;
+	// 対応していないレートは黙って 22050 に落とされてしまうので、ここで
+	// 既定へ戻す（x68sound は不正な値でもエラーを返さない）。
+	if (!IsSupportedSampleRate(config_.sampleRate)) {
+		config_.sampleRate = kDefaultSampleRate;
+	}
 	framesPerPoll_ = config_.sampleRate / StatusWatch::kPollHz;
 	if (framesPerPoll_ < 1) framesPerPoll_ = 1;
 	SetLoopConfig(config_.maxLoops, config_.autoFadeout);

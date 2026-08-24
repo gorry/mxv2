@@ -16,6 +16,7 @@ Settings::Settings()
       scaleFilter("sharp"),
       fileListFontSize(0),
       folderFirst(false),
+      sampleRate(48000),
       loops(2),
       fadeout(true),
       masterVolume(0),  // 中央
@@ -43,6 +44,7 @@ bool Settings::Load(const std::string &path) {
 	folderFirst = ini.GetInt("Filer", "FolderFirst", folderFirst ? 1 : 0) != 0;
 	lastDir = ini.GetString("Filer", "LastDir", lastDir);
 
+	sampleRate = ini.GetInt("Play", "SampleRate", sampleRate);
 	loops = ini.GetInt("Play", "N_Loop", loops);
 	fadeout = ini.GetInt("Play", "Fadeout", fadeout ? 1 : 0) != 0;
 	masterVolume = ini.GetInt("Play", "Volume", masterVolume);
@@ -90,6 +92,7 @@ bool Settings::Save(const std::string &path) const {
 	ini.SetInt("Filer", "FolderFirst", folderFirst ? 1 : 0);
 	ini.SetString("Filer", "LastDir", lastDir);
 
+	ini.SetInt("Play", "SampleRate", sampleRate);
 	ini.SetInt("Play", "N_Loop", loops);
 	ini.SetInt("Play", "Fadeout", fadeout ? 1 : 0);
 	ini.SetInt("Play", "Volume", masterVolume);
@@ -136,6 +139,7 @@ bool Settings::SaveFields(const std::string &path, unsigned fields) const {
 	if (fields & kFieldFontSize) out.fileListFontSize = fileListFontSize;
 	if (fields & kFieldFolderFirst) out.folderFirst = folderFirst;
 	if (fields & kFieldLastDir) out.lastDir = lastDir;
+	if (fields & kFieldSampleRate) out.sampleRate = sampleRate;
 	if (fields & kFieldLoops) out.loops = loops;
 	if (fields & kFieldFadeout) out.fadeout = fadeout;
 	if (fields & kFieldVolume) out.masterVolume = masterVolume;

@@ -108,8 +108,11 @@ struct Options {
 	int latencyMs;
 	bool latencySet;
 	bool quitOnEnd;
+	// 出力サンプリングレート。0 なら設定 (ini) の値を使う。
+	int sampleRate;
 
-	Options() : latencyMs(0), latencySet(false), quitOnEnd(true) {}
+	Options()
+	    : latencyMs(0), latencySet(false), quitOnEnd(true), sampleRate(0) {}
 };
 
 // 演奏位置の移動幅。, / . が普通、Shift 付きの < / > が高速。
@@ -173,6 +176,7 @@ void PrintUsage(const char *argv0) {
 	    "  -zoom <percent> 表示倍率 %% (100 でドット等倍。既定はシステムの拡大率)\n"
 	    "  -loops <n>      自動フェードアウトまでのループ数 (既定 2)\n"
 	    "  -nofade         自動フェードアウトしない\n"
+	    "  -rate <hz>      出力サンプリングレート (44100 / 48000%s。既定 %d)\n"
 	    "  -latency <ms>   表示を遅らせる時間 ms (この起動だけ。ふつうは設定で)\n"
 	    "  -pdxpath <dir>  PDX の追加探索先\n"
 	    "  -assets <dir>   同梱素材の場所 (既定: 実行ファイルの隣の assets)\n"
@@ -181,7 +185,8 @@ void PrintUsage(const char *argv0) {
 	    "  -folderfirst    ファイラーでフォルダを先に並べる\n"
 	    "  -noquit         演奏終了後も閉じない\n"
 	    "  -console        ログを出すコンソールを開く (既定は開かない)\n",
-	    argv0);
+	    argv0, mxv2::Player::kSupports96kHz ? " / 96000" : "",
+	    mxv2::Player::kDefaultSampleRate);
 	printf("%s", kKeyHelpText);
 }
 
@@ -228,6 +233,15 @@ std::vector<std::string> SaveFileSystems(const mxv2::Vfs &vfs) {
 	return out;
 }
 
+// 音まわりのログ 1 行。起動時と、出力レートを変えて開き直したときに出す。
+void PrintAudioInfo(const mxv2::Player &player, bool latencyAuto) {
+	printf("audio    : %d Hz / buffer %d frames / 表示の遅らせ %d frames (%.1f ms)%s\n",
+	       player.sampleRate(), player.audioBufferFrames(), player.displayLatencyFrames(),
+	       player.displayLatencyFrames() * 1000.0f / player.sampleRate(),
+	       latencyAuto ? " [自動]" : "");
+	fflush(stdout);
+}
+
 // 旧い版は実行ファイルの隣に mxv2.ini を置いていた。ユーザーフォルダ側が
 // まだ無ければ、そこから 1 度だけ引き取る（元は残す）。
 void MigrateLegacySettings(const std::string &newPath) {
@@ -262,6 +276,16 @@ bool ParseArgs(int argc, char **argv, Options *opt, mxv2::Settings *st) {
 			st->zoomPercent = atoi(argv[++i]);
 		} else if (strcmp(a, "-loops") == 0 && i + 1 < argc) {
 			st->loops = atoi(argv[++i]);
+		} else if (strcmp(a, "-rate") == 0 && i + 1 < argc) {
+			// 出力サンプリングレート。x68sound が持っているフィルタ表で
+			// 決まるので、対応していない値はここで弾く（そのまま渡すと
+			// 黙って 22050 に落とされる）。ini には残さない。
+			opt->sampleRate = atoi(argv[++i]);
+			if (!mxv2::Player::IsSupportedSampleRate(opt->sampleRate)) {
+				printf("ERROR: 対応していないサンプリングレートです: %d\n",
+				       opt->sampleRate);
+				return false;
+			}
 		} else if (strcmp(a, "-latency") == 0 && i + 1 < argc) {
 			// 桁を間違えても画面が止まったきりにならないよう、常識的な幅で頭打ち。
 			opt->latencyMs = atoi(argv[++i]);
@@ -620,8 +644,12 @@ int main(int argc, char **argv) {
 	}
 
 	mxv2::Player player;
+	// 出力レートを変えるときに開き直すので、Config はループの外に置く。
+	mxv2::Player::Config cfg;
 	{
-		mxv2::Player::Config cfg;
+		// 出力レートは設定 (ini) 由来。-rate はその場かぎりの上書きで、
+		// ini には残さない（-nofade などと同じ扱い）。
+		cfg.sampleRate = (opt.sampleRate != 0) ? opt.sampleRate : settings.sampleRate;
 		cfg.maxLoops = settings.loops;
 		cfg.autoFadeout = settings.fadeout;
 		// 画面の遅れは設定ウィンドウで決める。-latency はその場かぎりの
@@ -638,10 +666,7 @@ int main(int argc, char **argv) {
 			SDL_Quit();
 			return EXIT_FAILURE;
 		}
-		printf("audio    : %d Hz / buffer %d frames / 表示の遅らせ %d frames (%.1f ms)%s\n",
-		       cfg.sampleRate, player.audioBufferFrames(), player.displayLatencyFrames(),
-		       player.displayLatencyFrames() * 1000.0f / cfg.sampleRate,
-		       cfg.displayLatencyAuto ? " [自動]" : "");
+		PrintAudioInfo(player, cfg.displayLatencyAuto);
 	}
 
 	mxv2::SettingsUi ui;
@@ -678,7 +703,8 @@ int main(int argc, char **argv) {
 	bool quit = false;
 	bool endSeen = false;
 	uint64_t endFrame = 0;
-	const uint64_t kLingerFrames = 48000;  // 演奏終了後の余韻
+	// 演奏終了後の余韻 (1 秒)。出力レートで数えるので固定値にはできない。
+	const uint64_t kLingerFrames = (uint64_t)player.sampleRate();
 
 	PlayContext ctx;
 	ctx.opt = &opt;
@@ -986,6 +1012,61 @@ int main(int argc, char **argv) {
 				player.RequestStatusRefresh();
 				chromeRefresh = true;
 				fileListRefresh = true;
+			}
+		}
+
+		// 出力サンプリングレートが選ばれていたら、ここで開き直す。
+		// レートは MXDRV とオーディオ装置を開くときに決まるので、途中では
+		// 変えられない。曲・演奏位置・一時停止・音量・チャンネルマスクを
+		// 引き継いで、聴いていた場所から続くようにする。
+		if (ui.pendingSampleRate() != 0) {
+			const int want = ui.pendingSampleRate();
+			ui.ClearPendingSampleRate();
+			if (want != player.sampleRate()) {
+				const std::string keep = currentPath;
+				const bool wasPlaying = playing;
+				const bool wasPaused = player.paused();
+				const uint32_t atMs = player.nowTimeMs();
+				const uint16_t mask = player.channelMask();
+				const int mainVol = player.mainVolume();
+				const int prevRate = player.sampleRate();
+
+				cfg.sampleRate = want;
+				cfg.masterVolume = player.masterVolume();
+				player.Close();
+
+				std::string err;
+				bool ok = player.Open(cfg, &err);
+				if (!ok) {
+					// 開けなかったら元のレートへ戻す。それも駄目なら
+					// 音が出せないので続けられない。
+					printf("warning  : %d Hz で開けません: %s\n", want, err.c_str());
+					cfg.sampleRate = prevRate;
+					ok = player.Open(cfg, &err);
+					if (!ok) {
+						printf("ERROR: %s\n", err.c_str());
+						quit = true;
+					}
+					settings.sampleRate = prevRate;
+					dirtyFields |= mxv2::Settings::kFieldSampleRate;
+				}
+				if (ok) {
+					player.SetMainVolume(mainVol);
+					player.SetChannelMask(mask);
+					if (wasPlaying && !keep.empty()) {
+						StartPlay(ctx, keep);
+						if (atMs != 0) player.SeekMs(atMs);
+						if (wasPaused) player.Pause();
+						// 曲の掛け直しと空回しでマスクが消えるので入れ直す。
+						player.SetChannelMask(mask);
+					}
+					visualizer.Reset();
+					draw.Reload();
+					player.RequestStatusRefresh();
+					chromeRefresh = true;
+					fileListRefresh = true;
+					PrintAudioInfo(player, cfg.displayLatencyAuto);
+				}
 			}
 		}
 
