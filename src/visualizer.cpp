@@ -115,6 +115,10 @@ void Visualizer::UpdateChrome(const Player &player, bool refresh, bool autoNext,
                               bool autoRepeat, uint32_t pressMask) {
 	if (draw_ == 0) return;
 
+	// マスクしているチャンネルの鍵盤は灰色で伏せる。乗せるのは転送のときな
+	// ので、毎フレーム今のマスクを渡しておけばよい。
+	draw_->SetChannelMask(player.channelMask());
+
 	draw_->PutProgressBar(player.nowTimeMs(), player.playTimeMs(), refresh);
 
 	uint32_t status = pressMask;

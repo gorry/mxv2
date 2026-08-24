@@ -78,6 +78,16 @@ public:
 	void PutPCMVolume(int volume, int row);
 	void PutPCMPtr(int ptr, int row);
 
+	// マスクしているチャンネルの鍵盤に半透明のグレーを乗せる。
+	// bit0..7 = FM ch.1-8（その段の鍵盤全体）、bit8..15 = PCM ch.P-W
+	// （PCM は鍵盤 1 段を共有するので、横に 8 等分して左から順に割り当てる）。
+	// Player::channelMask() をそのまま渡してよい。
+	//
+	// 実際に乗せるのは BlitTo のとき。キャンバスに焼くと、重ねるたびに
+	// 濃くなるうえ、鍵盤の差分描画とぶつかる（マスク中は処理ごと止まるので
+	// その段は描き直されない）。
+	void SetChannelMask(uint16_t mask) { channelMask_ = mask; }
+
 	// ステータス欄を全部 0 で埋める。
 	//
 	// mxv2 はステータスをデコードスレッドのポーリングから積むので、演奏を
@@ -138,6 +148,14 @@ public:
 	bool HitCheckTotalVolBar(int x, int y, int *volume) const;
 	// x を音量へ写す (範囲外でも端に丸める)。ドラッグ中に使う。
 	int VolumeFromX(int x) const;
+	// 鍵盤。当たったチャンネル (0..7 = FM ch.1-8 / 8..15 = PCM ch.P-W) を
+	// 返す。当たらなければ -1。区切りは灰色を乗せる場所と同じで、PCM の段は
+	// 横に 8 等分して左から順に割り当てる（SetChannelMask のコメント）。
+	int HitCheckKeyboard(int x, int y) const;
+	// ステータス欄。当たった段 (0..7 = FM ch.1-8 / 8 = PCM) を返す。
+	// 当たらなければ -1。鍵盤と違って段の中は割らない（呼び出し側は FM か
+	// PCM かの一括操作に使う）。
+	int HitCheckStatus(int x, int y) const;
 	// 音量をつまみの画素位置へ写す。
 	int TotalVolBarPosFromVolume(int volume) const;
 
@@ -222,6 +240,15 @@ private:
 
 	TextLayer *textLayer_;
 	int fileListFontSize_;
+
+	// マスクしているチャンネル（SetChannelMask）。BlitTo で灰色を乗せる。
+	uint16_t channelMask_;
+	void OverlayChannelMask(Screen *out) const;
+	// チャンネル ch (0..15) の鍵盤の矩形。灰色を乗せる場所とクリックの
+	// 当たり判定で同じものを使う。鍵盤が無ければ false。
+	bool ChannelKeyRect(int ch, int *x0, int *y0, int *x1, int *y1) const;
+	// ステータス欄 1 段ぶんの矩形。下地を敷く場所と当たり判定で共用する。
+	bool StatusRect(int row, int *x, int *y, int *w, int *h) const;
 
 	int scrollBarFlags_;
 	int scrollBarThumb_;  // 溝の中のつまみ位置 0..kScrollBarMovement

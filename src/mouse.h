@@ -75,6 +75,8 @@ private:
 		kCapturedTotalVolBar,
 		kCapturedProgressBar,
 		kCapturedBanner,
+		kCapturedKeyboard,
+		kCapturedStatus,
 	};
 
 	MouseRequest OnButtonDown(int x, int y, int clicks);

@@ -22,6 +22,11 @@ int Max(int a, int b) { return a > b ? a : b; }
 // ので、画面幅を越えられる長さがあれば十分。
 const size_t kMaxAsciiChars = 128;
 
+// マスクしているチャンネルの鍵盤に乗せる灰色と、その濃さ (0..100)。
+// 押している鍵の色がうっすら透けるくらいにしてある。
+const int kMaskGray = 96;
+const int kMaskAlpha = 60;
+
 // 音量の「まだ一度も描いていない」印。-100..+100 のどれとも重ならない値。
 const int kVolumeNever = -1000;
 
@@ -63,6 +68,7 @@ DrawScreen::DrawScreen()
     : skin_(0),
       textLayer_(0),
       fileListFontSize_(0),
+      channelMask_(0),
       scrollBarFlags_(0),
       scrollBarThumb_(0),
       playKeyStatusLast_(kPlayKeyStatusNever),
@@ -207,10 +213,22 @@ void DrawScreen::CompositeBanner() {
 
 void DrawScreen::CompositeStatusBack() {
 	for (int i = 0; i < 9; i++) {
-		BmpFill(&back_, skin_->statusX, skin_->statusY + skin_->chYOffset[i], skin_->statusBackW, skin_->statusBackH,
-		        colors_.status.backColor.r, colors_.status.backColor.g,
+		int x = 0, y = 0, w = 0, h = 0;
+		if (!StatusRect(i, &x, &y, &w, &h)) continue;
+		BmpFill(&back_, x, y, w, h, colors_.status.backColor.r, colors_.status.backColor.g,
 		        colors_.status.backColor.b, colors_.status.backColorBright);
 	}
+}
+
+// ステータス欄 1 段ぶんの矩形（0..7 = FM ch.1-8 / 8 = PCM）。
+// 下地を敷く場所とクリックの当たり判定で同じものを使う。
+bool DrawScreen::StatusRect(int row, int *x, int *y, int *w, int *h) const {
+	if (row < 0 || row >= 9 || skin_ == 0) return false;
+	*x = skin_->statusX;
+	*y = skin_->statusY + skin_->chYOffset[row];
+	*w = skin_->statusBackW;
+	*h = skin_->statusBackH;
+	return true;
 }
 
 void DrawScreen::CompositeFileList() {
@@ -274,6 +292,64 @@ void DrawScreen::BlitTo(Screen *out) const {
 		for (int x = 0; x < w; x++) {
 			q[x] = 0xff000000u | ((uint32_t)p[2] << 16) | ((uint32_t)p[1] << 8) | p[0];
 			p += 3;
+		}
+	}
+	OverlayChannelMask(out);
+}
+
+// チャンネル ch (0..15) の鍵盤の矩形。
+//
+// FM は 1 段まるごと。PCM は 8ch で 1 段を共有しているので、横に 8 等分して
+// 左から ch.P..W に割り当てる。灰色を乗せる場所とクリックの当たり判定が
+// 食い違わないよう、両方ここから取る。
+bool DrawScreen::ChannelKeyRect(int ch, int *x0, int *y0, int *x1, int *y1) const {
+	if (ch < 0 || ch >= 16 || skin_ == 0 || !kb0_.valid()) return false;
+
+	const int kbW = kb0_.width();
+	const int kbH = kb0_.height();
+	const int row = (ch < 8) ? ch : 8;
+
+	*x0 = skin_->kbX;
+	*x1 = skin_->kbX + kbW;
+	if (ch >= 8) {
+		const int i = ch - 8;
+		*x0 = skin_->kbX + kbW * i / 8;
+		*x1 = skin_->kbX + kbW * (i + 1) / 8;
+	}
+	*y0 = skin_->kbY + skin_->chYOffset[row] + skin_->kbYOffset;
+	*y1 = *y0 + kbH;
+	return true;
+}
+
+// マスクしているチャンネルの鍵盤を灰色で伏せる。
+//
+// キャンバスではなく転送先へ乗せるので、キャンバスの中身（鍵盤の押下状態）は
+// そのまま残る。マスクを外せば次のフレームから元どおり見える。
+void DrawScreen::OverlayChannelMask(Screen *out) const {
+	if (channelMask_ == 0) return;
+
+	const int outW = out->width();
+	const int outH = out->height();
+
+	for (int ch = 0; ch < 16; ch++) {
+		if ((channelMask_ & (1 << ch)) == 0) continue;
+
+		int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+		if (!ChannelKeyRect(ch, &x0, &y0, &x1, &y1)) continue;
+
+		for (int y = Max(0, y0); y < Min(outH, y1); y++) {
+			uint32_t *q = out->pixels() + (size_t)y * outW;
+			for (int x = Max(0, x0); x < Min(outW, x1); x++) {
+				const uint32_t c = q[x];
+				const int r = (int)((c >> 16) & 0xff);
+				const int g = (int)((c >> 8) & 0xff);
+				const int b = (int)(c & 0xff);
+				const int nr = (r * (100 - kMaskAlpha) + kMaskGray * kMaskAlpha) / 100;
+				const int ng = (g * (100 - kMaskAlpha) + kMaskGray * kMaskAlpha) / 100;
+				const int nb = (b * (100 - kMaskAlpha) + kMaskGray * kMaskAlpha) / 100;
+				q[x] = 0xff000000u | ((uint32_t)nr << 16) | ((uint32_t)ng << 8) |
+				       (uint32_t)nb;
+			}
 		}
 	}
 }
@@ -996,6 +1072,24 @@ bool DrawScreen::HitCheckBanner(int x, int y) const {
 	if (x < skin_->bannerX || x >= skin_->bannerX + skin_->bannerW) return false;
 	if (y < skin_->bannerY || y >= skin_->bannerY + skin_->bannerH) return false;
 	return true;
+}
+
+int DrawScreen::HitCheckKeyboard(int x, int y) const {
+	for (int ch = 0; ch < 16; ch++) {
+		int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+		if (!ChannelKeyRect(ch, &x0, &y0, &x1, &y1)) continue;
+		if (x >= x0 && x < x1 && y >= y0 && y < y1) return ch;
+	}
+	return -1;
+}
+
+int DrawScreen::HitCheckStatus(int x, int y) const {
+	for (int row = 0; row < 9; row++) {
+		int rx = 0, ry = 0, rw = 0, rh = 0;
+		if (!StatusRect(row, &rx, &ry, &rw, &rh)) continue;
+		if (x >= rx && x < rx + rw && y >= ry && y < ry + rh) return row;
+	}
+	return -1;
 }
 
 // 音量は -100..+100 で、-1 も正しい値なので「当たらなかった」を戻り値では

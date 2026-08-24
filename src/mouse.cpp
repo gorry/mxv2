@@ -185,6 +185,30 @@ MouseRequest MouseInput::OnButtonDown(int x, int y, int clicks) {
 		}
 	}
 
+	// 鍵盤。押した段（PCM は 8 等分した区画）のチャンネルのマスクを
+	// 切り替える。実行するのは離したときなので、ここでは覚えるだけ。
+	// 面積が大きいので、当たり判定は一番最後に見る（小さい部品を隠さない）。
+	{
+		const int ch = draw_->HitCheckKeyboard(x, y);
+		if (ch >= 0) {
+			captured_ = kCapturedKeyboard;
+			capturedHit_ = ch;
+			return kMouseRequestNone;
+		}
+	}
+
+	// ステータス欄。こちらは 1 チャンネルではなく、FM か PCM の一括切り替え
+	// （キーの 0 / Shift+0 と同じ）。どの段を押しても同じなので、覚えるのは
+	// 「FM 側か PCM 側か」だけでよい。
+	{
+		const int row = draw_->HitCheckStatus(x, y);
+		if (row >= 0) {
+			captured_ = kCapturedStatus;
+			capturedHit_ = (row < 8) ? 0 : 1;
+			return kMouseRequestNone;
+		}
+	}
+
 	return kMouseRequestNone;
 }
 
@@ -276,6 +300,23 @@ MouseRequest MouseInput::OnButtonUp(int x, int y) {
 	// バナーは、押した場所で離したときだけメニューを出す。
 	if (captured == kCapturedBanner) {
 		return draw_->HitCheckBanner(x, y) ? kMouseRequestContextMenu : kMouseRequestNone;
+	}
+
+	// 鍵盤も、押したチャンネルの上で離したときだけ切り替える
+	// （操作ボタンと同じ作法）。
+	if (captured == kCapturedKeyboard) {
+		if (draw_->HitCheckKeyboard(x, y) == hit) player_->ToggleChannel(hit);
+		return kMouseRequestNone;
+	}
+
+	// ステータス欄は FM / PCM の一括切り替え。同じ側の段で離したときだけ。
+	if (captured == kCapturedStatus) {
+		const int row = draw_->HitCheckStatus(x, y);
+		if (row >= 0 && ((row < 8) ? 0 : 1) == hit) {
+			player_->ToggleChannelGroup(hit == 0 ? Player::kChannelMaskFm
+			                                    : Player::kChannelMaskPcm);
+		}
+		return kMouseRequestNone;
 	}
 
 	if (captured != kCapturedPlayKey) return kMouseRequestNone;

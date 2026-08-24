@@ -113,6 +113,10 @@ public:
 	void SetChannelMask(uint16_t mask);
 	uint16_t channelMask() const;
 	void ToggleChannel(int ch);
+	// ToggleChannelGroup に渡すビット。
+	static const uint16_t kChannelMaskFm = 0x00ff;   // ch.1-8
+	static const uint16_t kChannelMaskPcm = 0xff00;  // ch.P-W
+	static const uint16_t kChannelMaskAll = 0xffff;
 	// まとめてマスク / 解除する。bits は 0x00ff = FM、0xff00 = PCM、0xffff = 全部。
 	// 「1 つでも鳴っていれば全部止め、全部止まっていれば全部鳴らす」トグルで、
 	// 旧 mxv の IDM_MASKFM / IDM_MASKPCM / IDM_MASKCLEAR と同じ挙動。

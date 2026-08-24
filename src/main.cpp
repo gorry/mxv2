@@ -57,11 +57,6 @@ const int kVolumeKeyStep = 5;
 // 値が変わるので、手が止まってからまとめて 1 回書く。
 const uint32_t kSettingsSaveDelayMs = 400;
 
-// チャンネルマスクの一括操作に渡すビット。実体は Player::ToggleChannelGroup。
-const uint16_t kMaskFm = 0x00ff;   // ch.1-8
-const uint16_t kMaskPcm = 0xff00;  // ch.P-W
-const uint16_t kMaskAll = 0xffff;
-
 // 標準出力の行き先を用意する。
 //
 // Windows では GUI アプリとしてリンクしてあるので、既定ではコンソールが無く
@@ -155,6 +150,9 @@ const char *kKeyHelpText =
 	    "マウス操作:\n"
 	    "  バナー          メニュー表示（右クリックでも出る）\n"
 	    "  ファイラー      ファイル/ディレクトリを選択、ダブルクリックで開く\n"
+	    "  鍵盤            そのチャンネルのマスクを切り替え"
+	    "（PCM は横 8 等分で ch.P-W）\n"
+	    "  ステータス欄    FM / PCM のマスクを一括で切り替え\n"
 	    "  PREV            前の曲へ移動\n"
 	    "  STOP            演奏を停止\n"
 	    "  PLAY            演奏を開始\n"
@@ -928,11 +926,11 @@ int main(int argc, char **argv) {
 				// チャンネルの一括マスク。旧 mxv は Ctrl+0 / Alt+0 / Ctrl+Alt+0。
 				case SDLK_0:
 					if (ev.key.keysym.mod & KMOD_CTRL) {
-						player.ToggleChannelGroup(kMaskAll);
+						player.ToggleChannelGroup(mxv2::Player::kChannelMaskAll);
 					} else if (ev.key.keysym.mod & KMOD_SHIFT) {
-						player.ToggleChannelGroup(kMaskPcm);
+						player.ToggleChannelGroup(mxv2::Player::kChannelMaskPcm);
 					} else {
-						player.ToggleChannelGroup(kMaskFm);
+						player.ToggleChannelGroup(mxv2::Player::kChannelMaskFm);
 					}
 					break;
 
