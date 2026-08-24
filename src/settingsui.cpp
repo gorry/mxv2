@@ -672,8 +672,8 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 				settings->sampleRate = rate;
 				changedFields_ |= Settings::kFieldSampleRate;
 			}
-			ImGui::TextDisabled("96000 は音の作り方は変わらず、"
-			                    "最後の変換だけが変わります");
+			ImGui::TextDisabled("96000 Hzはお使いの環境では対応していない"
+			                    "可能性があります");
 		}
 
 		int loops = settings->loops;
