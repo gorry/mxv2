@@ -210,7 +210,7 @@ bool LoadFileSystems(mxv2::Vfs *vfs, const std::vector<std::string> &refs) {
 		mxv2::FileSystem *fs = 0;
 		std::string rel;
 		if (!vfs->Parse(refs[i], &fs, &rel) || fs == 0) {
-			printf("warning  : 知らないファイルシステムなので外しました: %s\n",
+			printf("warning  : 知らないファイルシステムなので削除しました: %s\n",
 			       refs[i].c_str());
 			fixed = true;
 			continue;

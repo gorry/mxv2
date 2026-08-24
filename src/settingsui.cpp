@@ -968,7 +968,7 @@ void SettingsUi::BuildOverwriteWindow(Settings *settings, DrawScreen *draw) {
 		ImGui::CloseCurrentPopup();
 	}
 	ImGui::SameLine();
-	if (ImGui::Button("やめる") || closeOverwrite_) {
+	if (ImGui::Button("キャンセル") || closeOverwrite_) {
 		closeOverwrite_ = false;
 		ImGui::CloseCurrentPopup();
 	}
@@ -1106,9 +1106,9 @@ void SettingsUi::BuildFsRemoveWindow(Filer *filer) {
 	const FileSystem *sel =
 	    (vfs_ != 0 && fsSelected_ >= 0 && fsSelected_ < vfs_->count()) ? vfs_->at(fsSelected_)
 	                                                                  : 0;
-	ImGui::Text("%s を一覧から外しますか？", sel != 0 ? sel->label().c_str() : "");
+	ImGui::Text("%s を一覧から削除しますか？", sel != 0 ? sel->label().c_str() : "");
 	ImGui::Separator();
-	if (ImGui::Button("外す")) {
+	if (ImGui::Button("削除")) {
 		vfs_->Unmount(fsSelected_);
 		if (fsSelected_ >= vfs_->count()) fsSelected_ = vfs_->count() - 1;
 		if (fsSelected_ < 0) fsSelected_ = 0;
@@ -1117,7 +1117,7 @@ void SettingsUi::BuildFsRemoveWindow(Filer *filer) {
 		ImGui::CloseCurrentPopup();
 	}
 	ImGui::SameLine();
-	if (ImGui::Button("やめる") || fsCloseConfirm_) {
+	if (ImGui::Button("キャンセル") || fsCloseConfirm_) {
 		fsCloseConfirm_ = false;
 		ImGui::CloseCurrentPopup();
 	}

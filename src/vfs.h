@@ -52,7 +52,8 @@ public:
 	// ルートの pdx/ を PDX の探索先に入れるか。ローカル FS だけは入れない
 	// （ルートがドライブの根なので、そこに pdx/ を置く前提が立たない）。
 	virtual bool hasPdxDir() const { return true; }
-	// 設定ダイアログの [削除] で外せるか。初回起動時から使えるものは削除できない。
+	// 設定ダイアログの [削除] で削除できるか。初回起動時から使えるものは
+	// 削除できない。
 	virtual bool removable() const { return false; }
 
 	// rel の掃除（区切り文字を揃える、末尾の区切りを落とす、など）。
