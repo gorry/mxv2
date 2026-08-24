@@ -254,6 +254,9 @@ void DrawScreen::Reload() {
 	fileListLast_.clear();
 	fileListCursorLast_ = -1;
 
+	// 演奏中ならこの後ポーリングが本当の値を積み直す（Player::
+	// RequestStatusRefresh）。始まる前と止まっている間は 0 のまま。
+	PutStatusZero();
 	PutMDXTitle(mdxTitle_);
 }
 
@@ -505,6 +508,41 @@ void DrawScreen::PutPCMPtr(int ptr, int row) {
 	snprintf(s, sizeof(s), "$%05X", (unsigned)ptr & 0xfffff);
 	PutStatusText(skin_->pcmXOffset[i] + 24 + skin_->statusX,
 	              skin_->pcmYOffset[i] + skin_->chYOffset[8] + 0 + skin_->statusY, 6, s);
+}
+
+// 演奏を始める前のステータス欄。項目と並びを 1 か所で決めたいので、
+// 実際に値が届いたときと同じ Put* を 0 で呼ぶ。
+// 出す顔ぶれは StatusWatch::Poll が積むものに合わせてある（FM 8 段は全項目、
+// PCM の段は 8 スロットの音量とポインタだけで、レベルメータは無い）。
+void DrawScreen::PutStatusZero() {
+	for (int row = 0; row < 8; row++) {
+		PutVolume(0, row);
+		PutPanpot(0, row);
+		PutDetune(0, row);
+		PutVoice(0, row);
+		PutQ(0, row);
+		PutPtr(0, row);
+		PutLFOPitch(0, row);
+		PutLFOPitch1(0, row);
+		PutLFOPitch2(0, row);
+		PutLFOPitch3(0, row);
+		PutLFOPitch4(0, row);
+		PutLFOVolume(0, row);
+		PutLFOVolume1(0, row);
+		PutLFOVolume2(0, row);
+		PutLFOVolume3(0, row);
+
+		// セル数はスキン持ち ([LevelMeter] Cells) なので、その数だけ消す。
+		std::vector<char> meter(skin_->levelMeterWidthCells > 0
+		                            ? (size_t)skin_->levelMeterWidthCells
+		                            : 1,
+		                        0);
+		PutLevelMeter(&meter[0], row);
+	}
+	for (int i = 0; i < 8; i++) {
+		PutPCMVolume(0, 8 + i);
+		PutPCMPtr(0, 8 + i);
+	}
 }
 
 // ---------------------------------------------------------------------------

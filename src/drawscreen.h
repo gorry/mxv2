@@ -78,6 +78,14 @@ public:
 	void PutPCMVolume(int volume, int row);
 	void PutPCMPtr(int ptr, int row);
 
+	// ステータス欄を全部 0 で埋める。
+	//
+	// mxv2 はステータスをデコードスレッドのポーリングから積むので、演奏を
+	// 始めるまで 1 つも積まれず、欄が空のままになる（旧 mxv は WM_TIMER が
+	// 起動直後から回っていて、値が 0 のワークをそのまま描いていた）。
+	// 画面を作り直したところで呼んで、旧 mxv と同じ「全部 0」の状態にする。
+	void PutStatusZero();
+
 	// ---- 画面下部 ---------------------------------------------------
 	void PutMDXTitle(const std::string &titleUtf8);
 	void PutProgressBar(uint32_t nowTimeMs, uint32_t playTimeMs, bool refresh);
