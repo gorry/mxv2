@@ -4,6 +4,9 @@
 // の順に並べたリストを持つ。並び順と既定値は旧 mxv に合わせてある
 // (FolderFirst=0 のとき MDX が先)。
 //
+// 場所は全て **ref**（"localfs:C:\mdx" のような文字列）で持ち、実際の
+// 読み書きは Vfs 経由で行う。裸のパスをここへ持ち込まないこと（vfs.h）。
+//
 // MDX のタイトルは読み込み時にファイル先頭から取り出して UTF-8 にしておく。
 // 旧 mxv は別スレッドで少しずつ埋めていたが、mxv2 はまとめて読む。
 
@@ -15,28 +18,49 @@
 
 namespace mxv2 {
 
+class FileSystem;
+class Vfs;
+
 enum FileItemType {
 	kFileItemDir = 1,
 	kFileItemDrive = 2,
 	kFileItemMdx = 4,
+	// ファイルシステム。選択画面の 1 行と、各 FS のルートに出る "[FS]"
+	// （どちらも開くとファイルシステムの選択へ行く／から行く）。
+	kFileItemFileSystem = 8,
+	// 選択画面の末尾の "[Setting]"。開くと設定ダイアログ。
+	kFileItemSetting = 16,
 };
 
 struct FileItem {
 	std::string baseName;  // 表示名 (UTF-8)
-	std::string path;      // フルパス (UTF-8)
+	std::string path;      // ref (UTF-8)
 	std::string title;     // MDX のタイトル (UTF-8)。それ以外は空
 	int type;
 
 	FileItem() : type(0) {}
 };
 
+// Filer::Open() の結果。
+enum FilerOpen {
+	kFilerOpenNone = 0,
+	kFilerOpenPlay,      // playPath に曲の ref が入っている
+	kFilerOpenMoved,     // 場所が変わった
+	kFilerOpenSettings,  // ファイルシステムの設定を開いてほしい
+};
+
 class Filer {
 public:
 	Filer();
 
+	// 読み書きに使う VFS。一覧を作る前に必ず渡すこと。
+	void SetVfs(const Vfs *vfs) { vfs_ = vfs; }
+
 	// カレントディレクトリを設定して一覧を作り直す。
-	void SetCurrentDir(const std::string &dir);
-	const std::string &currentDir() const { return currentDir_; }
+	void SetCurrentRef(const std::string &ref);
+	const std::string &currentRef() const { return currentRef_; }
+	// 今いるファイルシステム。
+	const FileSystem *fs() const { return fs_; }
 
 	// 一覧を作り直す（タイトルも読み直す）。
 	void Refresh();
@@ -69,34 +93,39 @@ public:
 	// カーソルが画面外に出ていたら top を調整する。
 	void EnsureCursorVisible();
 
-	// カーソル位置の項目を「開く」。
-	//   ディレクトリ / ドライブなら移動して true を返す (playPath は空)。
-	//   MDX ならそのパスを playPath に入れて true を返す。
-	bool Open(std::string *playPath);
+	// カーソル位置の項目を「開く」。何が起きたかを返す。
+	// MDX のときだけ playPath にその ref が入る。
+	FilerOpen Open(std::string *playPath);
 
-	// 次 / 前の MDX へカーソルを進めてそのパスを返す。無ければ false。
+	// 次 / 前の MDX へカーソルを進めてその ref を返す。無ければ false。
 	bool NextMdx(std::string *playPath);
 	bool PrevMdx(std::string *playPath);
 
-	// 親ディレクトリへ。
+	// 親ディレクトリへ。ファイルシステムのルートに居るときは
+	// 「ファイルシステムの選択」へ抜ける。
 	void GoParent();
 
-	// ルートディレクトリへ（旧 mxv の "\" キー / MX_DoRootDirFileList）。
+	// 今いるファイルシステムのルートへ（旧 mxv の "\" キー）。
 	void GoRoot();
 
 	// フォルダを先に並べるか（旧 mxv の Filer/FolderFirst、既定 0）。
 	void SetFolderFirst(bool on);
 
-	// リストの中で path と一致する項目にカーソルを合わせる。
-	bool SelectByPath(const std::string &path);
+	// リストの中で ref と一致する項目にカーソルを合わせる。
+	bool SelectByPath(const std::string &ref);
 
 private:
+	// ファイルシステムの選択（ref が空のとき）の一覧。
+	void AppendFileSystems(std::vector<FileItem> *out);
 	void AppendDirs(std::vector<FileItem> *out);
 	void AppendMdx(std::vector<FileItem> *out);
-	void AppendDrives(std::vector<FileItem> *out);
+	void AppendExtras(std::vector<FileItem> *out);
 	void ReadTitles();
 
-	std::string currentDir_;
+	const Vfs *vfs_;
+	const FileSystem *fs_;  // 今いるファイルシステム
+	std::string rel_;       // その中での位置
+	std::string currentRef_;
 	std::vector<FileItem> items_;
 	int cursor_;
 	int topPx_;        // スクロール位置 (画素)

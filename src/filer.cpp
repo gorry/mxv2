@@ -7,6 +7,7 @@
 
 #include "fileutil.h"
 #include "text.h"
+#include "vfs.h"
 
 #include <mdx_util.h>
 
@@ -14,6 +15,8 @@ namespace mxv2 {
 
 namespace {
 
+// 並び順は「見た目の順」なので、どのファイルシステムでも大文字小文字を
+// 無視して並べる（同じものかどうかの判定は FileSystem::SamePath）。
 bool LessNoCase(const FileItem &a, const FileItem &b) {
 	return CompareNoCase(a.baseName, b.baseName) < 0;
 }
@@ -27,43 +30,62 @@ bool HasMdxExtension(const std::string &name) {
 }  // namespace
 
 Filer::Filer()
-    : cursor_(0), topPx_(0), rowHeightPx_(1), visibleRows_(11), folderFirst_(false) {}
+    : vfs_(0),
+      fs_(0),
+      cursor_(0),
+      topPx_(0),
+      rowHeightPx_(1),
+      visibleRows_(11),
+      folderFirst_(false) {}
 
 void Filer::SetFolderFirst(bool on) {
 	folderFirst_ = on;
 }
 
-void Filer::SetCurrentDir(const std::string &dir) {
-	currentDir_ = dir;
-	if (!currentDir_.empty()) {
-		const char last = currentDir_[currentDir_.size() - 1];
-		if (last != '\\' && last != '/') {
-#ifdef _WIN32
-			currentDir_ += '\\';
-#else
-			currentDir_ += '/';
-#endif
+void Filer::SetCurrentRef(const std::string &ref) {
+	fs_ = 0;
+	rel_.clear();
+	currentRef_.clear();
+	if (vfs_ != 0) {
+		FileSystem *fs = 0;
+		std::string rel;
+		if (vfs_->Parse(ref, &fs, &rel) && fs != 0) {
+			fs_ = fs;
+			rel_ = rel;
+			currentRef_ = Vfs::MakeRef(fs, rel);
 		}
 	}
 	Refresh();
 	topPx_ = 0;
 	// 旧 mxv と同じく、開いた直後は 1 番目（".." の次）にカーソルを置く。
-	cursor_ = std::min((int)items_.size() - 1, 1);
+	// ファイルシステムの選択には ".." が無いので、そちらは先頭。
+	cursor_ = (fs_ == 0) ? 0 : std::min((int)items_.size() - 1, 1);
 	if (cursor_ < 0) cursor_ = 0;
 }
 
 void Filer::Refresh() {
 	items_.clear();
+	if (vfs_ == 0) return;
 
-	// 先頭は必ず親ディレクトリ
+	// ファイルシステムの選択。画面固定の行ではなく「ref が空のときの一覧」
+	// として作るので、カーソルもスクロールも当たり判定もそのまま使える。
+	if (fs_ == 0) {
+		AppendFileSystems(&items_);
+		if (cursor_ >= (int)items_.size()) cursor_ = (int)items_.size() - 1;
+		if (cursor_ < 0) cursor_ = 0;
+		EnsureCursorVisible();
+		return;
+	}
+
+	// 先頭は必ず親ディレクトリ。ルートでは「ファイルシステムの選択」へ抜ける
+	// 行になる（旧 mxv はここが "\" で、押しても何も起きなかった）。
 	{
 		FileItem f;
-		const std::string parent = ParentDir(currentDir_);
-		const bool atRoot = (parent == currentDir_);
-		f.baseName = atRoot ? "\\" : "..";
-		f.path = atRoot ? currentDir_ : parent;
-		f.title = currentDir_;
-		f.type = kFileItemDir;
+		const bool atRoot = fs_->IsRoot(rel_);
+		f.baseName = atRoot ? "[FS]" : "..";
+		f.path = atRoot ? std::string() : Vfs::MakeRef(fs_, fs_->Parent(rel_));
+		f.title = fs_->DisplayPath(rel_);
+		f.type = atRoot ? kFileItemFileSystem : kFileItemDir;
 		items_.push_back(f);
 	}
 
@@ -74,7 +96,7 @@ void Filer::Refresh() {
 		AppendMdx(&items_);
 		AppendDirs(&items_);
 	}
-	AppendDrives(&items_);
+	AppendExtras(&items_);
 
 	ReadTitles();
 
@@ -83,16 +105,37 @@ void Filer::Refresh() {
 	EnsureCursorVisible();
 }
 
+// ファイルシステムの選択。並び順は [ファイルシステムの設定] で決めたもの。
+void Filer::AppendFileSystems(std::vector<FileItem> *out) {
+	for (int i = 0; i < vfs_->count(); i++) {
+		const FileSystem *fs = vfs_->at(i);
+		if (!fs->available()) continue;  // Android のローカル FS など
+		FileItem f;
+		f.baseName = fs->prefix();
+		f.title = fs->label();
+		f.path = Vfs::MakeRef(fs, fs->Root());
+		f.type = kFileItemFileSystem;
+		out->push_back(f);
+	}
+	{
+		FileItem f;
+		f.baseName = "[Setting]";
+		f.title = "ファイルシステムの設定";
+		f.type = kFileItemSetting;
+		out->push_back(f);
+	}
+}
+
 void Filer::AppendDirs(std::vector<FileItem> *out) {
 	std::vector<DirEntry> entries;
-	if (!ListDirectory(currentDir_, &entries)) return;
+	if (!fs_->List(rel_, &entries)) return;
 
 	std::vector<FileItem> dirs;
 	for (size_t i = 0; i < entries.size(); i++) {
 		if (!entries[i].isDir) continue;
 		FileItem f;
 		f.baseName = entries[i].name;
-		f.path = JoinPath(currentDir_, entries[i].name);
+		f.path = Vfs::MakeRef(fs_, fs_->Join(rel_, entries[i].name));
 		f.type = kFileItemDir;
 		dirs.push_back(f);
 	}
@@ -102,7 +145,7 @@ void Filer::AppendDirs(std::vector<FileItem> *out) {
 
 void Filer::AppendMdx(std::vector<FileItem> *out) {
 	std::vector<DirEntry> entries;
-	if (!ListDirectory(currentDir_, &entries)) return;
+	if (!fs_->List(rel_, &entries)) return;
 
 	std::vector<FileItem> files;
 	for (size_t i = 0; i < entries.size(); i++) {
@@ -110,7 +153,7 @@ void Filer::AppendMdx(std::vector<FileItem> *out) {
 		if (!HasMdxExtension(entries[i].name)) continue;
 		FileItem f;
 		f.baseName = entries[i].name;
-		f.path = JoinPath(currentDir_, entries[i].name);
+		f.path = Vfs::MakeRef(fs_, fs_->Join(rel_, entries[i].name));
 		f.type = kFileItemMdx;
 		files.push_back(f);
 	}
@@ -118,12 +161,14 @@ void Filer::AppendMdx(std::vector<FileItem> *out) {
 	out->insert(out->end(), files.begin(), files.end());
 }
 
-void Filer::AppendDrives(std::vector<FileItem> *out) {
-	std::vector<std::string> drives = ListDrives();
-	for (size_t i = 0; i < drives.size(); i++) {
+// ファイルシステムが足す項目（ローカル FS のドライブ一覧）。
+void Filer::AppendExtras(std::vector<FileItem> *out) {
+	std::vector<FsExtraItem> extras;
+	fs_->AppendExtraItems(rel_, &extras);
+	for (size_t i = 0; i < extras.size(); i++) {
 		FileItem f;
-		f.baseName = drives[i].substr(0, 2);  // "C:"
-		f.path = drives[i];
+		f.baseName = extras[i].name;
+		f.path = Vfs::MakeRef(fs_, extras[i].rel);
 		f.type = kFileItemDrive;
 		out->push_back(f);
 	}
@@ -134,7 +179,7 @@ void Filer::ReadTitles() {
 		if ((items_[i].type & kFileItemMdx) == 0) continue;
 
 		std::vector<uint8_t> data;
-		if (!ReadWholeFile(items_[i].path, &data) || data.empty()) continue;
+		if (!vfs_->Read(items_[i].path, &data) || data.empty()) continue;
 
 		char title[512];
 		if (!MdxGetTitle(&data[0], (uint32_t)data.size(), title, sizeof(title))) continue;
@@ -200,62 +245,78 @@ void Filer::EnsureCursorVisible() {
 	}
 }
 
-bool Filer::Open(std::string *playPath) {
+FilerOpen Filer::Open(std::string *playPath) {
 	playPath->clear();
-	if (items_.empty()) return false;
-	const FileItem &f = items_[cursor_];
+	if (items_.empty()) return kFilerOpenNone;
+	const FileItem f = items_[cursor_];  // SetCurrentRef が items_ を作り直す
 
 	if (f.type & kFileItemMdx) {
 		*playPath = f.path;
-		return true;
+		return kFilerOpenPlay;
+	}
+	if (f.type & kFileItemSetting) {
+		return kFilerOpenSettings;
+	}
+	if (f.type & kFileItemFileSystem) {
+		// 選択画面の 1 行ならその FS のルートへ、ルートの "[FS]" なら
+		// 選択画面へ（path が空）。
+		const std::string leaving = currentRef_;
+		SetCurrentRef(f.path);
+		if (f.path.empty()) SelectByPath(leaving);
+		return kFilerOpenMoved;
 	}
 	if (f.type & (kFileItemDir | kFileItemDrive)) {
-		if (!IsDirectory(f.path)) return false;
-		SetCurrentDir(AbsolutePath(f.path));
-		return true;
+		if (!vfs_->IsDir(f.path)) return kFilerOpenNone;
+		SetCurrentRef(f.path);
+		return kFilerOpenMoved;
 	}
-	return false;
+	return kFilerOpenNone;
 }
 
 void Filer::GoParent() {
-	const std::string parent = ParentDir(currentDir_);
-	if (parent == currentDir_) return;
-	const std::string leaving = currentDir_;
-	SetCurrentDir(parent);
-	// 出てきたディレクトリにカーソルを合わせる
+	if (fs_ == 0) return;  // 選択画面より上は無い
+	const std::string leaving = currentRef_;
+	// ルートの 1 つ上は「ファイルシステムの選択」(ref が空)。
+	SetCurrentRef(fs_->IsRoot(rel_) ? std::string()
+	                                : Vfs::MakeRef(fs_, fs_->Parent(rel_)));
+	// 出てきたディレクトリ（またはファイルシステム）にカーソルを合わせる
 	SelectByPath(leaving);
 }
 
 void Filer::GoRoot() {
+	if (fs_ == 0 || fs_->IsRoot(rel_)) return;
 	// 旧 mxv はカレントを 3 文字 ("C:\") へ切り詰めていたが、それだと
 	// Windows のドライブ名前提になる。変わらなくなるまで親を辿れば
-	// 他のプラットフォームでも "/" に行き着く。
-	std::string dir = currentDir_;
+	// 他のプラットフォームでも同じ場所に行き着く。
+	std::string rel = rel_;
 	for (int i = 0; i < 64; i++) {
-		const std::string up = ParentDir(dir);
-		if (up.empty() || up == dir) break;
-		dir = up;
+		const std::string up = fs_->Parent(rel);
+		if (up == rel) break;
+		rel = up;
+		if (fs_->IsRoot(rel)) break;
 	}
-	if (dir == currentDir_) return;
-	const std::string leaving = currentDir_;
-	SetCurrentDir(dir);
+	const std::string leaving = currentRef_;
+	SetCurrentRef(Vfs::MakeRef(fs_, rel));
 	SelectByPath(leaving);
 }
 
-bool Filer::SelectByPath(const std::string &path) {
-	std::string want = path;
-	while (!want.empty() && (want[want.size() - 1] == '\\' || want[want.size() - 1] == '/')) {
-		want.erase(want.size() - 1);
-	}
-	for (size_t i = 1; i < items_.size(); i++) {
-		std::string have = items_[i].path;
-		while (!have.empty() && (have[have.size() - 1] == '\\' || have[have.size() - 1] == '/')) {
-			have.erase(have.size() - 1);
-		}
-		if (CompareNoCase(have, want) == 0) {
-			SetCursor((int)i);
-			return true;
-		}
+bool Filer::SelectByPath(const std::string &ref) {
+	if (vfs_ == 0) return false;
+	FileSystem *wantFs = 0;
+	std::string wantRel;
+	if (!vfs_->Parse(ref, &wantFs, &wantRel) || wantFs == 0) return false;
+
+	// 選択画面には ".." が無いので先頭から見る。そちらはファイルシステムが
+	// 合っていればよい（どこから戻ってきても、その FS の行に合わせたい）。
+	const bool picking = (fs_ == 0);
+	for (size_t i = picking ? 0 : 1; i < items_.size(); i++) {
+		FileSystem *haveFs = 0;
+		std::string haveRel;
+		if (!vfs_->Parse(items_[i].path, &haveFs, &haveRel)) continue;
+		if (haveFs != wantFs) continue;
+		if (!picking && !wantFs->SamePath(haveRel, wantRel)) continue;
+		SetCursor((int)i);
+		return true;
 	}
 	return false;
 }

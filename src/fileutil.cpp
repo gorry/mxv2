@@ -350,6 +350,16 @@ std::vector<std::string> ListDrives() {
 	return out;
 }
 
+std::string SystemDriveRoot() {
+#ifdef _WIN32
+	const std::string drive = EnvVar("SystemDrive");  // ふつうは "C:"
+	if (drive.size() >= 2 && drive[1] == ':') return drive.substr(0, 2) + "\\";
+	return std::string("C:\\");
+#else
+	return std::string();
+#endif
+}
+
 std::string AbsolutePath(const std::string &path) {
 #ifdef _WIN32
 	std::wstring w = Utf8ToWide(path);

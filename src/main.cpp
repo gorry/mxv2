@@ -28,6 +28,7 @@
 #include "settingsui.h"
 #include "skin.h"
 #include "textlayer.h"
+#include "vfs.h"
 #include "visualizer.h"
 
 namespace {
@@ -104,7 +105,7 @@ const char *kUserDirName = "mxv2";
 
 // コマンドライン専用の指定。永続化する設定は Settings が持つ。
 struct Options {
-	std::string target;  // MDX ファイルかディレクトリ。空ならカレント
+	std::string target;  // MDX ファイルかディレクトリ。空ならカレント（ref 可）
 	std::vector<std::string> pdxSearchDirs;  // -pdxpath (複数指定可)
 	std::string assetsDir;
 	std::string userDir;
@@ -127,9 +128,9 @@ const char *kKeyHelpText =
 	    "  ESC / Q         終了\n"
 	    "  SPACE           一時停止 / 再開\n"
 	    "  F               フェードアウト\n"
-	    "  ENTER           ファイラーのファイル/ディレクトリを開く\n"
-	    "  BACKSPACE       親ディレクトリへ\n"
-	    "  \\               ルートディレクトリへ\n"
+	    "  ENTER           ファイラーの項目を開く\n"
+	    "  BACKSPACE       親フォルダへ（ルートではファイルシステムの選択へ）\n"
+	    "  \\               ファイルシステムのルートへ\n"
 	    "  L               フォルダを選んで移動\n"
 	    "  UP/DOWN         カーソル移動\n"
 	    "  PGUP/PGDN       カーソル移動（ページ単位）\n"
@@ -148,6 +149,7 @@ const char *kKeyHelpText =
 	    "  < / >           演奏位置を高速移動\n"
 	    "  F1              [mxv の設定]ダイアログを開く\n"
 	    "  F2              [配色設定]ダイアログを開く\n"
+	    "  F3              [ファイルシステムの設定]ダイアログを開く\n"
 	    "  F11 / H         [操作方法]ダイアログを開く\n"
 	    "  F12 / A         [バージョン情報]ダイアログを開く\n"
 	    "マウス操作:\n"
@@ -196,6 +198,36 @@ void PrescanDirs(int argc, char **argv, Options *opt) {
 			opt->userDir = argv[++i];
 		}
 	}
+}
+
+// ini に書かれた順でファイルシステムをマウントする。仕様 (filesystem.md) の
+// とおり、知らないものは警告して捨て、削除できないものが抜けていれば足す。
+// 直したところがあれば true を返す（読み終えてから書き戻すため）。
+bool LoadFileSystems(mxv2::Vfs *vfs, const std::vector<std::string> &refs) {
+	bool fixed = false;
+	vfs->ClearMounts();
+	for (size_t i = 0; i < refs.size(); i++) {
+		mxv2::FileSystem *fs = 0;
+		std::string rel;
+		if (!vfs->Parse(refs[i], &fs, &rel) || fs == 0) {
+			printf("warning  : 知らないファイルシステムなので外しました: %s\n",
+			       refs[i].c_str());
+			fixed = true;
+			continue;
+		}
+		if (!vfs->Mount(fs)) fixed = true;  // 同じものが二重に書かれていた
+	}
+	if (vfs->EnsureRequired()) fixed = true;
+	return fixed;
+}
+
+// 今のマウント順を ini に書く形へ。
+std::vector<std::string> SaveFileSystems(const mxv2::Vfs &vfs) {
+	std::vector<std::string> out;
+	for (int i = 0; i < vfs.count(); i++) {
+		out.push_back(std::string(vfs.at(i)->id()) + ":");
+	}
+	return out;
 }
 
 // 旧い版は実行ファイルの隣に mxv2.ini を置いていた。ユーザーフォルダ側が
@@ -265,6 +297,7 @@ bool ParseArgs(int argc, char **argv, Options *opt, mxv2::Settings *st) {
 struct PlayContext {
 	const Options *opt;
 	const mxv2::Settings *settings;
+	const mxv2::Vfs *vfs;
 	mxv2::Player *player;
 	mxv2::DrawScreen *draw;
 	mxv2::Visualizer *visualizer;
@@ -278,19 +311,31 @@ struct PlayContext {
 };
 
 // PDX の探索先。設定の 1 つと -pdxpath の指定を合わせたもの。
-std::vector<std::string> PdxSearchDirs(const Options &opt, const mxv2::Settings &st) {
-	std::vector<std::string> dirs = opt.pdxSearchDirs;
-	if (!st.pdxPath.empty()) dirs.push_back(st.pdxPath);
+// 入力は裸のパスでも ref でもよいので、ここで ref へ揃える。
+std::vector<std::string> PdxSearchDirs(const mxv2::Vfs &vfs, const Options &opt,
+                                       const mxv2::Settings &st) {
+	std::vector<std::string> in = opt.pdxSearchDirs;
+	if (!st.pdxPath.empty()) in.push_back(st.pdxPath);
+
+	std::vector<std::string> dirs;
+	for (size_t i = 0; i < in.size(); i++) {
+		std::string ref;
+		if (!vfs.Resolve(in[i], std::string(), &ref) || ref.empty()) {
+			printf("warning  : PDX の探索先を読めません: %s\n", in[i].c_str());
+			continue;
+		}
+		dirs.push_back(ref);
+	}
 	return dirs;
 }
 
-// 1 曲読み込んで演奏を始める。
-bool PlayPath(const std::string &path, const Options &opt, const mxv2::Settings &st,
-              mxv2::Player *player, mxv2::DrawScreen *draw, mxv2::Visualizer *visualizer,
-              mxv2::Screen *screen) {
+// 1 曲読み込んで演奏を始める。path は ref。
+bool PlayPath(const std::string &path, const mxv2::Vfs &vfs, const Options &opt,
+              const mxv2::Settings &st, mxv2::Player *player, mxv2::DrawScreen *draw,
+              mxv2::Visualizer *visualizer, mxv2::Screen *screen) {
 	mxv2::MdxSong song;
 	std::string err;
-	if (!mxv2::LoadMdxSong(path, PdxSearchDirs(opt, st), &song, &err)) {
+	if (!mxv2::LoadMdxSong(vfs, path, PdxSearchDirs(vfs, opt, st), &song, &err)) {
 		printf("ERROR: %s\n", err.c_str());
 		return false;
 	}
@@ -321,13 +366,33 @@ bool PlayPath(const std::string &path, const Options &opt, const mxv2::Settings 
 
 // PlayPath にメインループ側の状態更新を足したもの。
 void StartPlay(const PlayContext &ctx, const std::string &path) {
-	const bool ok = PlayPath(path, *ctx.opt, *ctx.settings, ctx.player, ctx.draw,
+	const bool ok = PlayPath(path, *ctx.vfs, *ctx.opt, *ctx.settings, ctx.player, ctx.draw,
 	                         ctx.visualizer, ctx.screen);
 	*ctx.playing = ok;
 	if (ok) *ctx.currentPath = path;
 	*ctx.endSeen = false;
 	*ctx.chromeRefresh = true;
 	*ctx.fileListRefresh = true;
+}
+
+// ファイラーのカーソルを開く。曲なら演奏、フォルダやファイルシステムなら移動、
+// "[Setting]" ならファイルシステムの設定ダイアログ。
+// キー (ENTER)・マウス・コンテキストメニューの 3 か所から同じ手順を通す。
+void OpenCursor(const PlayContext &ctx, mxv2::Filer *filer, mxv2::SettingsUi *ui) {
+	std::string path;
+	switch (filer->Open(&path)) {
+		case mxv2::kFilerOpenPlay:
+			StartPlay(ctx, path);
+			break;
+		case mxv2::kFilerOpenMoved:
+			*ctx.fileListRefresh = true;
+			break;
+		case mxv2::kFilerOpenSettings:
+			ui->OpenFileSystems();
+			break;
+		default:
+			break;
+	}
 }
 
 }  // namespace
@@ -369,19 +434,57 @@ int main(int argc, char **argv) {
 	printf("assets   : %s\n", paths.bundledDir.c_str());
 	printf("userdir  : %s\n", paths.userDir.c_str());
 
+	// ファイルシステム。同梱アセット・ユーザーフォルダ・ローカルの 3 つを
+	// 用意する。場所の指定はここから先すべて ref（vfs.h）。
+	mxv2::Vfs vfs;
+	vfs.Configure(paths.bundledDir, paths.userDir);
+	// ファイラーのルートに並べる順は ini から。読めなかったぶんや足りない
+	// ぶんは LoadFileSystems が補うので、そのときは書き戻す。
+	bool dirtyFileSystems = LoadFileSystems(&vfs, settings.fileSystems);
+	settings.fileSystems = SaveFileSystems(vfs);
+	// ユーザーフォルダ側の mdx/ は無ければ作る（曲の置き場所として見せる）。
+	{
+		const mxv2::FileSystem *userFs = vfs.FindById("userdir");
+		if (userFs != 0 && !userFs->nativeRoot().empty() &&
+		    !mxv2::MakeDirectories(userFs->nativeRoot())) {
+			printf("warning  : %s を作れません\n", userFs->nativeRoot().c_str());
+		}
+	}
+
 	// 対象がファイルならその曲を、ディレクトリならそこを開く。
 	// 対象を省略したときは、前回開いていたディレクトリへ戻る。
-	std::string startDir;
-	std::string startFile;
-	if (opt.target.empty()) {
-		startDir = settings.lastDir;
-		if (startDir.empty() || !mxv2::IsDirectory(startDir)) startDir = mxv2::CurrentDir();
-	} else if (mxv2::IsDirectory(opt.target)) {
-		startDir = mxv2::AbsolutePath(opt.target);
-	} else {
-		startFile = mxv2::AbsolutePath(opt.target);
-		startDir = mxv2::DirNameOf(startFile);
-		if (startDir.empty()) startDir = mxv2::CurrentDir();
+	std::string startDir;   // ref
+	std::string startFile;  // ref
+	// 行き先が決まったか。空の ref（ファイルシステムの選択）も決まったうち。
+	bool startFound = false;
+	if (!opt.target.empty()) {
+		std::string ref;
+		if (!vfs.Resolve(opt.target, std::string(), &ref) || ref.empty()) {
+			printf("ERROR: 場所を読み取れません: %s\n", opt.target.c_str());
+			return EXIT_FAILURE;
+		}
+		if (vfs.IsDir(ref)) {
+			startDir = ref;
+		} else {
+			startFile = ref;
+			startDir = vfs.Parent(ref);
+		}
+	} else if (!settings.lastDir.empty()) {
+		// 前回開いていた場所。読めない指定（未知の接頭辞など）は未記録と
+		// 同じ扱い。行けなければ 1 つずつ親へ遡り、最後は選択画面へ抜ける。
+		std::string ref;
+		if (vfs.Resolve(settings.lastDir, std::string(), &ref)) {
+			for (int i = 0; i < 64 && !ref.empty(); i++) {
+				if (vfs.IsDir(ref)) break;
+				ref = vfs.Parent(ref);
+			}
+			startDir = ref;
+			startFound = true;
+		}
+	}
+	// 初回起動（前回の場所が記録されていない）は同梱アセットから始める。
+	if (!startFound && startDir.empty() && startFile.empty()) {
+		startDir = vfs.RootRef("assets:");
 	}
 
 	// DPI 対応にしてから SDL を初期化する。
@@ -407,6 +510,10 @@ int main(int argc, char **argv) {
 	// 保存ボタンが無く、触った時点で保存する。
 	unsigned dirtyFields = 0;
 	uint32_t saveAtMs = 0;
+
+	// ini のファイルシステム一覧を直したときは書き戻す（仕様どおり、
+	// 読み込みを終えてから 1 回だけ）。
+	if (dirtyFileSystems) dirtyFields |= mxv2::Settings::kFieldFileSystems;
 
 	int defaultZoom = 100;
 	{
@@ -546,14 +653,16 @@ int main(int argc, char **argv) {
 			// 設定 UI が無くても演奏はできるので、警告だけ出して続ける。
 			printf("warning  : %s\n", err.c_str());
 		}
+		ui.SetVfs(&vfs);
 		ui.SetAboutHeader(AppHeader());
 		ui.SetHelpText(kKeyHelpText);
 	}
 
 	mxv2::Filer filer;
+	filer.SetVfs(&vfs);
 	filer.SetFolderFirst(settings.folderFirst);
 	filer.SetViewMetrics(draw.fileListRows(), draw.fileListItemH());
-	filer.SetCurrentDir(startDir);
+	filer.SetCurrentRef(startDir);
 	if (!startFile.empty()) filer.SelectByPath(startFile);
 
 	mxv2::Visualizer visualizer(&draw);
@@ -576,6 +685,7 @@ int main(int argc, char **argv) {
 	PlayContext ctx;
 	ctx.opt = &opt;
 	ctx.settings = &settings;
+	ctx.vfs = &vfs;
 	ctx.player = &player;
 	ctx.draw = &draw;
 	ctx.visualizer = &visualizer;
@@ -636,17 +746,9 @@ int main(int argc, char **argv) {
 
 			// マウス
 			switch (mouse.Handle(ev)) {
-				case mxv2::kMouseRequestOpenCursor: {
-					std::string path;
-					if (filer.Open(&path)) {
-						if (path.empty()) {
-							fileListRefresh = true;  // ディレクトリ移動
-						} else {
-							StartPlay(ctx, path);
-						}
-					}
+				case mxv2::kMouseRequestOpenCursor:
+					OpenCursor(ctx, &filer, &ui);
 					break;
-				}
 				case mxv2::kMouseRequestPrev: {
 					std::string path;
 					if (filer.PrevMdx(&path)) {
@@ -695,6 +797,9 @@ int main(int argc, char **argv) {
 					break;
 				case SDLK_F2:
 					ui.OpenColors();
+					break;
+				case SDLK_F3:
+					ui.OpenFileSystems();
 					break;
 				case SDLK_F11:
 				case SDLK_h:
@@ -760,17 +865,9 @@ int main(int argc, char **argv) {
 					break;
 
 				case SDLK_RETURN:
-				case SDLK_KP_ENTER: {
-					std::string path;
-					if (filer.Open(&path)) {
-						if (path.empty()) {
-							fileListRefresh = true;  // ディレクトリ移動
-						} else {
-							StartPlay(ctx, path);
-						}
-					}
+				case SDLK_KP_ENTER:
+					OpenCursor(ctx, &filer, &ui);
 					break;
-				}
 				case SDLK_BACKSPACE:
 					filer.GoParent();
 					fileListRefresh = true;
@@ -781,7 +878,7 @@ int main(int argc, char **argv) {
 					break;
 				case SDLK_l:
 					// フォルダを選ぶダイアログ。今の場所から出す。
-					ui.OpenFolder(filer.currentDir());
+					ui.OpenFolder(filer.currentRef());
 					break;
 
 				case SDLK_n: {
@@ -908,8 +1005,8 @@ int main(int argc, char **argv) {
 			settings.masterVolume = player.masterVolume();
 			newDirt |= mxv2::Settings::kFieldVolume;
 		}
-		if (settings.lastDir != filer.currentDir()) {
-			settings.lastDir = filer.currentDir();
+		if (settings.lastDir != filer.currentRef()) {
+			settings.lastDir = filer.currentRef();
 			newDirt |= mxv2::Settings::kFieldLastDir;
 		}
 		if (settings.savePosition) {
@@ -923,21 +1020,18 @@ int main(int argc, char **argv) {
 		}
 		ui.Build(&settings, &draw, &player, &filer, &screen);
 		newDirt |= ui.TakeChangedFields();
+		// [ファイルシステムの設定] は Vfs のマウント一覧を直に触るので、
+		// 書き戻す前にそこから拾い直す。
+		if (newDirt & mxv2::Settings::kFieldFileSystems) {
+			settings.fileSystems = SaveFileSystems(vfs);
+		}
 
 		// コンテキストメニューからの要求。演奏の開始・曲送り・終了は
 		// メインループが状態を持っているのでここで実行する。
 		switch (ui.TakeRequest()) {
-			case mxv2::SettingsUi::kRequestOpenCursor: {
-				std::string path;
-				if (filer.Open(&path)) {
-					if (path.empty()) {
-						fileListRefresh = true;
-					} else {
-						StartPlay(ctx, path);
-					}
-				}
+			case mxv2::SettingsUi::kRequestOpenCursor:
+				OpenCursor(ctx, &filer, &ui);
 				break;
-			}
 			case mxv2::SettingsUi::kRequestReplay:
 				if (!currentPath.empty()) StartPlay(ctx, currentPath);
 				break;
@@ -960,7 +1054,7 @@ int main(int argc, char **argv) {
 				chromeRefresh = true;
 				break;
 			case mxv2::SettingsUi::kRequestSetFolder:
-				filer.SetCurrentDir(ui.requestedFolder());
+				filer.SetCurrentRef(ui.requestedFolder());
 				fileListRefresh = true;
 				break;
 			case mxv2::SettingsUi::kRequestQuit:
@@ -1033,8 +1127,8 @@ int main(int argc, char **argv) {
 			settings.masterVolume = player.masterVolume();
 			dirtyFields |= mxv2::Settings::kFieldVolume;
 		}
-		if (settings.lastDir != filer.currentDir()) {
-			settings.lastDir = filer.currentDir();
+		if (settings.lastDir != filer.currentRef()) {
+			settings.lastDir = filer.currentRef();
 			dirtyFields |= mxv2::Settings::kFieldLastDir;
 		}
 		if (settings.savePosition) {

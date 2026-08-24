@@ -622,9 +622,11 @@ void DrawScreen::PutFileList(const Filer &filer, bool refresh) {
 		if (textLayer_ != 0) textLayer_->ClearRect(x, y, skin_->fileListW, h);
 		if (shown.baseName.empty() && shown.title.empty()) continue;
 
-		// 種別で文字色を変える
+		// 種別で文字色を変える。"[Setting]" は MDX と同じ色。
 		Rgb color = colors_.filer.color;
-		if (shown.type & kFileItemDrive) {
+		if (shown.type & kFileItemFileSystem) {
+			color = colors_.filer.fileSystemColor;
+		} else if (shown.type & kFileItemDrive) {
 			color = colors_.filer.driveColor;
 		} else if (shown.type & kFileItemDir) {
 			color = colors_.filer.folderColor;

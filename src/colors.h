@@ -61,6 +61,9 @@ struct Colors {
 		int colorBright;
 		Rgb folderColor;
 		Rgb driveColor;
+		// ファイルシステム（選択画面の行と、ルートの "[FS]"）。
+		// "[Setting]" は MDX と同じ color を使う。
+		Rgb fileSystemColor;
 		Rgb backColor;
 		int backColorBright;
 	} filer;

@@ -19,6 +19,7 @@
 #include "screen.h"
 #include "settings.h"
 #include "skin.h"
+#include "vfs.h"
 
 namespace mxv2 {
 
@@ -58,6 +59,8 @@ const char *kOverwriteTitle = "上書きの確認";
 const char *kFolderTitle = "フォルダを開く###mxv2folder";
 const char *kPdxFolderTitle = "PDX フォルダを選ぶ###mxv2folder";
 const char *kHelpTitle = "操作方法";
+const char *kFileSystemsTitle = "ファイルシステムの設定";
+const char *kFsRemoveTitle = "削除の確認";
 const char *kAboutTitle = "バージョン情報";
 
 // 表示倍率を変えたあと、実際に適用するまでの待ち時間。
@@ -227,6 +230,7 @@ SettingsUi::SettingsUi()
       hasJapaneseFont_(false),
       styleScale_(0.0f),
       inputScale_(1.0f),
+      vfs_(0),
       pendingZoom_(0),
       zoomApplyAtMs_(0),
       changedFields_(0),
@@ -244,6 +248,11 @@ SettingsUi::SettingsUi()
       overwriteOpen_(false),
       closeOverwrite_(false),
       showHelp_(false),
+      showFileSystems_(false),
+      fsSelected_(0),
+      fsOpenConfirm_(false),
+      fsConfirmOpen_(false),
+      fsCloseConfirm_(false),
       showFolder_(false),
       folderTarget_(kFolderTargetFiler),
       folderReturnToSettings_(false),
@@ -500,12 +509,18 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	if (folderOpenPending_ && !ImGui::IsPopupOpen(kSettingsTitle)) {
 		folderOpenPending_ = false;
 		// PDX の探索先が入っていればそこから、無ければファイラーの今の場所から。
-		const std::string start =
-		    IsDirectory(pdxPathBuf_) ? std::string(pdxPathBuf_) : filer->currentDir();
+		std::string start = filer->currentRef();
+		if (vfs_ != 0 && pdxPathBuf_[0] != '\0') {
+			std::string ref;
+			if (vfs_->Resolve(pdxPathBuf_, filer->currentRef(), &ref) && vfs_->IsDir(ref)) {
+				start = ref;
+			}
+		}
 		SetFolderDir(start);
 		showFolder_ = true;
 	}
 	BuildFolderWindow(settings);
+	BuildFileSystemsWindow(filer);
 	BuildHelpWindow();
 	if (folderReturnToSettings_ && !showFolder_ && !folderOpenPending_ &&
 	    !ImGui::IsPopupOpen(folderTitle())) {
@@ -833,10 +848,13 @@ void SettingsUi::BuildColorsWindow(Settings *settings, DrawScreen *draw, Player 
 		{
 			if (ColorRow("カーソル##fi", &t.filer.cursorColor)) dirty = true;
 			if (AlphaRow("カーソルの強さ##fi", &t.filer.cursorColorBright)) dirty = true;
-			// 「文字の強さ」は下の 3 つの色すべてに効くので、そのあとに置く。
+			// 「文字の強さ」は下の 4 つの色すべてに効くので、そのあとに置く。
 			if (ColorRow("文字色##fi", &t.filer.color)) dirty = true;
 			if (ColorRow("フォルダ文字色##fi", &t.filer.folderColor)) dirty = true;
 			if (ColorRow("ドライブ文字色##fi", &t.filer.driveColor)) dirty = true;
+			if (ColorRow("ファイルシステム文字色##fi", &t.filer.fileSystemColor)) {
+				dirty = true;
+			}
 			if (AlphaRow("文字の強さ##fi", &t.filer.colorBright)) dirty = true;
 			if (ColorRow("背景色##fi", &t.filer.backColor)) dirty = true;
 			if (AlphaRow("背景の強さ##fi", &t.filer.backColorBright)) dirty = true;
@@ -957,19 +975,205 @@ void SettingsUi::BuildOverwriteWindow(Settings *settings, DrawScreen *draw) {
 	ImGui::EndPopup();
 }
 
+// ファイルシステムの設定 (F3)。ファイラーのルートに並べる顔ぶれと順番を
+// 決める。実体は Vfs のマウント一覧なので、触ったらその場で効く。
+// 並びは [FileSystem] へ書き戻す（changedFields_ 経由でメインループが書く）。
+void SettingsUi::BuildFileSystemsWindow(Filer *filer) {
+	if (!SyncModal(kFileSystemsTitle, &showFileSystems_)) return;
+
+	const ImGuiIO &io = ImGui::GetIO();
+	float w = 460.0f * styleScale_;
+	float h = 360.0f * styleScale_;
+	if (w > io.DisplaySize.x) w = io.DisplaySize.x;
+	if (h > io.DisplaySize.y) h = io.DisplaySize.y;
+	ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Appearing);
+	ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_Appearing);
+
+	if (!ImGui::BeginPopupModal(kFileSystemsTitle, &showFileSystems_,
+	                            ImGuiWindowFlags_NoCollapse |
+	                                ImGuiWindowFlags_NoSavedSettings)) {
+		return;
+	}
+	if (vfs_ == 0) {
+		ImGui::TextUnformatted("ファイルシステムがありません。");
+		ImGui::EndPopup();
+		return;
+	}
+
+	const int count = vfs_->count();
+	if (fsSelected_ >= count) fsSelected_ = count - 1;
+	if (fsSelected_ < 0) fsSelected_ = 0;
+
+	// 一覧。削除できないもの（初回起動時から使えるもの）は薄く出して、
+	// 削除できないことを見て分かるようにする。
+	{
+		const float foot = ImGui::GetFrameHeightWithSpacing() * 2.0f +
+		                   ImGui::GetTextLineHeightWithSpacing();
+		ImGui::BeginChild("##fslist", ImVec2(0, -foot), ImGuiChildFlags_Borders);
+		for (int i = 0; i < count; i++) {
+			const FileSystem *fs = vfs_->at(i);
+			char label[256];
+			snprintf(label, sizeof(label), "%s  %s##fs%d", fs->prefix(),
+			         fs->label().c_str(), i);
+			const bool fixed = !fs->removable();
+			if (fixed) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+			if (ImGui::Selectable(label, i == fsSelected_) && !dragMoved_) {
+				fsSelected_ = i;
+				fsError_.clear();
+			}
+			if (fixed) ImGui::PopStyleColor();
+		}
+		DragToScroll(&dragScroll_, &dragMoved_, false, true);
+		ImGui::EndChild();
+	}
+
+	if (fsError_.empty()) {
+		ImGui::TextDisabled("薄い項目は削除できないファイルシステムです");
+	} else {
+		ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), "%s", fsError_.c_str());
+	}
+
+	const FileSystem *sel = (count > 0) ? vfs_->at(fsSelected_) : 0;
+
+	// [上へ] [下へ]。端まで来たら押せなくする。
+	ImGui::BeginDisabled(fsSelected_ <= 0);
+	if (ImGui::Button("上へ")) {
+		vfs_->Move(fsSelected_, -1);
+		fsSelected_--;
+		changedFields_ |= Settings::kFieldFileSystems;
+		filer->Refresh();
+	}
+	ImGui::EndDisabled();
+	ImGui::SameLine();
+	ImGui::BeginDisabled(fsSelected_ < 0 || fsSelected_ >= count - 1);
+	if (ImGui::Button("下へ")) {
+		vfs_->Move(fsSelected_, 1);
+		fsSelected_++;
+		changedFields_ |= Settings::kFieldFileSystems;
+		filer->Refresh();
+	}
+	ImGui::EndDisabled();
+
+	// [追加] は外部ファイルシステム（SAF / Web / SMB …）用。まだ無いので
+	// 押せない。
+	ImGui::SameLine();
+	ImGui::BeginDisabled(true);
+	ImGui::Button("追加...");
+	ImGui::EndDisabled();
+	if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+		ImGui::SetTooltip("追加できるファイルシステムがありません");
+	}
+
+	// [削除]。削除できないものはグレーアウト。カレントのものは押せるが、
+	// 押したときに断る（仕様どおり）。
+	ImGui::SameLine();
+	ImGui::BeginDisabled(sel == 0 || !sel->removable());
+	if (ImGui::Button("削除")) {
+		if (sel != 0 && filer != 0 && filer->fs() == sel) {
+			fsError_ = "いま開いているファイルシステムは削除できません。";
+		} else {
+			fsError_.clear();
+			fsOpenConfirm_ = true;
+		}
+	}
+	ImGui::EndDisabled();
+
+	BuildFsRemoveWindow(filer);
+
+	ImGui::EndPopup();
+}
+
+// 「本当に削除するか」。ファイルシステムの設定の中に入れ子で開く。
+void SettingsUi::BuildFsRemoveWindow(Filer *filer) {
+	if (fsOpenConfirm_) {
+		fsOpenConfirm_ = false;
+		ImGui::OpenPopup(kFsRemoveTitle);
+	}
+
+	fsConfirmOpen_ = ImGui::IsPopupOpen(kFsRemoveTitle);
+	if (!fsConfirmOpen_) {
+		fsCloseConfirm_ = false;
+		return;
+	}
+
+	ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Appearing);
+	if (!ImGui::BeginPopupModal(kFsRemoveTitle, NULL,
+	                            ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
+	                                ImGuiWindowFlags_AlwaysAutoResize)) {
+		return;
+	}
+
+	const FileSystem *sel =
+	    (vfs_ != 0 && fsSelected_ >= 0 && fsSelected_ < vfs_->count()) ? vfs_->at(fsSelected_)
+	                                                                  : 0;
+	ImGui::Text("%s を一覧から外しますか？", sel != 0 ? sel->label().c_str() : "");
+	ImGui::Separator();
+	if (ImGui::Button("外す")) {
+		vfs_->Unmount(fsSelected_);
+		if (fsSelected_ >= vfs_->count()) fsSelected_ = vfs_->count() - 1;
+		if (fsSelected_ < 0) fsSelected_ = 0;
+		changedFields_ |= Settings::kFieldFileSystems;
+		if (filer != 0) filer->Refresh();
+		ImGui::CloseCurrentPopup();
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("やめる") || fsCloseConfirm_) {
+		fsCloseConfirm_ = false;
+		ImGui::CloseCurrentPopup();
+	}
+	ImGui::EndPopup();
+}
+
 // 子フォルダの一覧だけ作り直す。毎フレーム読み直すと重いので、
 // 行き先が変わったときだけ列挙する。
+// dir が空のときはファイルシステムの選択（マウントされている FS が並ぶ）。
 void SettingsUi::RelistFolder(const std::string &dir) {
-	folderDir_ = AbsolutePath(dir);
+	folderDir_.clear();
 	folderSelected_.clear();
 	folderEntries_.clear();
+	if (vfs_ == 0) return;
+
+	FileSystem *fs = 0;
+	std::string rel;
+	if (!vfs_->Parse(dir, &fs, &rel)) return;
+	folderDir_ = Vfs::MakeRef(fs, rel);
+
+	if (fs == 0) {
+		for (int i = 0; i < vfs_->count(); i++) {
+			FileSystem *m = vfs_->at(i);
+			if (!m->available()) continue;
+			FolderEntry e;
+			e.name = m->prefix();
+			e.ref = Vfs::MakeRef(m, m->Root());
+			folderEntries_.push_back(e);
+		}
+		return;
+	}
 
 	std::vector<DirEntry> entries;
-	if (!ListDirectory(folderDir_, &entries)) return;
-	for (size_t i = 0; i < entries.size(); i++) {
-		if (entries[i].isDir) folderEntries_.push_back(entries[i].name);
+	std::vector<std::string> names;
+	if (fs->List(rel, &entries)) {
+		for (size_t i = 0; i < entries.size(); i++) {
+			if (entries[i].isDir) names.push_back(entries[i].name);
+		}
 	}
-	std::sort(folderEntries_.begin(), folderEntries_.end(), LessPathNoCase);
+	std::sort(names.begin(), names.end(), LessPathNoCase);
+	for (size_t i = 0; i < names.size(); i++) {
+		FolderEntry e;
+		e.name = names[i];
+		e.ref = Vfs::MakeRef(fs, fs->Join(rel, names[i]));
+		folderEntries_.push_back(e);
+	}
+
+	// ファイルシステムが足すもの（ローカル FS のドライブ一覧）。
+	std::vector<FsExtraItem> extras;
+	fs->AppendExtraItems(rel, &extras);
+	for (size_t i = 0; i < extras.size(); i++) {
+		FolderEntry e;
+		e.name = extras[i].name;
+		e.ref = Vfs::MakeRef(fs, extras[i].rel);
+		folderEntries_.push_back(e);
+	}
 }
 
 // 一覧に出すフォルダを決めて、入力欄もそこへ合わせる。
@@ -1143,9 +1347,10 @@ void SettingsUi::BuildFolderWindow(Settings *settings) {
 	// 差し替えると、カーソルごと飛んでしまって打てなくなる。
 	if (ImGui::IsItemEdited()) {
 		const std::string typed = folderPathBuf_;
-		if (!typed.empty() && IsDirectory(typed)) {
-			const std::string abs = AbsolutePath(typed);
-			if (abs != folderDir_) RelistFolder(abs);
+		std::string ref;
+		if (!typed.empty() && vfs_ != 0 && vfs_->Resolve(typed, folderDir_, &ref) &&
+		    vfs_->IsDir(ref) && ref != folderDir_) {
+			RelistFolder(ref);
 		}
 		folderError_.clear();
 	}
@@ -1155,12 +1360,14 @@ void SettingsUi::BuildFolderWindow(Settings *settings) {
 	// 同じことも多いが、一覧で選んだだけのときや打ち込みの途中は食い違う。
 	// 見出しは付けず、上の入力欄と桁を揃える。入力欄の文字は枠の内側に
 	// FramePadding のぶん寄っているので、こちらも同じだけ下げる。
-	const std::string up = ParentDir(folderDir_);
-	const bool hasUp = (!up.empty() && up != folderDir_);
+	// ファイルシステムのルートの 1 つ上は「ファイルシステムの選択」(ref は空)。
+	const std::string up = (vfs_ != 0) ? vfs_->Parent(folderDir_) : std::string();
+	const bool hasUp = !folderDir_.empty();
 	{
 		const float inset = ImGui::GetStyle().FramePadding.x;
 		ImGui::Indent(inset);
-		ImGui::TextDisabled("%s", folderDir_.c_str());
+		ImGui::TextDisabled("%s", folderDir_.empty() ? "ファイルシステム"
+		                                             : folderDir_.c_str());
 		ImGui::Unindent(inset);
 	}
 
@@ -1169,6 +1376,7 @@ void SettingsUi::BuildFolderWindow(Settings *settings) {
 	// 一覧の作り直しは回している最中にやってはいけないので、行き先を
 	// 控えてから動かす。
 	std::string nextDir;
+	bool nextDirValid = false;
 	{
 		const float foot = ImGui::GetFrameHeightWithSpacing() +
 		                   ImGui::GetTextLineHeightWithSpacing();
@@ -1188,33 +1396,29 @@ void SettingsUi::BuildFolderWindow(Settings *settings) {
 			}
 		};
 
-		std::string pick;   // 選ばれたもの
+		std::string pick;      // 選ばれたもの (ref)
+		bool picked = false;   // ref は空にもなりうるので、有無は別に持つ
 		bool entered = false;  // ダブルクリックだったか
 
-		if (hasUp && Row::Hit("..", up, folderSelected_, &entered)) pick = up;
-		for (size_t i = 0; i < folderEntries_.size(); i++) {
-			const std::string path = JoinPath(folderDir_, folderEntries_[i]);
-			if (Row::Hit(folderEntries_[i].c_str(), path, folderSelected_, &entered)) {
-				pick = path;
-			}
+		if (hasUp && Row::Hit("..", up, folderSelected_, &entered)) {
+			pick = up;
+			picked = true;
 		}
-		// ドライブ (Windows のみ)。旧 mxv のファイラーが末尾に並べていたのと同じ。
-		const std::vector<std::string> drives = ListDrives();
-		if (!drives.empty()) {
-			ImGui::Separator();
-			for (size_t i = 0; i < drives.size(); i++) {
-				if (Row::Hit(drives[i].c_str(), drives[i], folderSelected_, &entered)) {
-					pick = drives[i];
-				}
+		for (size_t i = 0; i < folderEntries_.size(); i++) {
+			if (Row::Hit(folderEntries_[i].name.c_str(), folderEntries_[i].ref,
+			             folderSelected_, &entered)) {
+				pick = folderEntries_[i].ref;
+				picked = true;
 			}
 		}
 
 		// ドラッグでスクロールした指を離したときは、押した行を選ばない。
 		// 中身は指に付いて動くので、離した先には押した行がそのまま居る。
 		// これを拾ってしまうと「スクロールしたつもりが選択された」になる。
-		if (!pick.empty() && !dragMoved_) {
+		if (picked && !dragMoved_) {
 			if (entered) {
 				nextDir = pick;
+				nextDirValid = true;
 			} else {
 				SelectFolderEntry(pick);
 			}
@@ -1233,20 +1437,28 @@ void SettingsUi::BuildFolderWindow(Settings *settings) {
 	ImGui::SameLine();
 	if (ImGui::Button("キャンセル")) showFolder_ = false;
 
-	if (!nextDir.empty()) {
+	if (nextDirValid) {
 		SetFolderDir(nextDir);
 	} else if (apply) {
 		const std::string want = folderPathBuf_;
-		if (!IsDirectory(want)) {
+		std::string ref;
+		const bool ok = (vfs_ != 0) && vfs_->Resolve(want, folderDir_, &ref);
+		// ref が空なら「ファイルシステムの選択」。ファイラーは行けるが、
+		// PDX の探索先には指定できない。
+		if (!ok || (!ref.empty() && !vfs_->IsDir(ref))) {
 			folderError_ = "そのフォルダは見つかりません。";
 		} else if (folderTarget_ == kFolderTargetPdx) {
-			settings->pdxPath = AbsolutePath(want);
-			snprintf(pdxPathBuf_, sizeof(pdxPathBuf_), "%s", settings->pdxPath.c_str());
-			changedFields_ |= Settings::kFieldPdxPath;
-			showFolder_ = false;
+			if (ref.empty()) {
+				folderError_ = "そのフォルダは見つかりません。";
+			} else {
+				settings->pdxPath = ref;
+				snprintf(pdxPathBuf_, sizeof(pdxPathBuf_), "%s", ref.c_str());
+				changedFields_ |= Settings::kFieldPdxPath;
+				showFolder_ = false;
+			}
 		} else {
 			// ファイラーを動かすのはメインループの持ち物なので、要求だけ積む。
-			requestedFolder_ = AbsolutePath(want);
+			requestedFolder_ = ref;
 			request_ = kRequestSetFolder;
 			showFolder_ = false;
 		}
@@ -1286,7 +1498,7 @@ void SettingsUi::BuildContextMenu(DrawScreen *draw, Player *player, Filer *filer
 
 		if (ImGui::MenuItem("開く")) request_ = kRequestOpenCursor;
 		if (ImGui::MenuItem("フォルダを開く...", "L")) {
-			SetFolderDir(filer->currentDir());
+			SetFolderDir(filer->currentRef());
 			showFolder_ = true;
 		}
 
@@ -1334,6 +1546,7 @@ void SettingsUi::BuildContextMenu(DrawScreen *draw, Player *player, Filer *filer
 		if (ImGui::MenuItem("設定...", "F1")) visible_ = true;
 		// F2 と同じ経路を通す（スキン名の欄を埋め直すため）。
 		if (ImGui::MenuItem("配色設定...", "F2")) OpenColors();
+		if (ImGui::MenuItem("ファイルシステム...", "F3")) OpenFileSystems();
 		if (ImGui::MenuItem("操作方法...", "F11")) showHelp_ = true;
 		if (ImGui::MenuItem("バージョン情報...", "F12")) showAbout_ = true;
 		ImGui::Separator();

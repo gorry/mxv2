@@ -10,6 +10,7 @@
 #define MXV2_SETTINGS_H
 
 #include <string>
+#include <vector>
 
 namespace mxv2 {
 
@@ -49,6 +50,12 @@ struct Settings {
 	// [Path]
 	std::string pdxPath;  // PDX の追加探索先（1 つ。複数は -pdxpath で足す）
 
+	// [FileSystem]
+	// ファイラーのルート（ファイルシステムの選択）に並べる順。中身は
+	// "assets:" のような ref。書き出す本数の上限は kMaxFileSystems。
+	std::vector<std::string> fileSystems;
+	static const int kMaxFileSystems = 64;
+
 	// [Position] 復元用。savePosition が false なら使わない。
 	bool savePosition;
 	int windowX, windowY;
@@ -69,6 +76,7 @@ struct Settings {
 		kFieldPdxPath = 1 << 9,
 		kFieldWindowPos = 1 << 10,
 		kFieldLatency = 1 << 11,
+		kFieldFileSystems = 1 << 12,
 	};
 
 	Settings();

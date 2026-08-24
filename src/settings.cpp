@@ -2,6 +2,8 @@
 
 #include "settings.h"
 
+#include <cstdio>
+
 #include "fileutil.h"
 #include "ini.h"
 
@@ -53,6 +55,20 @@ bool Settings::Load(const std::string &path) {
 
 	pdxPath = ini.GetString("Path", "PDX", pdxPath);
 
+	// 中身の妥当性（知らないファイルシステム、削除できないものの欠落）は
+	// VFS 側で見る。ここは書いてある順に並べるだけ。
+	fileSystems.clear();
+	{
+		int count = ini.GetInt("FileSystem", "Count", 0);
+		if (count > kMaxFileSystems) count = kMaxFileSystems;
+		for (int i = 1; i <= count; i++) {
+			char key[32];
+			snprintf(key, sizeof(key), "FS%d", i);
+			const std::string v = ini.GetString("FileSystem", key, std::string());
+			if (!v.empty()) fileSystems.push_back(v);
+		}
+	}
+
 	savePosition = ini.GetInt("Position", "Save", savePosition ? 1 : 0) != 0;
 	windowX = ini.GetInt("Position", "X", windowX);
 	windowY = ini.GetInt("Position", "Y", windowY);
@@ -82,6 +98,24 @@ bool Settings::Save(const std::string &path) const {
 
 	ini.SetString("Path", "PDX", pdxPath);
 
+	{
+		int count = (int)fileSystems.size();
+		if (count > kMaxFileSystems) count = kMaxFileSystems;
+		ini.SetInt("FileSystem", "Count", count);
+		for (int i = 1; i <= count; i++) {
+			char key[32];
+			snprintf(key, sizeof(key), "FS%d", i);
+			ini.SetString("FileSystem", key, fileSystems[i - 1]);
+		}
+		// Count を超えた古い FS<n> は消す。残しておくと、次に読んだときに
+		// また出てきてしまう（Ini は知らないキーをそのまま残すため）。
+		for (int i = count + 1; i <= kMaxFileSystems; i++) {
+			char key[32];
+			snprintf(key, sizeof(key), "FS%d", i);
+			ini.Remove("FileSystem", key);
+		}
+	}
+
 	ini.SetInt("Position", "Save", savePosition ? 1 : 0);
 	ini.SetInt("Position", "X", windowX);
 	ini.SetInt("Position", "Y", windowY);
@@ -110,6 +144,7 @@ bool Settings::SaveFields(const std::string &path, unsigned fields) const {
 		out.latencyMs = latencyMs;
 	}
 	if (fields & kFieldPdxPath) out.pdxPath = pdxPath;
+	if (fields & kFieldFileSystems) out.fileSystems = fileSystems;
 	if (fields & kFieldWindowPos) {
 		out.windowX = windowX;
 		out.windowY = windowY;

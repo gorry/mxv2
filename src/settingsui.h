@@ -28,6 +28,7 @@ class DrawScreen;
 class Filer;
 class Player;
 class Screen;
+class Vfs;
 struct Settings;
 
 class SettingsUi {
@@ -37,6 +38,10 @@ public:
 
 	// ImGui の初期化。スキンとフォントは paths から探す。
 	bool Init(Screen *screen, const AssetPaths &paths, std::string *err);
+
+	// フォルダ選択とファイルシステムの設定で使う VFS。Init のあとに渡す。
+	void SetVfs(Vfs *vfs) { vfs_ = vfs; }
+
 	void Shutdown();
 
 	// SDL イベントを ImGui へ渡す。
@@ -71,13 +76,21 @@ public:
 	// フォルダを選ぶダイアログ (L)。旧 mxv の MX_GetNewDirFileList にあたる。
 	// 原典は SHBrowseForFolder だったが Windows 専用なので、パスの打ち込みと
 	// フォルダ一覧を持つ自前のダイアログにしてある。
-	// dir は最初に見せるフォルダ（ふつうはファイラーの今の場所）。
+	// dir は最初に見せるフォルダの ref（ふつうはファイラーの今の場所）。
 	void OpenFolder(const std::string &dir) {
 		if (busy()) return;
 		folderTarget_ = kFolderTargetFiler;
 		folderReturnToSettings_ = false;
 		SetFolderDir(dir);
 		showFolder_ = true;
+	}
+
+	// ファイルシステムの設定 (F3)。ファイラーのルートに並べる顔ぶれと順番を
+	// 決める。ファイラーの "[Setting]" とコンテキストメニューからも開く。
+	void OpenFileSystems() {
+		if (busy()) return;
+		showFileSystems_ = true;
+		fsSelected_ = 0;
 	}
 
 	// 操作方法のダイアログ (F11 / H)。文面は main.cpp の -h と同じもの。
@@ -102,8 +115,11 @@ public:
 		if (contextMenuOpen_) { closeContextMenu_ = true; return true; }
 		// 上書き確認は配色設定の中に入れ子で開くので、先に閉じる。
 		if (overwriteOpen_) { closeOverwrite_ = true; return true; }
+		// 削除の確認はファイルシステムの設定の中に入れ子で開く。
+		if (fsConfirmOpen_) { fsCloseConfirm_ = true; return true; }
 		if (showAbout_) { showAbout_ = false; return true; }
 		if (showHelp_) { showHelp_ = false; return true; }
+		if (showFileSystems_) { showFileSystems_ = false; return true; }
 		if (showFolder_) { showFolder_ = false; return true; }
 		if (showColors_) { showColors_ = false; return true; }
 		if (visible_) { visible_ = false; return true; }
@@ -204,6 +220,7 @@ private:
 	uint32_t zoomApplyAtMs_;  // 0 = 適用待ちなし
 
 	AssetPaths paths_;
+	Vfs *vfs_;
 	std::vector<std::string> skinNames_;
 	std::string pendingSkin_;
 
@@ -220,7 +237,8 @@ private:
 	// どれか 1 つでもダイアログが開いているか。モーダルなので、開いている
 	// 間は別のものを開けない（先にそれを閉じてもらう）。
 	bool busy() const {
-		return visible_ || showColors_ || showAbout_ || showFolder_ || showHelp_;
+		return visible_ || showColors_ || showAbout_ || showFolder_ || showHelp_ ||
+		       showFileSystems_;
 	}
 
 	// 操作方法のダイアログ。
@@ -281,12 +299,31 @@ private:
 	// 一覧に出すフォルダを決めて、入力欄もそこへ合わせる。
 	void SetFolderDir(const std::string &dir);
 	bool showFolder_;
-	std::string folderDir_;                    // 今 一覧に出しているフォルダ
-	std::string folderSelected_;               // 一覧で選ばれている行のパス
-	std::vector<std::string> folderEntries_;   // その中の子フォルダ名
+	// 一覧に出しているフォルダの ref。空ならファイルシステムの選択。
+	std::string folderDir_;
+	std::string folderSelected_;               // 一覧で選ばれている行の ref
+	// その中の子フォルダ（表示名と ref）。ファイルシステムの選択のときは
+	// マウントされている FS が並ぶ。
+	struct FolderEntry {
+		std::string name;
+		std::string ref;
+	};
+	std::vector<FolderEntry> folderEntries_;
 	std::string folderError_;                  // 開けなかったときの文言
-	std::string requestedFolder_;              // kRequestSetFolder の行き先
+	std::string requestedFolder_;              // kRequestSetFolder の行き先 (ref)
 	char folderPathBuf_[512];                  // パスの入力欄
+
+	// ファイルシステムの設定 (F3)。マウントする顔ぶれと並び順を決める。
+	// 実体は Vfs のマウント一覧で、変えたら [FileSystem] へ書き戻す。
+	void BuildFileSystemsWindow(Filer *filer);
+	// 削除の確認。このダイアログの中に入れ子で開く。
+	void BuildFsRemoveWindow(Filer *filer);
+	bool showFileSystems_;
+	int fsSelected_;         // 一覧で選んでいる行
+	std::string fsError_;    // 「カレントは削除できない」などの文言
+	bool fsOpenConfirm_;     // 次のフレームで確認を開く
+	bool fsConfirmOpen_;     // いま開いている（ESC の判断に使う）
+	bool fsCloseConfirm_;    // ESC で閉じてほしい
 
 	// コンテキストメニュー
 	void BuildContextMenu(DrawScreen *draw, Player *player, Filer *filer);

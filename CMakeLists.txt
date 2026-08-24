@@ -142,6 +142,7 @@ add_executable(mxv2
 	src/text.cpp
 	src/textlayer.cpp
 	src/textrender.cpp
+	src/vfs.cpp
 	src/visualizer.cpp
 	src/assetpath.h
 	src/bitmap.h
@@ -164,6 +165,7 @@ add_executable(mxv2
 	src/text.h
 	src/textlayer.h
 	src/textrender.h
+	src/vfs.h
 	src/visualizer.h
 )
 target_include_directories(mxv2 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -190,6 +192,7 @@ add_executable(mxv2_chunktest
 	src/fileutil.cpp
 	src/text.cpp
 	src/mdxsong.cpp
+	src/vfs.cpp
 )
 target_include_directories(mxv2_chunktest PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(mxv2_chunktest PRIVATE portable_mdx)
@@ -212,6 +215,24 @@ add_custom_command(TARGET mxv2 POST_BUILD
 	COMMAND ${CMAKE_COMMAND} -E copy_directory
 		"${CMAKE_CURRENT_SOURCE_DIR}/assets" "$<TARGET_FILE_DIR:mxv2>/assets"
 )
+
+# 曲の置き場所 assets/mdx（ファイラーの "Assets>" が根に据えるフォルダ）。
+# 空でも作る。無いとファイラーが空の一覧になるだけだが、置き場所として
+# 見せておきたい。
+add_custom_command(TARGET mxv2 POST_BUILD
+	COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:mxv2>/assets/mdx"
+)
+
+# 同梱の MDX（ArctanX 氏の許諾済み。詳細は NOTICE と BUILD.md）。
+# リポジトリには含めないので、**無ければ何もしない**。
+set(BUNDLED_MDX_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/GUSA-CDg/ArctanX" CACHE PATH
+	"同梱する MDX の置き場所（無ければコピーしない）")
+if(EXISTS "${BUNDLED_MDX_DIR}")
+	add_custom_command(TARGET mxv2 POST_BUILD
+		COMMAND ${CMAKE_COMMAND} -E copy_directory
+			"${BUNDLED_MDX_DIR}" "$<TARGET_FILE_DIR:mxv2>/assets/mdx/ArctanX"
+	)
+endif()
 
 # LICENSE と NOTICE も実行ファイルの隣へ。NOTICE は「バージョン情報」が
 # 実行時に読んで表示するので、配布物にも必ず入れること。

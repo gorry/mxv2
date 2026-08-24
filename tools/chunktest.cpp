@@ -22,6 +22,7 @@
 
 #include "fileutil.h"
 #include "mdxsong.h"
+#include "vfs.h"
 
 namespace {
 
@@ -105,7 +106,14 @@ int main(int argc, char **argv) {
 
 	mxv2::MdxSong song;
 	std::string err;
-	if (!mxv2::LoadMdxSong(argv[1], std::vector<std::string>(), &song, &err)) {
+	mxv2::Vfs vfs;
+	vfs.Configure(std::string(), std::string());  // ローカル FS だけあれば足りる
+	std::string ref;
+	if (!vfs.Resolve(argv[1], std::string(), &ref)) {
+		printf("bad path: %s\n", argv[1]);
+		return EXIT_FAILURE;
+	}
+	if (!mxv2::LoadMdxSong(vfs, ref, std::vector<std::string>(), &song, &err)) {
 		printf("ERROR: %s\n", err.c_str());
 		return EXIT_FAILURE;
 	}

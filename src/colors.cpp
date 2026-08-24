@@ -46,6 +46,7 @@ Colors::Colors() {
 	filer.colorBright = 100;
 	filer.folderColor = MakeRgb(128, 255, 128);
 	filer.driveColor = MakeRgb(255, 128, 128);
+	filer.fileSystemColor = MakeRgb(255, 255, 128);
 	filer.backColor = MakeRgb(0, 0, 0);
 	filer.backColorBright = 50;
 
@@ -96,6 +97,8 @@ bool Colors::Load(const std::string &path) {
 	    FromColorRef(ini.GetInt("Filer", "FolderColor", ToColorRef(filer.folderColor)));
 	filer.driveColor =
 	    FromColorRef(ini.GetInt("Filer", "DriveColor", ToColorRef(filer.driveColor)));
+	filer.fileSystemColor = FromColorRef(
+	    ini.GetInt("Filer", "FileSystemColor", ToColorRef(filer.fileSystemColor)));
 	filer.backColor = FromColorRef(ini.GetInt("Filer", "BackColor", ToColorRef(filer.backColor)));
 	filer.backColorBright = ini.GetInt("Filer", "BackColorBright", filer.backColorBright);
 
@@ -138,6 +141,7 @@ bool Colors::Save(const std::string &path) const {
 	ini.SetInt("Filer", "ColorBright", filer.colorBright);
 	ini.SetInt("Filer", "FolderColor", ToColorRef(filer.folderColor));
 	ini.SetInt("Filer", "DriveColor", ToColorRef(filer.driveColor));
+	ini.SetInt("Filer", "FileSystemColor", ToColorRef(filer.fileSystemColor));
 	ini.SetInt("Filer", "BackColor", ToColorRef(filer.backColor));
 	ini.SetInt("Filer", "BackColorBright", filer.backColorBright);
 

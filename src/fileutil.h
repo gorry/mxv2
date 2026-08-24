@@ -65,6 +65,9 @@ bool ListDirectory(const std::string &dir, std::vector<DirEntry> *out);
 // 利用できるドライブのルートパス ("C:\\" 等)。Windows 以外では空。
 std::vector<std::string> ListDrives();
 
+// OS のシステムドライブのルート ("C:\\" 等)。Windows 以外では空。
+std::string SystemDriveRoot();
+
 // 絶対パスへ正規化する。失敗したら入力をそのまま返す。
 std::string AbsolutePath(const std::string &path);
 

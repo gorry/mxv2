@@ -7,6 +7,7 @@
 
 #include "fileutil.h"
 #include "text.h"
+#include "vfs.h"
 
 #include <mdx_util.h>
 
@@ -38,9 +39,11 @@ std::string FlipCase(const std::string &s, bool stem, bool ext) {
 }
 #endif
 
-// PDX を探して読み込む。見つかった場所を foundPath に返す。
-bool FindAndReadPdx(const std::string &pdxFileName,
+// PDX を探して読み込む。見つかった場所 (ref) を foundPath に返す。
+bool FindAndReadPdx(const Vfs &vfs,
+                    const std::string &pdxFileName,
                     const std::string &mdxDir,
+                    const std::string &pdxDir,
                     const std::vector<std::string> &extraDirs,
                     std::vector<uint8_t> *out,
                     std::string *foundPath) {
@@ -60,18 +63,24 @@ bool FindAndReadPdx(const std::string &pdxFileName,
 	}
 #endif
 
+	// 探す順は「MDX と同じ場所 -> その FS のルートの pdx/ -> pdxpath」。
+	// 真ん中は同梱アセットやユーザーフォルダのように「持ち物一式が 1 つの
+	// 根の下にある」FS 向けで、ローカル FS では飛ばす（vfs.h の hasPdxDir）。
 	std::vector<std::string> dirs;
 	dirs.push_back(mdxDir);
+	if (!pdxDir.empty()) dirs.push_back(pdxDir);
 	for (size_t i = 0; i < extraDirs.size(); i++) dirs.push_back(extraDirs[i]);
 
 	// 旧 mxv は「MDX と同じ場所 -> 同じ場所 + .pdx -> PDX パス -> PDX パス +
 	// .pdx」の順で探す。ここではディレクトリを外側、名前候補を内側に回す。
 	for (size_t d = 0; d < dirs.size(); d++) {
+		if (dirs[d].empty()) continue;
 		for (size_t i = 0; i < names.size(); i++) {
-			std::string path = JoinPath(dirs[d], names[i]);
-			if (!FileExists(path)) continue;
-			if (!ReadWholeFile(path, out)) continue;
-			*foundPath = path;
+			const std::string ref = vfs.Join(dirs[d], names[i]);
+			if (ref.empty()) continue;
+			if (!vfs.Exists(ref)) continue;
+			if (!vfs.Read(ref, out)) continue;
+			*foundPath = ref;
 			return true;
 		}
 	}
@@ -80,16 +89,17 @@ bool FindAndReadPdx(const std::string &pdxFileName,
 
 }  // namespace
 
-bool LoadMdxSong(const std::string &mdxPath,
+bool LoadMdxSong(const Vfs &vfs,
+                 const std::string &mdxRef,
                  const std::vector<std::string> &pdxSearchDirs,
                  MdxSong *out,
                  std::string *err) {
 	*out = MdxSong();
-	out->path = mdxPath;
+	out->path = mdxRef;
 
 	std::vector<uint8_t> mdxImage;
-	if (!ReadWholeFile(mdxPath, &mdxImage) || mdxImage.empty()) {
-		*err = "MDX ファイルを読み込めません: " + mdxPath;
+	if (!vfs.Read(mdxRef, &mdxImage) || mdxImage.empty()) {
+		*err = "MDX ファイルを読み込めません: " + mdxRef;
 		return false;
 	}
 	const uint32_t mdxImageSize = (uint32_t)mdxImage.size();
@@ -98,7 +108,7 @@ bool LoadMdxSong(const std::string &mdxPath,
 	{
 		char title[512];
 		if (!MdxGetTitle(&mdxImage[0], mdxImageSize, title, sizeof(title))) {
-			*err = "MDX のタイトルを取得できません（壊れている可能性があります）: " + mdxPath;
+			*err = "MDX のタイトルを取得できません（壊れている可能性があります）: " + mdxRef;
 			return false;
 		}
 		out->titleSjis = TrimTrailingControl(std::string(title));
@@ -108,7 +118,7 @@ bool LoadMdxSong(const std::string &mdxPath,
 	// PDX を要求するか
 	bool hasPdxName = false;
 	if (!MdxHasPdxFileName(&mdxImage[0], mdxImageSize, &hasPdxName)) {
-		*err = "MDX の PDX 情報を取得できません: " + mdxPath;
+		*err = "MDX の PDX 情報を取得できません: " + mdxRef;
 		return false;
 	}
 	out->requiresPdx = hasPdxName;
@@ -119,13 +129,14 @@ bool LoadMdxSong(const std::string &mdxPath,
 		char name[FILENAME_MAX];
 		memset(name, 0, sizeof(name));
 		if (!MdxGetPdxFileName(&mdxImage[0], mdxImageSize, name, sizeof(name))) {
-			*err = "MDX の PDX ファイル名を取得できません: " + mdxPath;
+			*err = "MDX の PDX ファイル名を取得できません: " + mdxRef;
 			return false;
 		}
 		out->pdxFileName = std::string(name);
 		if (!out->pdxFileName.empty()) {
-			out->hasPdx = FindAndReadPdx(out->pdxFileName, DirNameOf(mdxPath), pdxSearchDirs,
-			                             &pdxImage, &out->pdxPath);
+			out->hasPdx = FindAndReadPdx(vfs, out->pdxFileName, vfs.Parent(mdxRef),
+			                             vfs.PdxDirRef(mdxRef), pdxSearchDirs, &pdxImage,
+			                             &out->pdxPath);
 		}
 		if (!out->hasPdx) {
 			// PDX が見つからなくても、MDX が PDX を要求している以上、MXDRV には
@@ -143,7 +154,7 @@ bool LoadMdxSong(const std::string &mdxPath,
 	const uint32_t pdxImageSize = (uint32_t)pdxImage.size();
 	if (!MdxGetRequiredBufferSize(&mdxImage[0], mdxImageSize, pdxImageSize,
 	                              &mdxBufferSize, &pdxBufferSize)) {
-		*err = "MDX のバッファサイズを算出できません: " + mdxPath;
+		*err = "MDX のバッファサイズを算出できません: " + mdxRef;
 		return false;
 	}
 
@@ -156,7 +167,7 @@ bool LoadMdxSong(const std::string &mdxPath,
 	                               (uint32_t)out->mdxBuffer.size(),
 	                               out->pdxBuffer.empty() ? NULL : &out->pdxBuffer[0],
 	                               (uint32_t)out->pdxBuffer.size())) {
-		*err = "MDX バッファの構築に失敗しました: " + mdxPath;
+		*err = "MDX バッファの構築に失敗しました: " + mdxRef;
 		return false;
 	}
 
