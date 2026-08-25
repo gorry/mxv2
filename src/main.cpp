@@ -254,7 +254,8 @@ bool LoadBookmarks(const mxv2::Vfs &vfs, std::vector<std::string> *refs,
 std::vector<std::string> SaveFileSystems(const mxv2::Vfs &vfs) {
 	std::vector<std::string> out;
 	for (int i = 0; i < vfs.count(); i++) {
-		out.push_back(std::string(vfs.at(i)->id()) + ":");
+		// 場所を持つ外部ファイルシステムは "<id>:<場所>" を返す。
+		out.push_back(vfs.at(i)->mountRef());
 	}
 	return out;
 }
@@ -585,9 +586,16 @@ int main(int argc, char **argv) {
 		// 同じ扱い。行けなければ 1 つずつ親へ遡り、最後は選択画面へ抜ける。
 		std::string ref;
 		if (vfs.Resolve(settings.lastDir, std::string(), &ref)) {
-			for (int i = 0; i < 64 && !ref.empty(); i++) {
-				if (vfs.IsDir(ref)) break;
-				ref = vfs.Parent(ref);
+			if (!vfs.ParentIsCheap(ref)) {
+				// 外部ファイルシステムは 1 段ごとに通信が要るので、途中は
+				// 飛ばしてルートまで戻す (filesystem.md)。
+				if (!vfs.IsDir(ref)) ref = vfs.RootRef(ref);
+				if (!ref.empty() && !vfs.IsDir(ref)) ref.clear();
+			} else {
+				for (int i = 0; i < 64 && !ref.empty(); i++) {
+					if (vfs.IsDir(ref)) break;
+					ref = vfs.Parent(ref);
+				}
 			}
 			startDir = ref;
 			startFound = true;

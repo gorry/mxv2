@@ -62,7 +62,14 @@ public:
 	};
 
 	TitleReader()
-	    : vfs_(0), mutex_(0), wake_(0), thread_(0), generation_(0), quit_(false) {}
+	    : vfs_(0),
+	      mutex_(0),
+	      wake_(0),
+	      idle_(0),
+	      thread_(0),
+	      generation_(0),
+	      quit_(false),
+	      busy_(false) {}
 	~TitleReader() { Stop(); }
 
 	// 読み直しを頼む。前の依頼は捨てる。
@@ -96,6 +103,17 @@ public:
 		SDL_SemPost(wake_);
 	}
 
+	// 読みかけを捨てて、スレッドが手を離すまで待つ。
+	void Quiesce() {
+		if (mutex_ == 0) return;
+		SDL_LockMutex(mutex_);
+		generation_++;  // 読みかけを捨てさせる
+		pending_.clear();
+		done_.clear();
+		while (busy_) SDL_CondWait(idle_, mutex_);
+		SDL_UnlockMutex(mutex_);
+	}
+
 	// 届いているぶんを引き取る。何も無ければ false。
 	bool Take(std::vector<Result> *out) {
 		out->clear();
@@ -116,7 +134,8 @@ private:
 		if (thread_ != 0) return true;
 		if (mutex_ == 0) mutex_ = SDL_CreateMutex();
 		if (wake_ == 0) wake_ = SDL_CreateSemaphore(0);
-		if (mutex_ == 0 || wake_ == 0) return false;
+		if (idle_ == 0) idle_ = SDL_CreateCond();
+		if (mutex_ == 0 || wake_ == 0 || idle_ == 0) return false;
 		thread_ = SDL_CreateThread(Entry, "mxv2-titles", this);
 		return thread_ != 0;
 	}
@@ -134,6 +153,10 @@ private:
 		if (wake_ != 0) {
 			SDL_DestroySemaphore(wake_);
 			wake_ = 0;
+		}
+		if (idle_ != 0) {
+			SDL_DestroyCond(idle_);
+			idle_ = 0;
 		}
 		if (mutex_ != 0) {
 			SDL_DestroyMutex(mutex_);
@@ -161,8 +184,12 @@ private:
 			jobs.swap(pending_);
 			vfs = vfs_;
 			gen = generation_;
+			busy_ = !jobs.empty();
 			SDL_UnlockMutex(mutex_);
-			if (vfs == 0) continue;
+			if (vfs == 0 || jobs.empty()) {
+				Done();
+				continue;
+			}
 
 			for (size_t i = 0; i < jobs.size(); i++) {
 				SDL_LockMutex(mutex_);
@@ -178,17 +205,28 @@ private:
 				if (gen == generation_) done_.push_back(r);
 				SDL_UnlockMutex(mutex_);
 			}
+			Done();
 		}
+	}
+
+	// 1 回ぶんの依頼を読み終えた（または捨てた）ことを知らせる。
+	void Done() {
+		SDL_LockMutex(mutex_);
+		busy_ = false;
+		SDL_CondBroadcast(idle_);
+		SDL_UnlockMutex(mutex_);
 	}
 
 	const Vfs *vfs_;
 	SDL_mutex *mutex_;
 	SDL_sem *wake_;
+	SDL_cond *idle_;
 	SDL_Thread *thread_;
 	std::vector<Job> pending_;
 	std::vector<Result> done_;
 	uint32_t generation_;
 	bool quit_;
+	bool busy_;
 
 	TitleReader(const TitleReader &);
 	TitleReader &operator=(const TitleReader &);
@@ -355,6 +393,10 @@ void Filer::StartReadTitles() {
 		jobs.push_back(job);
 	}
 	titles_->Start(vfs_, jobs);
+}
+
+void Filer::WaitTitles() {
+	titles_->Quiesce();
 }
 
 bool Filer::PollTitles() {

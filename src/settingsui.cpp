@@ -1188,7 +1188,10 @@ void SettingsUi::BuildFsRemoveWindow(Filer *filer) {
 	                      .c_str());
 	ImGui::Separator();
 	if (ImGui::Button(Msg("Button.Remove"))) {
-		vfs_->Unmount(fsSelected_);
+		// 動的に足したファイルシステムは実体も捨てるので、タイトルを
+		// 読んでいるスレッドの手が離れるのを待ってからにする。
+		if (filer != 0) filer->WaitTitles();
+		vfs_->RemoveMounted(fsSelected_);
 		if (fsSelected_ >= vfs_->count()) fsSelected_ = vfs_->count() - 1;
 		if (fsSelected_ < 0) fsSelected_ = 0;
 		changedFields_ |= Settings::kFieldFileSystems;

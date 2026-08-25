@@ -74,6 +74,11 @@ public:
 	// 入れるものがあれば true（ファイラーを描き直す合図）。
 	bool PollTitles();
 
+	// 読みかけを捨てて、タイトル読みのスレッドが手を離すまで待つ。
+	// **ファイルシステムを取り外す前に呼ぶこと**（読んでいる最中に
+	// 実体が消えると落ちる）。
+	void WaitTitles();
+
 	int itemCount() const { return (int)items_.size(); }
 	const FileItem &item(int i) const { return items_[i]; }
 

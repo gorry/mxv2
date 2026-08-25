@@ -56,6 +56,24 @@ public:
 	// 削除できない。
 	virtual bool removable() const { return false; }
 
+	// ini のマウント一覧に書くときの姿。既定は "<id>:"。
+	// **場所を持つ外部ファイルシステムは "<id>:<場所>" を返すこと**
+	// （同じ種類を複数マウントできるので、id だけでは足りない）。
+	virtual std::string mountRef() const { return std::string(id()) + ":"; }
+
+	// rel がこのマウントの持ち物か。同じ id のファイルシステムを複数
+	// マウントしたとき、ref をどれに割り当てるかの判定に使う
+	// （既定はその id を丸ごと持つ = 1 つしかマウントできない従来どおり）。
+	virtual bool Contains(const std::string &rel) const {
+		(void)rel;
+		return true;
+	}
+
+	// 親を 1 つずつ辿るのが安いか。ローカルのように「行けなければ 1 つ上」を
+	// 試してよいものは true。外部ファイルシステムは 1 段ごとに通信が要るので
+	// false にする（起動時のフォールバックがルートまで一気に戻る）。
+	virtual bool parentIsCheap() const { return true; }
+
 	// rel の掃除（区切り文字を揃える、末尾の区切りを落とす、など）。
 	virtual std::string Normalize(const std::string &rel) const = 0;
 	// FS のルートか。
@@ -109,12 +127,24 @@ public:
 	int allCount() const { return (int)all_.size(); }
 	FileSystem *all(int i) const { return all_[i]; }
 	FileSystem *FindById(const std::string &id) const;
+	// 同じ id が複数あるとき、rel を持っているものを選ぶ。
+	FileSystem *FindForRef(const std::string &id, const std::string &rel) const;
 
 	// マウント一覧（ファイラーのルートに出る順）。
 	int count() const { return (int)mounted_.size(); }
 	FileSystem *at(int i) const { return mounted_[i]; }
 	int IndexOf(const FileSystem *fs) const;
 	bool IsMounted(const FileSystem *fs) const { return IndexOf(fs) >= 0; }
+
+	// 外から作ったファイルシステムを預ける（**所有権も渡す**。以後は
+	// Vfs が delete する）。同じ場所のものが既にあれば false を返すので、
+	// そのときは呼んだ側で delete すること。
+	bool Add(FileSystem *fs);
+
+	// マウント一覧の index 番目を外す。**動的に足したもの（削除できるもの）は
+	// 実体も捨てる**ので、そのファイルシステムを読み書きしているスレッドが
+	// 居ないことを確かめてから呼ぶこと（Filer::WaitTitles）。
+	void RemoveMounted(int index);
 
 	void ClearMounts() { mounted_.clear(); }
 	// 末尾に足す。既に入っていれば何もしない。
@@ -158,6 +188,9 @@ public:
 	std::string RootRef(const std::string &ref) const;
 	// ref の指す FS のルートにある pdx/ フォルダ。無い FS では空。
 	std::string PdxDirRef(const std::string &ref) const;
+
+	// ref の指す FS で、親を 1 つずつ辿ってよいか（FileSystem::parentIsCheap）。
+	bool ParentIsCheap(const std::string &ref) const;
 
 private:
 	std::vector<FileSystem *> owned_;

@@ -303,6 +303,59 @@ FileSystem *Vfs::FindById(const std::string &id) const {
 	return 0;
 }
 
+// 同じ id のファイルシステムが複数あるとき、rel を持っているものを選ぶ。
+// 1 つしか無ければ（同梱の 3 つはすべてそう）これまでと同じ。
+FileSystem *Vfs::FindForRef(const std::string &id, const std::string &rel) const {
+	FileSystem *first = 0;
+	for (size_t i = 0; i < all_.size(); i++) {
+		if (CompareNoCase(all_[i]->id(), id) != 0) continue;
+		if (first == 0) first = all_[i];
+		if (all_[i]->Contains(all_[i]->Normalize(rel))) return all_[i];
+	}
+	// どのマウントの持ち物でもない ref は、とりあえず最初のものに割り当てる
+	// （読めなければ、いつもどおり「見つかりません」になる）。
+	return first;
+}
+
+bool Vfs::Add(FileSystem *fs) {
+	if (fs == 0) return false;
+	// 同じ場所を二重に足さない（filesystem.md）。
+	for (size_t i = 0; i < all_.size(); i++) {
+		if (CompareNoCase(all_[i]->mountRef(), fs->mountRef()) == 0) return false;
+	}
+	owned_.push_back(fs);
+	all_.push_back(fs);
+	return true;
+}
+
+void Vfs::RemoveMounted(int index) {
+	if (index < 0 || index >= (int)mounted_.size()) return;
+	FileSystem *fs = mounted_[index];
+	mounted_.erase(mounted_.begin() + index);
+	if (!fs->removable()) return;  // 初回から使えるものは実体を残す
+
+	for (size_t i = 0; i < all_.size(); i++) {
+		if (all_[i] == fs) {
+			all_.erase(all_.begin() + i);
+			break;
+		}
+	}
+	for (size_t i = 0; i < owned_.size(); i++) {
+		if (owned_[i] == fs) {
+			owned_.erase(owned_.begin() + i);
+			delete fs;
+			break;
+		}
+	}
+}
+
+bool Vfs::ParentIsCheap(const std::string &ref) const {
+	FileSystem *fs = 0;
+	std::string rel;
+	if (!Parse(ref, &fs, &rel) || fs == 0) return true;
+	return fs->parentIsCheap();
+}
+
 int Vfs::IndexOf(const FileSystem *fs) const {
 	for (size_t i = 0; i < mounted_.size(); i++) {
 		if (mounted_[i] == fs) return (int)i;
@@ -373,7 +426,7 @@ bool Vfs::Parse(const std::string &ref, FileSystem **fs, std::string *rel) const
 		*rel = local->Normalize(ref);
 		return true;
 	}
-	FileSystem *f = FindById(scheme);
+	FileSystem *f = FindForRef(scheme, rest);
 	if (f == 0) return false;
 	*fs = f;
 	*rel = f->Normalize(rest);
