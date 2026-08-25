@@ -12,6 +12,7 @@
 namespace mxv2 {
 
 const char *kDefaultLocale = "ja-JP";
+const char *kFallbackLocale = "en";
 
 namespace {
 
@@ -34,7 +35,13 @@ Catalog &Cat() {
 
 // ini 1 つぶんを取り込む。あとから読んだものが勝つ（ユーザーぶんで
 // 一部だけ差し替えられる）。読めなければ false。
-bool Merge(const std::string &path) {
+//
+// replaceLists は一覧のセクション（[HelpKeys] など）の扱い。**言語をまたぐ
+// ときは true**。あちらは「キー=説明」の左側まで訳の対象なので、キー単位で
+// 混ぜると落とし先の行がそのまま残り、英語と日本語が並んでしまう。
+// 同じ言語の重ね方（同梱の上にユーザーぶん）では false にして、行の
+// 差し替えと追加ができるようにする。
+bool Merge(const std::string &path, bool replaceLists) {
 	Ini ini;
 	if (!ini.Load(path)) return false;
 
@@ -43,6 +50,7 @@ bool Merge(const std::string &path) {
 	for (size_t i = 0; i < sections.size(); i++) {
 		const std::vector<std::string> keys = ini.Keys(sections[i]);
 		std::vector<MsgRow> &list = cat.lists[sections[i]];
+		if (replaceLists && !keys.empty()) list.clear();
 		for (size_t j = 0; j < keys.size(); j++) {
 			const std::string value = ini.GetString(sections[i], keys[j], std::string());
 			cat.values[sections[i] + "." + keys[j]] = value;
@@ -74,16 +82,36 @@ std::string LocaleFile(const std::string &root, const std::string &locale) {
 
 }  // namespace
 
-bool LoadMessages(const AssetPaths &paths, const std::string &locale) {
+bool LoadMessages(const AssetPaths &paths, const std::string &locale,
+                  bool *usedFallback) {
 	Catalog &cat = Cat();
 	cat.values.clear();
 	cat.lists.clear();
 	cat.locale = locale.empty() ? kDefaultLocale : locale;
+	if (usedFallback != 0) *usedFallback = false;
 
-	// 同梱ぶんが土台。ユーザーフォルダ側は上から重ねる。
-	const bool bundled = Merge(LocaleFile(paths.bundledDir, cat.locale));
-	Merge(LocaleFile(paths.userDir, cat.locale));
-	return bundled;
+	// まず落とし先を土台に敷く。同じロケールを頼まれているなら 1 度でよい。
+	bool any = false;
+	const bool sameAsFallback = (cat.locale == kFallbackLocale);
+	if (!sameAsFallback) {
+		if (Merge(LocaleFile(paths.bundledDir, kFallbackLocale), false)) any = true;
+		if (Merge(LocaleFile(paths.userDir, kFallbackLocale), false)) any = true;
+	}
+
+	// 頼まれたロケールを上から重ねる。同梱ぶんが土台で、ユーザーフォルダ側が
+	// さらに上（キー単位で差し替えられる）。一覧のセクションだけは、
+	// **最初の 1 つ**が落とし先のぶんを置き換える（言語が混ざらないように）。
+	bool found = false;
+	bool first = !sameAsFallback;
+	if (Merge(LocaleFile(paths.bundledDir, cat.locale), first)) {
+		found = true;
+		first = false;
+	}
+	if (Merge(LocaleFile(paths.userDir, cat.locale), first)) found = true;
+	if (found) any = true;
+
+	if (!found && !sameAsFallback && usedFallback != 0) *usedFallback = true;
+	return any;
 }
 
 const std::string &MessageLocale() {

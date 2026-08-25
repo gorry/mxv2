@@ -30,11 +30,21 @@ struct AssetPaths;
 // 既定のロケール名。assets/locale/<名前>/message.ini を読む。
 extern const char *kDefaultLocale;
 
-// カタログを読む。同梱ぶんが 1 つも読めなければ false（文言はキーのまま
-// 出るが、動きはする）。
-bool LoadMessages(const AssetPaths &paths, const std::string &locale);
+// 落とし先のロケール。頼まれたロケールに無いキーはこちらから引く。
+extern const char *kFallbackLocale;
 
-// 読み込んだロケール名。
+// カタログを読む。読む順は
+//   落とし先 (同梱 -> ユーザー) -> 頼まれたロケール (同梱 -> ユーザー)
+// で、後から読んだものがキー単位で勝つ。知らないロケール名を渡されても
+// 落とし先だけは載るので、画面がキー名だらけにはならない。
+//
+// 1 つも読めなければ false。頼まれたロケールが無くて落とし先で代用した
+// ときは usedFallback に true が入る（0 を渡してもよい）。
+bool LoadMessages(const AssetPaths &paths, const std::string &locale,
+                  bool *usedFallback = 0);
+
+// 頼まれたロケール名（既定 ja-JP）。実際に載っている文言は、キーによっては
+// 落とし先のものかもしれない。
 const std::string &MessageLocale();
 
 // 文言を引く。キーは "<セクション>.<キー>"。

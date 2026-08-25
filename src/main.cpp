@@ -493,10 +493,19 @@ int main(int argc, char **argv) {
 	paths.userDir = opt.userDir.empty() ? mxv2::UserDataDir(kUserDirName) : opt.userDir;
 
 	// 文言はここから先すべてカタログ (assets/locale/<ロケール>/message.ini)
-	// から引く。読めなくても動くが、画面にはキー名が出る。
-	if (!mxv2::LoadMessages(paths, opt.locale)) {
-		printf("warning  : message catalog not found: %s (locale %s)\n",
-		       paths.bundledDir.c_str(), mxv2::MessageLocale().c_str());
+	// から引く。知らないロケールを渡されたときは英語で代用する。
+	// 1 つも読めなければキー名が出る（動きはする）。
+	{
+		bool usedFallback = false;
+		if (!mxv2::LoadMessages(paths, opt.locale, &usedFallback)) {
+			printf("warning  : message catalog not found: %s (locale %s)\n",
+			       paths.bundledDir.c_str(), mxv2::MessageLocale().c_str());
+		} else if (usedFallback) {
+			printf("warning  : %s\n",
+			       mxv2::MsgF("Log.LocaleFallback", mxv2::MessageLocale(),
+			                  mxv2::kFallbackLocale)
+			           .c_str());
+		}
 	}
 	if (!mxv2::MakeDirectories(paths.userDir)) {
 		printf("warning  : %s\n",
