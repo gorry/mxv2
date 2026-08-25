@@ -214,6 +214,14 @@ void DragToScroll(bool *dragging, bool *moved, bool hasTitleBar, bool fromItems)
 	*dragging = true;
 }
 
+// ダイアログを画面の中央に出す。基準点 (pivot) を真ん中にして渡すので、
+// 大きさが決まっていないダイアログ（AlwaysAutoResize）でも中央に来る。
+void CenterNextWindow(ImGuiCond cond) {
+	const ImGuiIO &io = ImGui::GetIO();
+	ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x * 0.5f, io.DisplaySize.y * 0.5f), cond,
+	                        ImVec2(0.5f, 0.5f));
+}
+
 // 画面の遅れ (ms) とサンプル数の相互変換。
 int MsToFrames(int ms, const Player *player) {
 	return ms * player->sampleRate() / 1000;
@@ -593,12 +601,12 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	// 他のダイアログも操作できない。
 	if (!SyncModal(kSettingsTitle, &visible_)) return;
 
-	// 開くたびに画面の左上から出す (ImGuiCond_Appearing)。出したあとは
+	// 開くたびに画面の中央から出す (ImGuiCond_Appearing)。出したあとは
 	// 掴んで動かせる。倍率が変わったフレームだけは Always にして矩形ごと
 	// 作り直す。ImGui はウィンドウの矩形をピクセルで覚えているので、
 	// 放っておくと中身だけ大きくなって枠が付いてこない。
 	const ImGuiCond cond = scaleChanged ? ImGuiCond_Always : ImGuiCond_Appearing;
-	ImGui::SetNextWindowPos(ImVec2(0, 0), cond);
+	CenterNextWindow(cond);
 	ImGui::SetNextWindowSize(ImVec2(380 * scale, 464 * scale), cond);
 
 	// p_open に visible_ をそのまま渡す。× で閉じられたときは ImGui が
@@ -864,13 +872,13 @@ bool SettingsUi::SyncModal(const char *title, bool *wanted) {
 void SettingsUi::BuildColorsWindow(Settings *settings, DrawScreen *draw, Player *player) {
 	if (!SyncModal(kColorsTitle, &showColors_)) return;
 
-	// 設定ウィンドウと同じ作法。開くたびに左上、画面からはみ出さない大きさ。
+	// 設定ウィンドウと同じ作法。開くたびに中央、画面からはみ出さない大きさ。
 	const ImGuiIO &io = ImGui::GetIO();
 	float w = 380.0f * styleScale_;
 	float h = 464.0f * styleScale_;
 	if (w > io.DisplaySize.x) w = io.DisplaySize.x;
 	if (h > io.DisplaySize.y) h = io.DisplaySize.y;
-	ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Appearing);
+	CenterNextWindow(ImGuiCond_Appearing);
 	ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_Appearing);
 
 	if (ImGui::BeginPopupModal(kColorsTitle, &showColors_,
@@ -1036,7 +1044,7 @@ void SettingsUi::BuildOverwriteWindow(Settings *settings, DrawScreen *draw) {
 		return;
 	}
 
-	ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Appearing);
+	CenterNextWindow(ImGuiCond_Appearing);
 	if (!ImGui::BeginPopupModal(kOverwriteTitle, NULL,
 	                            ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
 	                                ImGuiWindowFlags_AlwaysAutoResize)) {
@@ -1070,7 +1078,7 @@ void SettingsUi::BuildFileSystemsWindow(Filer *filer) {
 	float h = 360.0f * styleScale_;
 	if (w > io.DisplaySize.x) w = io.DisplaySize.x;
 	if (h > io.DisplaySize.y) h = io.DisplaySize.y;
-	ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Appearing);
+	CenterNextWindow(ImGuiCond_Appearing);
 	ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_Appearing);
 
 	if (!ImGui::BeginPopupModal(kFileSystemsTitle, &showFileSystems_,
@@ -1198,7 +1206,7 @@ void SettingsUi::BuildAddFsWindow(Filer *filer) {
 	const ImGuiIO &io = ImGui::GetIO();
 	float w = 460.0f * styleScale_;
 	if (w > io.DisplaySize.x) w = io.DisplaySize.x;
-	ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Appearing);
+	CenterNextWindow(ImGuiCond_Appearing);
 	ImGui::SetNextWindowSize(ImVec2(w, 0.0f), ImGuiCond_Appearing);
 	if (!ImGui::BeginPopupModal(kAddFsTitle, NULL,
 	                            ImGuiWindowFlags_NoCollapse |
@@ -1270,7 +1278,7 @@ void SettingsUi::BuildFsRemoveWindow(Filer *filer) {
 		return;
 	}
 
-	ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Appearing);
+	CenterNextWindow(ImGuiCond_Appearing);
 	if (!ImGui::BeginPopupModal(kFsRemoveTitle, NULL,
 	                            ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
 	                                ImGuiWindowFlags_AlwaysAutoResize)) {
@@ -1362,7 +1370,7 @@ void SettingsUi::BuildBookmarksWindow(Settings *settings, Filer *filer) {
 	float h = 360.0f * styleScale_;
 	if (w > io.DisplaySize.x) w = io.DisplaySize.x;
 	if (h > io.DisplaySize.y) h = io.DisplaySize.y;
-	ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Appearing);
+	CenterNextWindow(ImGuiCond_Appearing);
 	ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_Appearing);
 
 	if (!ImGui::BeginPopupModal(kBookmarksTitle, &showBookmarks_,
@@ -1491,7 +1499,7 @@ void SettingsUi::BuildBookmarkRemoveWindow(Settings *settings) {
 		return;
 	}
 
-	ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Appearing);
+	CenterNextWindow(ImGuiCond_Appearing);
 	if (!ImGui::BeginPopupModal(kBmRemoveTitle, NULL,
 	                            ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
 	                                ImGuiWindowFlags_AlwaysAutoResize)) {
@@ -1541,7 +1549,7 @@ void SettingsUi::BuildBookmarkToggleWindow(Settings *settings, Filer *filer) {
 		return;
 	}
 
-	ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Appearing);
+	CenterNextWindow(ImGuiCond_Appearing);
 	if (!ImGui::BeginPopupModal(kBmToggleTitle, NULL,
 	                            ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
 	                                ImGuiWindowFlags_AlwaysAutoResize)) {
@@ -1673,7 +1681,7 @@ void SettingsUi::BuildStartupWindow() {
 	float h = 280.0f * styleScale_;
 	if (w > io.DisplaySize.x) w = io.DisplaySize.x;
 	if (h > io.DisplaySize.y) h = io.DisplaySize.y;
-	ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Appearing);
+	CenterNextWindow(ImGuiCond_Appearing);
 	ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_Appearing);
 
 	if (!ImGui::BeginPopupModal(kStartupTitle, &showStartup_,
@@ -1732,7 +1740,7 @@ void SettingsUi::BuildHelpWindow() {
 	float h = 460.0f * styleScale_;
 	if (w > io.DisplaySize.x) w = io.DisplaySize.x;
 	if (h > io.DisplaySize.y) h = io.DisplaySize.y;
-	ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Appearing);
+	CenterNextWindow(ImGuiCond_Appearing);
 	ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_Appearing);
 
 	if (ImGui::BeginPopupModal(kHelpTitle, &showHelp_,
@@ -1816,7 +1824,7 @@ void SettingsUi::BuildFolderWindow(Settings *settings, Filer *filer) {
 	float h = 400.0f * styleScale_;
 	if (w > io.DisplaySize.x) w = io.DisplaySize.x;
 	if (h > io.DisplaySize.y) h = io.DisplaySize.y;
-	ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Appearing);
+	CenterNextWindow(ImGuiCond_Appearing);
 	ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_Appearing);
 
 	if (!ImGui::BeginPopupModal(title, &showFolder_,
@@ -2066,7 +2074,7 @@ void SettingsUi::BuildContextMenu(Settings *settings, DrawScreen *draw, Player *
 		// NOTICE は初めて開くときに読む（メニューからでも F12 からでも通る）。
 		if (aboutText_.empty()) aboutText_ = LoadAboutText();
 
-		// 設定ウィンドウと同じく、開くたびに画面の左上から出す。
+		// 設定ウィンドウと同じく、開くたびに画面の中央から出す。
 		// 大きさは画面からはみ出さないように詰める。スキンの横幅の下限は
 		// 480px なので、既定の 560px はそのままでは入らない。
 		const ImGuiIO &io = ImGui::GetIO();
@@ -2074,7 +2082,7 @@ void SettingsUi::BuildContextMenu(Settings *settings, DrawScreen *draw, Player *
 		float h = 420.0f * styleScale_;
 		if (w > io.DisplaySize.x) w = io.DisplaySize.x;
 		if (h > io.DisplaySize.y) h = io.DisplaySize.y;
-		ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Appearing);
+		CenterNextWindow(ImGuiCond_Appearing);
 		ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_Appearing);
 		if (ImGui::BeginPopupModal(kAboutTitle, &showAbout_,
 		                           ImGuiWindowFlags_NoCollapse |
