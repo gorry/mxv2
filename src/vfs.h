@@ -129,6 +129,10 @@ public:
 	// 「2 文字以上の英字 + ':'」の接頭辞を切り出す。無ければ false。
 	static bool SplitRef(const std::string &ref, std::string *scheme, std::string *rest);
 
+	// 同じ場所を指す ref か。大文字小文字の扱いは FS ごとの規則に従う
+	// （読めない ref は false）。ブックマークの重複判定に使う。
+	bool SameRef(const std::string &a, const std::string &b) const;
+
 	// ref を FS と rel へ割る。
 	//   ""            -> fs = 0, rel = ""（ファイルシステムの選択画面）
 	//   知らないスキーム -> false

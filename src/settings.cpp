@@ -71,6 +71,20 @@ bool Settings::Load(const std::string &path) {
 		}
 	}
 
+	// 中身の妥当性（知らないファイルシステム）は VFS を持っている側で見る。
+	// ここは書いてある順に並べるだけ。
+	bookmarks.clear();
+	{
+		int count = ini.GetInt("Bookmark", "Count", 0);
+		if (count > kMaxBookmarks) count = kMaxBookmarks;
+		for (int i = 1; i <= count; i++) {
+			char key[32];
+			snprintf(key, sizeof(key), "Bookmark%d", i);
+			const std::string v = ini.GetString("Bookmark", key, std::string());
+			if (!v.empty()) bookmarks.push_back(v);
+		}
+	}
+
 	savePosition = ini.GetInt("Position", "Save", savePosition ? 1 : 0) != 0;
 	windowX = ini.GetInt("Position", "X", windowX);
 	windowY = ini.GetInt("Position", "Y", windowY);
@@ -119,6 +133,23 @@ bool Settings::Save(const std::string &path) const {
 		}
 	}
 
+	{
+		int count = (int)bookmarks.size();
+		if (count > kMaxBookmarks) count = kMaxBookmarks;
+		ini.SetInt("Bookmark", "Count", count);
+		for (int i = 1; i <= count; i++) {
+			char key[32];
+			snprintf(key, sizeof(key), "Bookmark%d", i);
+			ini.SetString("Bookmark", key, bookmarks[i - 1]);
+		}
+		// Count を超えた古い Bookmark<n> は消す（FS<n> と同じ理由）。
+		for (int i = count + 1; i <= kMaxBookmarks; i++) {
+			char key[32];
+			snprintf(key, sizeof(key), "Bookmark%d", i);
+			ini.Remove("Bookmark", key);
+		}
+	}
+
 	ini.SetInt("Position", "Save", savePosition ? 1 : 0);
 	ini.SetInt("Position", "X", windowX);
 	ini.SetInt("Position", "Y", windowY);
@@ -149,6 +180,7 @@ bool Settings::SaveFields(const std::string &path, unsigned fields) const {
 	}
 	if (fields & kFieldPdxPath) out.pdxPath = pdxPath;
 	if (fields & kFieldFileSystems) out.fileSystems = fileSystems;
+	if (fields & kFieldBookmarks) out.bookmarks = bookmarks;
 	if (fields & kFieldWindowPos) {
 		out.windowX = windowX;
 		out.windowY = windowY;

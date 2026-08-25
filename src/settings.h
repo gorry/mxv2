@@ -61,6 +61,12 @@ struct Settings {
 	std::vector<std::string> fileSystems;
 	static const int kMaxFileSystems = 64;
 
+	// [Bookmark]
+	// よく開く場所の控え。中身はフォルダの ref で、並び順がそのまま
+	// ダイアログの並び。初回起動時は空。
+	std::vector<std::string> bookmarks;
+	static const int kMaxBookmarks = 64;
+
 	// [Position] 復元用。savePosition が false なら使わない。
 	bool savePosition;
 	int windowX, windowY;
@@ -83,6 +89,7 @@ struct Settings {
 		kFieldLatency = 1 << 11,
 		kFieldFileSystems = 1 << 12,
 		kFieldSampleRate = 1 << 13,
+		kFieldBookmarks = 1 << 14,
 	};
 
 	Settings();

@@ -93,6 +93,23 @@ public:
 		fsSelected_ = 0;
 	}
 
+	// ブックマークの設定 (F4 / M)。よく開く場所を控えておいて、そこへ移る。
+	// コンテキストメニューからも開く。
+	void OpenBookmarks() {
+		if (busy()) return;
+		showBookmarks_ = true;
+		bmSelected_ = 0;
+		bmError_.clear();
+	}
+
+	// カレントフォルダをブックマークへ追加する / から削除する (Shift+M)。
+	// どちらも確認してから実行する。ダイアログを開かずにメイン画面から
+	// 直に使うので、確認だけが単独のモーダルとして出る。
+	void OpenBookmarkToggle() {
+		if (busy()) return;
+		bmOpenToggle_ = true;
+	}
+
 	// 操作方法のダイアログ (F11 / H)。文面は main.cpp の -h と同じもの。
 	void OpenHelp() {
 		if (busy()) return;
@@ -117,9 +134,13 @@ public:
 		if (overwriteOpen_) { closeOverwrite_ = true; return true; }
 		// 削除の確認はファイルシステムの設定の中に入れ子で開く。
 		if (fsConfirmOpen_) { fsCloseConfirm_ = true; return true; }
+		// ブックマークも同じ作り。Shift+M の確認だけは単独で開く。
+		if (bmRemoveOpen_) { bmCloseRemove_ = true; return true; }
+		if (bmToggleOpen_) { bmCloseToggle_ = true; return true; }
 		if (showAbout_) { showAbout_ = false; return true; }
 		if (showHelp_) { showHelp_ = false; return true; }
 		if (showFileSystems_) { showFileSystems_ = false; return true; }
+		if (showBookmarks_) { showBookmarks_ = false; return true; }
 		if (showFolder_) { showFolder_ = false; return true; }
 		if (showColors_) { showColors_ = false; return true; }
 		if (visible_) { visible_ = false; return true; }
@@ -245,7 +266,7 @@ private:
 	// 間は別のものを開けない（先にそれを閉じてもらう）。
 	bool busy() const {
 		return visible_ || showColors_ || showAbout_ || showFolder_ || showHelp_ ||
-		       showFileSystems_;
+		       showFileSystems_ || showBookmarks_;
 	}
 
 	// 操作方法のダイアログ。
@@ -332,8 +353,35 @@ private:
 	bool fsConfirmOpen_;     // いま開いている（ESC の判断に使う）
 	bool fsCloseConfirm_;    // ESC で閉じてほしい
 
+	// ブックマークの設定 (F4 / M)。控えるのはフォルダの ref で、実体は
+	// Settings::bookmarks（ファイルシステムの設定と違って Vfs 側には
+	// 持たない。UI が直に触っても設定と食い違わないようにするため）。
+	void BuildBookmarksWindow(Settings *settings, Filer *filer);
+	// 削除の確認。このダイアログの中に入れ子で開く。
+	void BuildBookmarkRemoveWindow(Settings *settings);
+	// Shift+M の確認。メイン画面から単独で開くので、入れ子の削除確認とは
+	// ポップアップの id を分けてある（同じ id を 2 か所から開こうとすると
+	// 開き直しに失敗する）。
+	void BuildBookmarkToggleWindow(Settings *settings, Filer *filer);
+	// index のブックマークを開く。ファイルを指していたら「そのファイルの
+	// あるフォルダ」へ直してから開く（開けなければ bmError_ に理由）。
+	void OpenBookmark(Settings *settings, int index);
+	// 同じ場所を指す行を探す。無ければ -1。
+	int FindBookmark(const std::vector<std::string> &list, const std::string &ref) const;
+	bool showBookmarks_;
+	int bmSelected_;           // 一覧で選んでいる行。空のときは -1
+	std::string bmError_;      // 「そのフォルダは見つかりません。」など
+	bool bmOpenRemove_;        // 次のフレームで削除確認を開く
+	bool bmRemoveOpen_;        // いま開いている（ESC の判断に使う）
+	bool bmCloseRemove_;       // ESC で閉じてほしい
+	bool bmOpenToggle_;        // 次のフレームで Shift+M の確認を開く
+	bool bmToggleOpen_;
+	bool bmCloseToggle_;
+	std::string bmToggleRef_;  // Shift+M の確認にかけている場所
+
 	// コンテキストメニュー
-	void BuildContextMenu(DrawScreen *draw, Player *player, Filer *filer);
+	void BuildContextMenu(Settings *settings, DrawScreen *draw, Player *player,
+	                      Filer *filer);
 	bool openContextMenu_;
 	// 直前のフレームでメニューが開いていたか（ESC を食う判断に使う）と、
 	// ESC で閉じてほしいという印。

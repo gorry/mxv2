@@ -148,6 +148,8 @@ const char *kKeyHelpText =
 	    "  F1              [mxv の設定]ダイアログを開く\n"
 	    "  F2              [配色設定]ダイアログを開く\n"
 	    "  F3              [ファイルシステムの設定]ダイアログを開く\n"
+	    "  F4 / M          [ブックマークの設定]ダイアログを開く\n"
+	    "  Shift+M         カレントフォルダをブックマークに追加 / から削除\n"
 	    "  F11 / H         [操作方法]ダイアログを開く\n"
 	    "  F12 / A         [バージョン情報]ダイアログを開く\n"
 	    "マウス操作:\n"
@@ -223,6 +225,39 @@ bool LoadFileSystems(mxv2::Vfs *vfs, const std::vector<std::string> &refs) {
 		if (!vfs->Mount(fs)) fixed = true;  // 同じものが二重に書かれていた
 	}
 	if (vfs->EnsureRequired()) fixed = true;
+	return fixed;
+}
+
+// ini に書かれたブックマークを ref へ揃える。仕様 (bookmark.md) のとおり、
+// 知らないファイルシステムは警告して捨てる。到達できるかどうかはここでは
+// 見ない（時間が掛かるし、外付けが外れているだけかもしれない）。
+// 直したところがあれば true を返す（読み終えてから書き戻すため）。
+bool LoadBookmarks(const mxv2::Vfs &vfs, std::vector<std::string> *refs) {
+	bool fixed = false;
+	std::vector<std::string> out;
+	for (size_t i = 0; i < refs->size(); i++) {
+		mxv2::FileSystem *fs = 0;
+		std::string rel;
+		if (!vfs.Parse((*refs)[i], &fs, &rel)) {
+			printf("warning  : 知らないファイルシステムなので削除しました: %s\n",
+			       (*refs)[i].c_str());
+			fixed = true;
+			continue;
+		}
+		// ファイルシステムの選択そのもの（空の ref）は控えられない。
+		if (fs == 0) {
+			fixed = true;
+			continue;
+		}
+		const std::string ref = mxv2::Vfs::MakeRef(fs, rel);
+		if (ref != (*refs)[i]) fixed = true;  // 書き方を揃えた
+		out.push_back(ref);
+	}
+	if ((int)out.size() > mxv2::Settings::kMaxBookmarks) {
+		out.resize(mxv2::Settings::kMaxBookmarks);
+		fixed = true;
+	}
+	*refs = out;
 	return fixed;
 }
 
@@ -497,6 +532,8 @@ int main(int argc, char **argv) {
 	// ぶんは LoadFileSystems が補うので、そのときは書き戻す。
 	bool dirtyFileSystems = LoadFileSystems(&vfs, settings.fileSystems);
 	settings.fileSystems = SaveFileSystems(vfs);
+	// ブックマークも同じく、読めない指定を捨てたら書き戻す。
+	const bool dirtyBookmarks = LoadBookmarks(vfs, &settings.bookmarks);
 	// ユーザーフォルダ側の mdx/ は無ければ作る（曲の置き場所として見せる）。
 	{
 		const mxv2::FileSystem *userFs = vfs.FindById("userdir");
@@ -575,6 +612,7 @@ int main(int argc, char **argv) {
 	// ini のファイルシステム一覧を直したときは書き戻す（仕様どおり、
 	// 読み込みを終えてから 1 回だけ）。
 	if (dirtyFileSystems) dirtyFields |= mxv2::Settings::kFieldFileSystems;
+	if (dirtyBookmarks) dirtyFields |= mxv2::Settings::kFieldBookmarks;
 
 	int defaultZoom = 100;
 	{
@@ -893,6 +931,9 @@ int main(int argc, char **argv) {
 				case SDLK_F3:
 					ui.OpenFileSystems();
 					break;
+				case SDLK_F4:
+					ui.OpenBookmarks();
+					break;
 				case SDLK_F11:
 				case SDLK_h:
 					ui.OpenHelp();
@@ -971,6 +1012,14 @@ int main(int argc, char **argv) {
 				case SDLK_l:
 					// フォルダを選ぶダイアログ。今の場所から出す。
 					ui.OpenFolder(filer.currentRef());
+					break;
+				case SDLK_m:
+					// Shift 付きはカレントフォルダの控え / 控え外し（確認あり）。
+					if (ev.key.keysym.mod & KMOD_SHIFT) {
+						ui.OpenBookmarkToggle();
+					} else {
+						ui.OpenBookmarks();
+					}
 					break;
 
 				case SDLK_n: {

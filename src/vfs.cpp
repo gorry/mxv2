@@ -378,6 +378,16 @@ bool Vfs::Parse(const std::string &ref, FileSystem **fs, std::string *rel) const
 	return true;
 }
 
+bool Vfs::SameRef(const std::string &a, const std::string &b) const {
+	FileSystem *fa = 0;
+	FileSystem *fb = 0;
+	std::string ra, rb;
+	if (!Parse(a, &fa, &ra) || !Parse(b, &fb, &rb)) return false;
+	if (fa != fb) return false;
+	if (fa == 0) return true;  // どちらもファイルシステムの選択
+	return fa->SamePath(ra, rb);
+}
+
 std::string Vfs::MakeRef(const FileSystem *fs, const std::string &rel) {
 	if (fs == 0) return std::string();
 	return std::string(fs->id()) + ":" + rel;

@@ -61,6 +61,12 @@ const char *kPdxFolderTitle = "PDX フォルダを選ぶ###mxv2folder";
 const char *kHelpTitle = "操作方法";
 const char *kFileSystemsTitle = "ファイルシステムの設定";
 const char *kFsRemoveTitle = "削除の確認";
+const char *kBookmarksTitle = "ブックマークの設定";
+// 見出しはファイルシステムの削除確認と同じだが、別のポップアップとして
+// 扱ってほしいので "###" で id を分ける。
+const char *kBmRemoveTitle = "削除の確認###mxv2bmremove";
+// Shift+M の確認。ダイアログを開かずにメイン画面から直に出す。
+const char *kBmToggleTitle = "ブックマーク###mxv2bmtoggle";
 const char *kAboutTitle = "バージョン情報";
 
 // 表示倍率を変えたあと、実際に適用するまでの待ち時間。
@@ -250,6 +256,14 @@ SettingsUi::SettingsUi()
       closeOverwrite_(false),
       showHelp_(false),
       showFileSystems_(false),
+      showBookmarks_(false),
+      bmSelected_(-1),
+      bmOpenRemove_(false),
+      bmRemoveOpen_(false),
+      bmCloseRemove_(false),
+      bmOpenToggle_(false),
+      bmToggleOpen_(false),
+      bmCloseToggle_(false),
       fsSelected_(0),
       fsOpenConfirm_(false),
       fsConfirmOpen_(false),
@@ -502,7 +516,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) dragMoved_ = false;
 
 	// 右クリックのメニューとバージョン情報は、設定ウィンドウが閉じていても出す。
-	BuildContextMenu(draw, player, filer);
+	BuildContextMenu(settings, draw, player, filer);
 	BuildColorsWindow(settings, draw, player);
 
 	// 設定ウィンドウの [参照...] から来た往復。ImGui のポップアップは
@@ -522,6 +536,8 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	}
 	BuildFolderWindow(settings);
 	BuildFileSystemsWindow(filer);
+	BuildBookmarksWindow(settings, filer);
+	BuildBookmarkToggleWindow(settings, filer);
 	BuildHelpWindow();
 	if (folderReturnToSettings_ && !showFolder_ && !folderOpenPending_ &&
 	    !ImGui::IsPopupOpen(folderTitle())) {
@@ -1144,6 +1160,284 @@ void SettingsUi::BuildFsRemoveWindow(Filer *filer) {
 	ImGui::EndPopup();
 }
 
+// ---------------------------------------------------------------------------
+// ブックマーク (F4 / M)
+//
+// 控えるのはフォルダの ref だけ。実体は Settings::bookmarks で、触ったら
+// kFieldBookmarks を立ててメインループに ini へ書き戻してもらう。
+// ---------------------------------------------------------------------------
+
+int SettingsUi::FindBookmark(const std::vector<std::string> &list,
+                             const std::string &ref) const {
+	if (vfs_ == 0 || ref.empty()) return -1;
+	for (size_t i = 0; i < list.size(); i++) {
+		if (vfs_->SameRef(list[i], ref)) return (int)i;
+	}
+	return -1;
+}
+
+// ブックマークを開く。控えた先がファイルだったときは「そのファイルのある
+// フォルダ」へ直し、控えの方も書き換えてから開く（仕様どおり、直した結果が
+// 他と重なったら相手側を消す）。開けなければ bmError_ に理由を入れて残る。
+void SettingsUi::OpenBookmark(Settings *settings, int index) {
+	std::vector<std::string> &list = settings->bookmarks;
+	if (vfs_ == 0 || index < 0 || index >= (int)list.size()) return;
+
+	std::string ref = list[index];
+	if (!vfs_->IsDir(ref)) {
+		const std::string parent = vfs_->Parent(ref);
+		if (!vfs_->Exists(ref) || parent.empty() || !vfs_->IsDir(parent)) {
+			bmError_ = "そのフォルダは見つかりません。";
+			return;
+		}
+		list[index] = parent;
+		// 重複したら相手側を消す。消したのが上の行なら、こちらの位置も繰り上がる。
+		for (int i = (int)list.size() - 1; i >= 0; i--) {
+			if (i == index) continue;
+			if (!vfs_->SameRef(list[i], parent)) continue;
+			list.erase(list.begin() + i);
+			if (i < index) index--;
+		}
+		bmSelected_ = index;
+		changedFields_ |= Settings::kFieldBookmarks;
+		ref = parent;
+	}
+
+	// ファイラーを動かすのはメインループの持ち物なので、要求だけ積む
+	// （フォルダ選択やコンテキストメニューと同じ作法）。
+	requestedFolder_ = ref;
+	request_ = kRequestSetFolder;
+	bmError_.clear();
+	showBookmarks_ = false;
+}
+
+void SettingsUi::BuildBookmarksWindow(Settings *settings, Filer *filer) {
+	if (!SyncModal(kBookmarksTitle, &showBookmarks_)) return;
+
+	const ImGuiIO &io = ImGui::GetIO();
+	float w = 460.0f * styleScale_;
+	float h = 360.0f * styleScale_;
+	if (w > io.DisplaySize.x) w = io.DisplaySize.x;
+	if (h > io.DisplaySize.y) h = io.DisplaySize.y;
+	ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Appearing);
+	ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_Appearing);
+
+	if (!ImGui::BeginPopupModal(kBookmarksTitle, &showBookmarks_,
+	                            ImGuiWindowFlags_NoCollapse |
+	                                ImGuiWindowFlags_NoSavedSettings)) {
+		return;
+	}
+	if (vfs_ == 0) {
+		ImGui::TextUnformatted("ファイルシステムがありません。");
+		ImGui::EndPopup();
+		return;
+	}
+
+	std::vector<std::string> &list = settings->bookmarks;
+	const int count = (int)list.size();
+	if (bmSelected_ >= count) bmSelected_ = count - 1;
+	if (bmSelected_ < 0 && count > 0) bmSelected_ = 0;
+
+	// 一覧。クリックで選ぶだけ、ダブルクリックで開く（メイン画面の
+	// ファイラーと同じ操作感）。開くのは一覧を組み終わってからにする。
+	int openIndex = -1;
+	{
+		const float foot = ImGui::GetFrameHeightWithSpacing() * 3.0f +
+		                   ImGui::GetTextLineHeightWithSpacing();
+		ImGui::BeginChild("##bmlist", ImVec2(0, -foot), ImGuiChildFlags_Borders);
+		if (count == 0) ImGui::TextDisabled("ブックマークがありません");
+		for (int i = 0; i < count; i++) {
+			char label[512];
+			snprintf(label, sizeof(label), "%s##bm%d", vfs_->DisplayPath(list[i]).c_str(), i);
+			if (ImGui::Selectable(label, i == bmSelected_,
+			                      ImGuiSelectableFlags_AllowDoubleClick) &&
+			    !dragMoved_) {
+				bmSelected_ = i;
+				bmError_.clear();
+				if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) openIndex = i;
+			}
+			// 表示は見やすさ優先で DisplayPath なので、生の ref はここで見せる。
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", list[i].c_str());
+		}
+		DragToScroll(&dragScroll_, &dragMoved_, false, true);
+		ImGui::EndChild();
+	}
+
+	if (bmError_.empty()) {
+		ImGui::TextDisabled("クリックで選択 / ダブルクリックで開く");
+	} else {
+		ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), "%s", bmError_.c_str());
+	}
+
+	// [開く] は 1 行を占有する大きなボタン（仕様どおり）。
+	ImGui::BeginDisabled(bmSelected_ < 0);
+	if (ImGui::Button("開く", ImVec2(-FLT_MIN, 0.0f))) openIndex = bmSelected_;
+	ImGui::EndDisabled();
+
+	// [上へ] [下へ]。端まで来たら押せなくする。
+	ImGui::BeginDisabled(bmSelected_ <= 0);
+	if (ImGui::Button("上へ")) {
+		std::swap(list[bmSelected_], list[bmSelected_ - 1]);
+		bmSelected_--;
+		changedFields_ |= Settings::kFieldBookmarks;
+	}
+	ImGui::EndDisabled();
+	ImGui::SameLine();
+	ImGui::BeginDisabled(bmSelected_ < 0 || bmSelected_ >= count - 1);
+	if (ImGui::Button("下へ")) {
+		std::swap(list[bmSelected_], list[bmSelected_ + 1]);
+		bmSelected_++;
+		changedFields_ |= Settings::kFieldBookmarks;
+	}
+	ImGui::EndDisabled();
+
+	// [追加] はカレントフォルダを選択位置へ挿し込む。ルート（ファイル
+	// システムの選択）と、すでに控えてある場所は入れられない。
+	const std::string cur = (filer != 0) ? filer->currentRef() : std::string();
+	const bool dup = (FindBookmark(list, cur) >= 0);
+	const bool full = (count >= Settings::kMaxBookmarks);
+	ImGui::SameLine();
+	ImGui::BeginDisabled(cur.empty() || dup || full);
+	if (ImGui::Button("追加")) {
+		const int at = (bmSelected_ >= 0) ? bmSelected_ : count;
+		list.insert(list.begin() + at, cur);
+		bmSelected_ = at;
+		changedFields_ |= Settings::kFieldBookmarks;
+		bmError_.clear();
+	}
+	ImGui::EndDisabled();
+	if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+		if (cur.empty()) {
+			ImGui::SetTooltip("ここはブックマークにできません");
+		} else if (dup) {
+			ImGui::SetTooltip("%s は追加済みです", vfs_->DisplayPath(cur).c_str());
+		} else if (full) {
+			ImGui::SetTooltip("これ以上は追加できません");
+		} else {
+			ImGui::SetTooltip("%s を追加します", vfs_->DisplayPath(cur).c_str());
+		}
+	}
+
+	ImGui::SameLine();
+	ImGui::BeginDisabled(bmSelected_ < 0);
+	if (ImGui::Button("削除")) {
+		bmError_.clear();
+		bmOpenRemove_ = true;
+	}
+	ImGui::EndDisabled();
+
+	BuildBookmarkRemoveWindow(settings);
+
+	if (openIndex >= 0) OpenBookmark(settings, openIndex);
+
+	ImGui::EndPopup();
+}
+
+// 「本当に削除するか」。ブックマークの設定の中に入れ子で開く。
+void SettingsUi::BuildBookmarkRemoveWindow(Settings *settings) {
+	if (bmOpenRemove_) {
+		bmOpenRemove_ = false;
+		ImGui::OpenPopup(kBmRemoveTitle);
+	}
+
+	bmRemoveOpen_ = ImGui::IsPopupOpen(kBmRemoveTitle);
+	if (!bmRemoveOpen_) {
+		bmCloseRemove_ = false;
+		return;
+	}
+
+	ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Appearing);
+	if (!ImGui::BeginPopupModal(kBmRemoveTitle, NULL,
+	                            ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
+	                                ImGuiWindowFlags_AlwaysAutoResize)) {
+		return;
+	}
+
+	std::vector<std::string> &list = settings->bookmarks;
+	const bool valid = (bmSelected_ >= 0 && bmSelected_ < (int)list.size());
+	ImGui::Text("%s をブックマークから削除しますか？",
+	            (valid && vfs_ != 0) ? vfs_->DisplayPath(list[bmSelected_]).c_str() : "");
+	ImGui::Separator();
+	if (ImGui::Button("削除")) {
+		if (valid) {
+			list.erase(list.begin() + bmSelected_);
+			if (bmSelected_ >= (int)list.size()) bmSelected_ = (int)list.size() - 1;
+			changedFields_ |= Settings::kFieldBookmarks;
+		}
+		ImGui::CloseCurrentPopup();
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("キャンセル") || bmCloseRemove_) {
+		bmCloseRemove_ = false;
+		ImGui::CloseCurrentPopup();
+	}
+	ImGui::EndPopup();
+}
+
+// Shift+M（とコンテキストメニュー）の確認。カレントフォルダが控えてあれば
+// 削除、無ければ末尾へ追加する。メイン画面から直に出すので、他のダイアログの
+// 入れ子ではなく単独のモーダルとして開く。
+void SettingsUi::BuildBookmarkToggleWindow(Settings *settings, Filer *filer) {
+	if (bmOpenToggle_) {
+		bmOpenToggle_ = false;
+		const std::string cur = (filer != 0) ? filer->currentRef() : std::string();
+		// 追加できない場所（ファイルシステムの選択）では何もしない。
+		if (!cur.empty()) {
+			bmToggleRef_ = cur;
+			ImGui::OpenPopup(kBmToggleTitle);
+		}
+	}
+
+	bmToggleOpen_ = ImGui::IsPopupOpen(kBmToggleTitle);
+	if (!bmToggleOpen_) {
+		bmCloseToggle_ = false;
+		return;
+	}
+
+	ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Appearing);
+	if (!ImGui::BeginPopupModal(kBmToggleTitle, NULL,
+	                            ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
+	                                ImGuiWindowFlags_AlwaysAutoResize)) {
+		return;
+	}
+
+	std::vector<std::string> &list = settings->bookmarks;
+	const int at = FindBookmark(list, bmToggleRef_);
+	const std::string shown = (vfs_ != 0) ? vfs_->DisplayPath(bmToggleRef_) : bmToggleRef_;
+
+	if (at >= 0) {
+		ImGui::Text("%s をブックマークから削除しますか？", shown.c_str());
+		ImGui::Separator();
+		if (ImGui::Button("削除")) {
+			list.erase(list.begin() + at);
+			if (bmSelected_ >= (int)list.size()) bmSelected_ = (int)list.size() - 1;
+			changedFields_ |= Settings::kFieldBookmarks;
+			ImGui::CloseCurrentPopup();
+		}
+	} else {
+		const bool full = ((int)list.size() >= Settings::kMaxBookmarks);
+		ImGui::Text("%s をブックマークに追加しますか？", shown.c_str());
+		if (full) {
+			ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.45f, 1.0f),
+			                   "ブックマークがいっぱいです。");
+		}
+		ImGui::Separator();
+		ImGui::BeginDisabled(full);
+		if (ImGui::Button("追加")) {
+			list.push_back(bmToggleRef_);  // 追加は末尾（仕様どおり）
+			changedFields_ |= Settings::kFieldBookmarks;
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndDisabled();
+	}
+	ImGui::SameLine();
+	if (ImGui::Button("キャンセル") || bmCloseToggle_) {
+		bmCloseToggle_ = false;
+		ImGui::CloseCurrentPopup();
+	}
+	ImGui::EndPopup();
+}
+
 // 子フォルダの一覧だけ作り直す。毎フレーム読み直すと重いので、
 // 行き先が変わったときだけ列挙する。
 // dir が空のときはファイルシステムの選択（マウントされている FS が並ぶ）。
@@ -1491,7 +1785,8 @@ void SettingsUi::BuildFolderWindow(Settings *settings) {
 
 // 旧 mxv の右クリックメニュー (mxv.cpp の CreateContextMenu) にあたる。
 // 演奏の開始・曲送り・終了はメインループの持ち物なので request_ に積んで返す。
-void SettingsUi::BuildContextMenu(DrawScreen *draw, Player *player, Filer *filer) {
+void SettingsUi::BuildContextMenu(Settings *settings, DrawScreen *draw, Player *player,
+                                  Filer *filer) {
 	(void)draw;
 
 	// バナーを押したときはこちらから開ける（右クリックできない環境向け）。
@@ -1520,6 +1815,18 @@ void SettingsUi::BuildContextMenu(DrawScreen *draw, Player *player, Filer *filer
 		if (ImGui::MenuItem("フォルダを開く...", "L")) {
 			SetFolderDir(filer->currentRef());
 			showFolder_ = true;
+		}
+		if (ImGui::MenuItem("ブックマーク...", "F4")) OpenBookmarks();
+		{
+			// カレントを控える / 控えを外す。どちらも確認してから実行するので、
+			// ここでは印を立てるだけ（メニューの中で OpenPopup すると入れ子の
+			// ポップアップになってしまう）。
+			const std::string cur = filer->currentRef();
+			const bool has = (FindBookmark(settings->bookmarks, cur) >= 0);
+			if (ImGui::MenuItem(has ? "ブックマークから削除" : "ブックマークに追加",
+			                    "Shift+M", false, !cur.empty())) {
+				bmOpenToggle_ = true;
+			}
 		}
 
 		if (ImGui::BeginMenu("操作")) {
