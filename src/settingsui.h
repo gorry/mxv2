@@ -139,6 +139,8 @@ public:
 		if (bmToggleOpen_) { bmCloseToggle_ = true; return true; }
 		if (showAbout_) { showAbout_ = false; return true; }
 		if (showHelp_) { showHelp_ = false; return true; }
+		// ファイルシステムの追加はその設定ダイアログの中に入れ子で開く。
+		if (addFsShow_) { addFsClose_ = true; return true; }
 		if (showStartup_) { showStartup_ = false; return true; }
 		if (showFileSystems_) { showFileSystems_ = false; return true; }
 		if (showBookmarks_) { showBookmarks_ = false; return true; }
@@ -151,6 +153,16 @@ public:
 	// 右クリックで開くコンテキストメニュー（旧 mxv の TrackPopupMenu 相当）。
 	// 設定ウィンドウが閉じていても出す。
 	void OpenContextMenu() { openContextMenu_ = true; }
+
+	// OS の「フォルダを探す」ダイアログを開いてほしい、という要求。
+	// 開いている間はアプリが止まるので、フレームを描き終えたメインループに
+	// やってもらう（pendingSkin() と同じ作法）。
+	bool pendingBrowse() const { return pendingBrowse_; }
+	void ClearPendingBrowse() { pendingBrowse_ = false; }
+	// 最初に見せるフォルダ（打ちかけのパス）。
+	const std::string &browseStart() const { return browseStart_; }
+	// 選ばれた **OS ネイティブのパス** を入力欄へ入れる。
+	void SetBrowsedPath(const std::string &path);
 
 	// 起動時に出た警告。ウィンドウが開く前に出たものを持ち越して、
 	// 最初のフレームでダイアログとして出す（ログにも同じものが出ている）。
@@ -317,7 +329,7 @@ private:
 	// ダイアログの題名。"###" 以降が ImGui の id なので、見出しを変えても
 	// 同じポップアップとして扱われる。
 	const char *folderTitle() const;
-	void BuildFolderWindow(Settings *settings);
+	void BuildFolderWindow(Settings *settings, Filer *filer);
 	FolderTarget folderTarget_;
 	// 設定ウィンドウから呼ばれたときの往復。モーダルは入れ子にせず、
 	// 設定ウィンドウが閉じきってからフォルダ選択を出し、閉じたら開き直す。
@@ -352,6 +364,18 @@ private:
 	bool showFileSystems_;
 	int fsSelected_;         // 一覧で選んでいる行
 	std::string fsError_;    // 「カレントは削除できない」などの文言
+	// ファイルシステムの追加 (dir:)。場所は OS ネイティブのパスなので、
+	// 打ち込みと **OS の「フォルダを探す」ダイアログ**で決める
+	// （ファイラーのフォルダ選択は ref を選ぶための別物）。
+	void BuildAddFsWindow(Filer *filer);
+	bool addFsOpen_;   // 次のフレームで開く
+	bool addFsShow_;   // いま開いている（ESC の判断に使う）
+	bool addFsClose_;  // ESC で閉じてほしい
+	char addFsPathBuf_[512];
+	std::string addFsError_;
+	bool pendingBrowse_;
+	std::string browseStart_;
+
 	bool fsOpenConfirm_;     // 次のフレームで確認を開く
 	bool fsConfirmOpen_;     // いま開いている（ESC の判断に使う）
 	bool fsCloseConfirm_;    // ESC で閉じてほしい

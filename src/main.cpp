@@ -205,8 +205,24 @@ bool LoadFileSystems(mxv2::Vfs *vfs, const std::vector<std::string> &refs,
 	vfs->ClearMounts();
 	for (size_t i = 0; i < refs.size(); i++) {
 		mxv2::FileSystem *fs = 0;
-		std::string rel;
-		if (!vfs->Parse(refs[i], &fs, &rel) || fs == 0) {
+
+		// 場所を持つもの（フォルダマウントや外部 FS）は、ここで作って預ける。
+		// 同じ場所が二重に書かれていたら、先に作ったほうを使う。
+		mxv2::FileSystem *made = vfs->CreateFromMountRef(refs[i]);
+		if (made != 0) {
+			if (vfs->Add(made)) {
+				fs = made;
+			} else {
+				fs = vfs->FindByMountRef(made->mountRef());
+				delete made;
+				fixed = true;
+			}
+		} else {
+			std::string rel;
+			if (!vfs->Parse(refs[i], &fs, &rel)) fs = 0;
+		}
+
+		if (fs == 0) {
 			Warn(box, mxv2::MsgF("Log.UnknownFileSystem", refs[i]));
 			fixed = true;
 			continue;
@@ -1331,6 +1347,17 @@ int main(int argc, char **argv) {
 		textLayer.Render(&screen);  // 文字は拡大後の解像度で重ねる
 		ui.Render(&screen);
 		screen.Present();
+
+		// OS の「フォルダを探す」ダイアログ。開いている間はこちらが止まるので、
+		// 1 フレーム描き終えてから開く。
+		if (ui.pendingBrowse()) {
+			ui.ClearPendingBrowse();
+			std::string picked;
+			if (mxv2::BrowseForFolder(mxv2::Msg("AddFs.BrowseTitle"), ui.browseStart(),
+			                          screen.nativeWindowHandle(), &picked)) {
+				ui.SetBrowsedPath(picked);
+			}
+		}
 
 		if (playing && player.playTerminated()) {
 			if (!endSeen) {

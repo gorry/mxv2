@@ -10,6 +10,7 @@
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <shlobj.h>  // IFileOpenDialog（フォルダを探すダイアログ）
 #else
 #include <dirent.h>
 #include <limits.h>
@@ -406,6 +407,79 @@ std::string ParentDir(const std::string &dir) {
 	if (parent.empty()) return dir;
 	return parent;
 }
+
+// OS の「フォルダを探す」ダイアログ。
+//
+// フォルダマウント (dir:) の場所は **OS ネイティブのパス**なので、選ぶのも
+// OS のダイアログに任せる。ファイラーのフォルダ選択（自前・VFS の中を辿る）
+// とは別物で、あちらは ref を選ぶためのもの。
+#ifdef _WIN32
+bool HasFolderBrowser() {
+	return true;
+}
+
+bool BrowseForFolder(const std::string &title, const std::string &start, void *owner,
+                     std::string *out) {
+	out->clear();
+
+	// SDL が別のモードで初期化していることがあるので、失敗しても続ける
+	// （その場合は解放もしない）。
+	const HRESULT init = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+	const bool weInitialized = SUCCEEDED(init);
+
+	IFileOpenDialog *dialog = NULL;
+	HRESULT hr = CoCreateInstance(CLSID_FileOpenDialog, NULL, CLSCTX_INPROC_SERVER,
+	                              IID_IFileOpenDialog, (void **)&dialog);
+	if (SUCCEEDED(hr) && dialog != NULL) {
+		DWORD options = 0;
+		if (SUCCEEDED(dialog->GetOptions(&options))) {
+			// フォルダを選ぶ / 実在するもの / ファイルシステム上のものだけ
+			dialog->SetOptions(options | FOS_PICKFOLDERS | FOS_PATHMUSTEXIST |
+			                   FOS_FORCEFILESYSTEM);
+		}
+		if (!title.empty()) dialog->SetTitle(Utf8ToWide(title).c_str());
+		if (!start.empty()) {
+			IShellItem *item = NULL;
+			if (SUCCEEDED(SHCreateItemFromParsingName(Utf8ToWide(start).c_str(), NULL,
+			                                          IID_IShellItem, (void **)&item)) &&
+			    item != NULL) {
+				dialog->SetFolder(item);
+				item->Release();
+			}
+		}
+
+		if (SUCCEEDED(dialog->Show((HWND)owner))) {
+			IShellItem *item = NULL;
+			if (SUCCEEDED(dialog->GetResult(&item)) && item != NULL) {
+				PWSTR path = NULL;
+				if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path)) &&
+				    path != NULL) {
+					*out = WideToUtf8(path);
+					CoTaskMemFree(path);
+				}
+				item->Release();
+			}
+		}
+		dialog->Release();
+	}
+
+	if (weInitialized) CoUninitialize();
+	return !out->empty();
+}
+#else
+bool HasFolderBrowser() {
+	return false;
+}
+
+bool BrowseForFolder(const std::string &title, const std::string &start, void *owner,
+                     std::string *out) {
+	(void)title;
+	(void)start;
+	(void)owner;
+	out->clear();
+	return false;
+}
+#endif
 
 int CompareNoCase(const std::string &a, const std::string &b) {
 	const size_t n = (a.size() < b.size()) ? a.size() : b.size();

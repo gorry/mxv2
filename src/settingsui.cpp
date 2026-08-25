@@ -68,6 +68,7 @@ const char *kBmRemoveTitle;
 const char *kBmToggleTitle;
 const char *kAboutTitle;
 const char *kStartupTitle;
+const char *kAddFsTitle;
 
 // 題名を作る。id 付きのものは文字列を静的に持ってから返す。
 const char *TitleWithId(const char *key, const char *id) {
@@ -96,6 +97,7 @@ void InitTitles() {
 	kBmToggleTitle = TitleWithId("Dialog.BookmarkToggle", "###mxv2bmtoggle");
 	kAboutTitle = Msg("Dialog.About");
 	kStartupTitle = Msg("Dialog.Startup");
+	kAddFsTitle = Msg("Dialog.AddFs");
 }
 
 // 文言に ImGui の id を足した名札。同じ文言を 1 つの画面で何度も使うため。
@@ -299,6 +301,10 @@ SettingsUi::SettingsUi()
       bmToggleOpen_(false),
       bmCloseToggle_(false),
       fsSelected_(0),
+      addFsOpen_(false),
+      addFsShow_(false),
+      addFsClose_(false),
+      pendingBrowse_(false),
       fsOpenConfirm_(false),
       fsConfirmOpen_(false),
       fsCloseConfirm_(false),
@@ -309,6 +315,7 @@ SettingsUi::SettingsUi()
       openedModal_(0) {
 	pdxPathBuf_[0] = '\0';
 	folderPathBuf_[0] = '\0';
+	addFsPathBuf_[0] = '\0';
 	skinNameBuf_[0] = '\0';
 }
 
@@ -570,7 +577,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 		SetFolderDir(start);
 		showFolder_ = true;
 	}
-	BuildFolderWindow(settings);
+	BuildFolderWindow(settings, filer);
 	BuildFileSystemsWindow(filer);
 	BuildBookmarksWindow(settings, filer);
 	BuildBookmarkToggleWindow(settings, filer);
@@ -1131,14 +1138,17 @@ void SettingsUi::BuildFileSystemsWindow(Filer *filer) {
 	}
 	ImGui::EndDisabled();
 
-	// [追加] は外部ファイルシステム（SAF / Web / SMB …）用。まだ無いので
-	// 押せない。
+	// [追加] は今のところフォルダマウント (dir:) だけ。追加できる種類が
+	// 1 つしかないので、種類の選択は省いて場所を選ぶダイアログを直に出す
+	// （filesystem.md）。外部ファイルシステムを足すときは、ここに種類の
+	// 選択を挟むこと。
 	ImGui::SameLine();
-	ImGui::BeginDisabled(true);
-	ImGui::Button(Msg("Button.AddFs"));
-	ImGui::EndDisabled();
-	if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-		ImGui::SetTooltip("%s", Msg("FileSystems.AddNone"));
+	if (ImGui::Button(Msg("Button.AddFs"))) {
+		fsError_.clear();
+		addFsOpen_ = true;
+	}
+	if (ImGui::IsItemHovered()) {
+		ImGui::SetTooltip("%s", Msg("FileSystems.AddHint"));
 	}
 
 	// [削除]。削除できないものはグレーアウト。カレントのものは押せるが、
@@ -1155,7 +1165,94 @@ void SettingsUi::BuildFileSystemsWindow(Filer *filer) {
 	}
 	ImGui::EndDisabled();
 
+	BuildAddFsWindow(filer);
 	BuildFsRemoveWindow(filer);
+
+	ImGui::EndPopup();
+}
+
+void SettingsUi::SetBrowsedPath(const std::string &path) {
+	snprintf(addFsPathBuf_, sizeof(addFsPathBuf_), "%s", path.c_str());
+	addFsError_.clear();
+}
+
+// ファイルシステムの追加。今のところ足せるのはフォルダマウント (dir:) だけ
+// なので、種類の選択は省いて場所だけを決める（filesystem.md）。
+// 場所は **OS ネイティブのパス**なので、打ち込みと OS の「フォルダを探す」
+// ダイアログで取る。ファイラーのフォルダ選択（VFS の中を辿る自前のもの）は
+// ここでは使わない。
+void SettingsUi::BuildAddFsWindow(Filer *filer) {
+	if (addFsOpen_) {
+		addFsOpen_ = false;
+		addFsPathBuf_[0] = '\0';
+		addFsError_.clear();
+		ImGui::OpenPopup(kAddFsTitle);
+	}
+
+	addFsShow_ = ImGui::IsPopupOpen(kAddFsTitle);
+	if (!addFsShow_) {
+		addFsClose_ = false;
+		return;
+	}
+
+	const ImGuiIO &io = ImGui::GetIO();
+	float w = 460.0f * styleScale_;
+	if (w > io.DisplaySize.x) w = io.DisplaySize.x;
+	ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Appearing);
+	ImGui::SetNextWindowSize(ImVec2(w, 0.0f), ImGuiCond_Appearing);
+	if (!ImGui::BeginPopupModal(kAddFsTitle, NULL,
+	                            ImGuiWindowFlags_NoCollapse |
+	                                ImGuiWindowFlags_NoSavedSettings |
+	                                ImGuiWindowFlags_AlwaysAutoResize)) {
+		return;
+	}
+
+	ImGui::TextUnformatted(Msg("AddFs.Path"));
+	ImGui::SetNextItemWidth(-FLT_MIN);
+	bool apply = ImGui::InputText("##addfspath", addFsPathBuf_, sizeof(addFsPathBuf_),
+	                              ImGuiInputTextFlags_EnterReturnsTrue);
+	ImGui::TextDisabled("%s", Msg("AddFs.Hint"));
+	if (!addFsError_.empty()) {
+		ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), "%s", addFsError_.c_str());
+	}
+	ImGui::Separator();
+
+	// OS のダイアログが無い環境（Android など）では打ち込みだけ。
+	if (HasFolderBrowser()) {
+		if (ImGui::Button(Msg("Button.Browse"))) {
+			browseStart_ = TrimSpaces(addFsPathBuf_);
+			pendingBrowse_ = true;
+		}
+		ImGui::SameLine();
+	}
+	if (ImGui::Button(Msg("Button.Add"))) apply = true;
+	ImGui::SameLine();
+	if (ImGui::Button(Msg("Button.Cancel")) || addFsClose_) {
+		addFsClose_ = false;
+		ImGui::CloseCurrentPopup();
+	}
+
+	if (apply) {
+		const std::string path = TrimSpaces(addFsPathBuf_);
+		FileSystem *made =
+		    (path.empty() || !IsDirectory(path) || vfs_ == 0)
+		        ? 0
+		        : vfs_->CreateFromMountRef(std::string("dir:") + path);
+		if (made == 0) {
+			addFsError_ = Msg("AddFs.NotFound");
+		} else if (!vfs_->Add(made)) {
+			addFsError_ = MsgF("AddFs.Duplicate", made->mountRef());
+			delete made;
+		} else {
+			// 選んでいた位置へ挿し込む（filesystem.md）。
+			const int at = (fsSelected_ >= 0) ? fsSelected_ : vfs_->count();
+			vfs_->MountAt(at, made);
+			fsSelected_ = at;
+			changedFields_ |= Settings::kFieldFileSystems;
+			if (filer != 0) filer->Refresh();
+			ImGui::CloseCurrentPopup();
+		}
+	}
 
 	ImGui::EndPopup();
 }
@@ -1710,7 +1807,7 @@ const char *SettingsUi::folderTitle() const {
 	return (folderTarget_ == kFolderTargetPdx) ? kPdxFolderTitle : kFolderTitle;
 }
 
-void SettingsUi::BuildFolderWindow(Settings *settings) {
+void SettingsUi::BuildFolderWindow(Settings *settings, Filer *filer) {
 	const char *title = folderTitle();
 	if (!SyncModal(title, &showFolder_)) return;
 

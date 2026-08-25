@@ -11,6 +11,7 @@ namespace mxv2 {
 namespace {
 
 const char kLocalId[] = "localfs";
+const char kDirId[] = "dir";
 const char kAssetsId[] = "assets";
 const char kUserDirId[] = "userdir";
 
@@ -151,6 +152,121 @@ public:
 			out->push_back(e);
 		}
 	}
+};
+
+// -------------------------------------------------------------------------
+// フォルダマウント (dir:)
+//
+// OS ネイティブの任意のフォルダを根に据える。ユーザーが
+// [ファイルシステムの設定] から足すもので、初回起動時には無い。
+//
+// rel は**ネイティブのフルパスそのもの**（ローカル FS と同じ流儀）。
+// 同じ dir: を複数マウントできるので、ref は場所まで含んでいないと
+// どのマウントのものか決められない。Contains() が根の前方一致で選ぶ。
+//
+// Windows の UNC ("\\server\share") もそのまま根にできる。この場合は
+// 1 段ごとに通信が要るので parentIsCheap() を false にして、起動時の
+// フォールバックが途中を飛ばすようにする。
+// -------------------------------------------------------------------------
+class DirFileSystem : public FileSystem {
+public:
+	explicit DirFileSystem(const std::string &root) : root_(NormalizeNative(root)) {}
+
+	const char *id() const { return kDirId; }
+	// 種類は prefix ("DIR>") で分かるので、こちらは場所を出す。
+	std::string label() const { return root_; }
+	const char *prefix() const { return "DIR>"; }
+
+	bool removable() const { return true; }
+	bool hasPdxDir() const { return true; }
+	bool parentIsCheap() const { return !IsUnc(root_); }
+	std::string mountRef() const { return std::string(id()) + ":" + root_; }
+
+	// **Normalize() を呼んではいけない**（あちらが Contains() を呼ぶ）。
+	// 区切りを揃えるだけの NormalizeNative() で見る。
+	bool Contains(const std::string &rel) const {
+		const std::string s = NormalizeNative(rel);
+		if (s.size() < root_.size()) return false;
+		if (!SameNameNative(s.substr(0, root_.size()), root_)) return false;
+		if (s.size() == root_.size()) return true;
+		// 根が "C:\" のように区切りで終わっているときは、そのぶんを見ない。
+		return IsSep(root_[root_.size() - 1]) || IsSep(s[root_.size()]);
+	}
+
+	std::string Root() const { return root_; }
+
+	std::string Normalize(const std::string &rel) const {
+		const std::string s = NormalizeNative(rel);
+		// 根の外は指せない。おかしな指定は根へ寄せる。
+		return Contains(s) ? s : root_;
+	}
+
+	bool IsRoot(const std::string &rel) const {
+		return SameNameNative(Normalize(rel), root_);
+	}
+
+	std::string Parent(const std::string &rel) const {
+		const std::string s = Normalize(rel);
+		if (IsRoot(s)) return root_;
+		const std::string up = NormalizeNative(ParentDir(s));
+		return Contains(up) ? up : root_;
+	}
+
+	std::string Join(const std::string &dir, const std::string &name) const {
+		return Normalize(JoinPath(Normalize(dir), name));
+	}
+
+	std::string DisplayPath(const std::string &rel) const {
+		std::string s = Normalize(rel);
+		if (!s.empty() && !IsSep(s[s.size() - 1])) s += kNativeSep;
+		return s;
+	}
+
+	std::string ResolveInput(const std::string &input, const std::string &base) const {
+		if (input.empty()) return base.empty() ? root_ : Normalize(base);
+		if (IsFullLocalPath(input)) return Normalize(AbsolutePath(input));
+		const std::string dir = base.empty() ? root_ : Normalize(base);
+		return Normalize(AbsolutePath(JoinPath(dir, input)));
+	}
+
+	bool List(const std::string &rel, std::vector<DirEntry> *out) const {
+		return ListDirectory(Normalize(rel), out);
+	}
+	bool Read(const std::string &rel, std::vector<uint8_t> *out) const {
+		return ReadWholeFile(Normalize(rel), out);
+	}
+	bool Exists(const std::string &rel) const { return FileExists(Normalize(rel)); }
+	bool IsDir(const std::string &rel) const { return IsDirectory(Normalize(rel)); }
+
+	bool SamePath(const std::string &a, const std::string &b) const {
+		return SameNameNative(Normalize(a), Normalize(b));
+	}
+
+	std::string nativeRoot() const { return root_; }
+
+private:
+	// 区切りを揃えて、末尾の区切りを落とす（"C:\" のように意味が変わる
+	// ものは残す）。LocalFileSystem::Normalize と同じ規則。
+	static std::string NormalizeNative(const std::string &path) {
+		std::string s = path;
+#ifdef _WIN32
+		for (size_t i = 0; i < s.size(); i++) {
+			if (s[i] == '/') s[i] = '\\';
+		}
+#endif
+		while (s.size() > 1 && IsSep(s[s.size() - 1])) {
+			const char prev = s[s.size() - 2];
+			if (IsSep(prev) || prev == ':') break;
+			s.erase(s.size() - 1);
+		}
+		return s;
+	}
+
+	static bool IsUnc(const std::string &path) {
+		return path.size() >= 2 && IsSep(path[0]) && IsSep(path[1]);
+	}
+
+	std::string root_;
 };
 
 // -------------------------------------------------------------------------
@@ -303,6 +419,13 @@ FileSystem *Vfs::FindById(const std::string &id) const {
 	return 0;
 }
 
+FileSystem *Vfs::FindByMountRef(const std::string &ref) const {
+	for (size_t i = 0; i < all_.size(); i++) {
+		if (CompareNoCase(all_[i]->mountRef(), ref) == 0) return all_[i];
+	}
+	return 0;
+}
+
 // 同じ id のファイルシステムが複数あるとき、rel を持っているものを選ぶ。
 // 1 つしか無ければ（同梱の 3 つはすべてそう）これまでと同じ。
 FileSystem *Vfs::FindForRef(const std::string &id, const std::string &rel) const {
@@ -310,11 +433,24 @@ FileSystem *Vfs::FindForRef(const std::string &id, const std::string &rel) const
 	for (size_t i = 0; i < all_.size(); i++) {
 		if (CompareNoCase(all_[i]->id(), id) != 0) continue;
 		if (first == 0) first = all_[i];
-		if (all_[i]->Contains(all_[i]->Normalize(rel))) return all_[i];
+		// 正規化は FS 側に任せる（Normalize() は「根の外なら根へ寄せる」
+		// ような手当てをすることがあるので、選ぶ前に通してはいけない）。
+		if (all_[i]->Contains(rel)) return all_[i];
 	}
 	// どのマウントの持ち物でもない ref は、とりあえず最初のものに割り当てる
 	// （読めなければ、いつもどおり「見つかりません」になる）。
 	return first;
+}
+
+FileSystem *Vfs::CreateFromMountRef(const std::string &ref) const {
+	std::string scheme, rest;
+	if (!SplitRef(ref, &scheme, &rest)) return 0;
+	if (CompareNoCase(scheme, kDirId) == 0) {
+		if (rest.empty()) return 0;
+		return new DirFileSystem(rest);
+	}
+	// 外部ファイルシステム (saf: / web: / smb: …) はここへ足す。
+	return 0;
 }
 
 bool Vfs::Add(FileSystem *fs) {

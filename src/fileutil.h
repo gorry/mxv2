@@ -80,6 +80,20 @@ std::string ParentDir(const std::string &dir);
 // 大文字小文字を無視した比較 (ASCII のみ)。
 int CompareNoCase(const std::string &a, const std::string &b);
 
+// OS の「フォルダを探す」ダイアログがあるか。無い環境では、パスを
+// 打ち込んでもらうしかない（[参照...] を出さない判断に使う）。
+bool HasFolderBrowser();
+
+// OS の「フォルダを探す」ダイアログを開く。選ばれたら true で、out に
+// **OS ネイティブのフルパス**が入る。取り消し・ダイアログが無い環境では false。
+//   title : ダイアログの見出し
+//   start : 最初に見せるフォルダ（空なら OS 任せ）
+//   owner : 親ウィンドウのネイティブハンドル（Screen::nativeWindowHandle）。
+//           0 でもよいが、渡すとこちらの窓の上に出る
+// **メインスレッドから呼ぶこと。** 開いている間、mxv2 側は止まる。
+bool BrowseForFolder(const std::string &title, const std::string &start, void *owner,
+                     std::string *out);
+
 }  // namespace mxv2
 
 #endif  // MXV2_FILEUTIL_H

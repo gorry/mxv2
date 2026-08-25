@@ -99,6 +99,10 @@ public:
 	void SetWindowPos(int x, int y);
 
 	SDL_Window *window() { return window_; }
+
+	// OS のウィンドウハンドル（Windows なら HWND）。OS のダイアログを
+	// こちらの窓の上に出すために渡す。取れなければ 0。
+	void *nativeWindowHandle() const;
 	SDL_Renderer *renderer() { return renderer_; }
 
 private:

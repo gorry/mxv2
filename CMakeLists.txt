@@ -172,6 +172,10 @@ add_executable(mxv2
 )
 target_include_directories(mxv2 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(mxv2 PRIVATE portable_mdx sdl2 imgui)
+if(WIN32)
+	# OS の「フォルダを探す」ダイアログ (IFileOpenDialog)
+	target_link_libraries(mxv2 PRIVATE ole32 shell32)
+endif()
 
 # Windows では GUI アプリとしてリンクする。コンソールアプリのままだと、
 # エクスプローラから起動したときに黒いコンソールウィンドウが一緒に出る。

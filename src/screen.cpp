@@ -6,6 +6,8 @@
 #include <cmath>
 #include <cstring>
 
+#include <SDL_syswm.h>
+
 #include "message.h"
 
 namespace mxv2 {
@@ -82,6 +84,18 @@ bool Screen::Open(const std::string &title, int width, int height, int zoomPerce
 	pixels_.assign((size_t)width_ * height_, 0xff000000u);
 	SetScaleMode(scaleMode_);
 	return true;
+}
+
+void *Screen::nativeWindowHandle() const {
+	if (window_ == 0) return 0;
+	SDL_SysWMinfo info;
+	SDL_VERSION(&info.version);
+	if (!SDL_GetWindowWMInfo(window_, &info)) return 0;
+#ifdef _WIN32
+	return (void *)info.info.win.window;
+#else
+	return 0;
+#endif
 }
 
 void Screen::Close() {

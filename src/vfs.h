@@ -127,6 +127,8 @@ public:
 	int allCount() const { return (int)all_.size(); }
 	FileSystem *all(int i) const { return all_[i]; }
 	FileSystem *FindById(const std::string &id) const;
+	// マウントの書き方 (mountRef) で厳密に引く。
+	FileSystem *FindByMountRef(const std::string &ref) const;
 	// 同じ id が複数あるとき、rel を持っているものを選ぶ。
 	FileSystem *FindForRef(const std::string &id, const std::string &rel) const;
 
@@ -135,6 +137,11 @@ public:
 	FileSystem *at(int i) const { return mounted_[i]; }
 	int IndexOf(const FileSystem *fs) const;
 	bool IsMounted(const FileSystem *fs) const { return IndexOf(fs) >= 0; }
+
+	// マウント一覧の書き方 ("dir:H:\\music" など) からファイルシステムを
+	// 作る。作れなければ 0（知らない接頭辞、場所が空）。作ったものは
+	// Add() で預けること（預けられなければ呼んだ側で delete する）。
+	FileSystem *CreateFromMountRef(const std::string &ref) const;
 
 	// 外から作ったファイルシステムを預ける（**所有権も渡す**。以後は
 	// Vfs が delete する）。同じ場所のものが既にあれば false を返すので、
