@@ -7,6 +7,7 @@
 
 #include "fileutil.h"
 #include "ini.h"
+#include "message.h"
 
 namespace mxv2 {
 
@@ -254,7 +255,7 @@ bool Skin::Load(const AssetPaths &paths, const std::string &ref, std::string *er
 		const std::string dir = paths.SkinDir(current);
 		if (dir.empty()) {
 			if (depth == 0) {
-				*err = "スキン " + ref + " が見つかりません。";
+				*err = MsgF("Error.SkinNotFound", ref);
 				return false;
 			}
 			break;  // 土台が無いだけなら、そこまでで組み立てる

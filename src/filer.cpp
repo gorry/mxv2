@@ -7,6 +7,7 @@
 
 #include "fileutil.h"
 #include "mdxsong.h"
+#include "message.h"
 #include "text.h"
 #include "vfs.h"
 
@@ -115,7 +116,7 @@ void Filer::AppendFileSystems(std::vector<FileItem> *out) {
 	{
 		FileItem f;
 		f.baseName = "[Setting]";
-		f.title = "ファイルシステムの設定";
+		f.title = Msg("Filer.SettingTitle");
 		f.type = kFileItemSetting;
 		out->push_back(f);
 	}

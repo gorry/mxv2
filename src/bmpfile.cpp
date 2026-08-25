@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "fileutil.h"
+#include "message.h"
 
 namespace mxv2 {
 
@@ -29,15 +30,15 @@ int32_t ReadS32(const uint8_t *p) {
 bool LoadBmpFile(const std::string &path, Bitmap *out, std::string *err) {
 	std::vector<uint8_t> file;
 	if (!ReadWholeFile(path, &file)) {
-		*err = "ビットマップを読み込めません: " + path;
+		*err = MsgF("Error.BmpRead", path);
 		return false;
 	}
 	if (file.size() < 14 + 40) {
-		*err = "ビットマップが短すぎます: " + path;
+		*err = MsgF("Error.BmpShort", path);
 		return false;
 	}
 	if (file[0] != 'B' || file[1] != 'M') {
-		*err = "BMP ファイルではありません: " + path;
+		*err = MsgF("Error.BmpNotBmp", path);
 		return false;
 	}
 
@@ -45,7 +46,7 @@ bool LoadBmpFile(const std::string &path, Bitmap *out, std::string *err) {
 	const uint8_t *ih = &file[14];
 	const uint32_t headerSize = ReadU32(ih);
 	if (headerSize < 40) {
-		*err = "対応していない BMP ヘッダ形式です: " + path;
+		*err = MsgF("Error.BmpHeader", path);
 		return false;
 	}
 
@@ -59,15 +60,15 @@ bool LoadBmpFile(const std::string &path, Bitmap *out, std::string *err) {
 	const int32_t height = topDown ? -rawHeight : rawHeight;
 
 	if (width <= 0 || height <= 0) {
-		*err = "BMP のサイズが不正です: " + path;
+		*err = MsgF("Error.BmpSize", path);
 		return false;
 	}
 	if (compression != 0) {
-		*err = "圧縮された BMP には対応していません: " + path;
+		*err = MsgF("Error.BmpCompressed", path);
 		return false;
 	}
 	if (bpp != 1 && bpp != 4 && bpp != 8 && bpp != 16 && bpp != 24 && bpp != 32) {
-		*err = "対応していない色深度の BMP です: " + path;
+		*err = MsgF("Error.BmpDepth", path);
 		return false;
 	}
 
@@ -80,7 +81,7 @@ bool LoadBmpFile(const std::string &path, Bitmap *out, std::string *err) {
 	if (paletted) {
 		const size_t palOffset = 14 + headerSize;
 		if (palOffset + (size_t)clrUsed * 4 > file.size()) {
-			*err = "BMP のパレットが壊れています: " + path;
+			*err = MsgF("Error.BmpPalette", path);
 			return false;
 		}
 		const uint8_t *p = &file[palOffset];
@@ -94,13 +95,13 @@ bool LoadBmpFile(const std::string &path, Bitmap *out, std::string *err) {
 
 	const int srcStride = LineWidth(width * bpp / 8 + ((width * bpp % 8) ? 1 : 0));
 	if ((size_t)dataOffset + (size_t)srcStride * height > file.size()) {
-		*err = "BMP の画素データが足りません: " + path;
+		*err = MsgF("Error.BmpPixels", path);
 		return false;
 	}
 	const uint8_t *data = &file[dataOffset];
 
 	if (!out->Create(width, height, paletted ? 8 : 24)) {
-		*err = "ビットマップを確保できません: " + path;
+		*err = MsgF("Error.BmpAlloc", path);
 		return false;
 	}
 	if (paletted) memcpy(out->palette(), palette, sizeof(palette));

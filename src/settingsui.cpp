@@ -15,6 +15,7 @@
 #include "fileutil.h"
 #include "filer.h"
 #include "ini.h"
+#include "message.h"
 #include "player.h"
 #include "screen.h"
 #include "settings.h"
@@ -50,24 +51,55 @@ const int kNumFontCandidates = (int)(sizeof(kFontCandidates) / sizeof(kFontCandi
 
 const float kFontSizePx = 15.0f;
 
-// ダイアログの題名。ImGui のポップアップ id を兼ねるので 1 箇所で持つ。
-const char *kSettingsTitle = "mxv2 の設定";
-const char *kColorsTitle = "配色設定";
-const char *kOverwriteTitle = "上書きの確認";
-// "###" 以降が ImGui の id。見出しだけ用途で変えて、ポップアップとしては
-// 同じものとして扱う。
-const char *kFolderTitle = "フォルダを開く###mxv2folder";
-const char *kPdxFolderTitle = "PDX フォルダを選ぶ###mxv2folder";
-const char *kHelpTitle = "操作方法";
-const char *kFileSystemsTitle = "ファイルシステムの設定";
-const char *kFsRemoveTitle = "削除の確認";
-const char *kBookmarksTitle = "ブックマークの設定";
-// 見出しはファイルシステムの削除確認と同じだが、別のポップアップとして
-// 扱ってほしいので "###" で id を分ける。
-const char *kBmRemoveTitle = "削除の確認###mxv2bmremove";
-// Shift+M の確認。ダイアログを開かずにメイン画面から直に出す。
-const char *kBmToggleTitle = "ブックマーク###mxv2bmtoggle";
-const char *kAboutTitle = "バージョン情報";
+// ダイアログの題名。文言はカタログ、"###" 以降は ImGui の id。
+// SyncModal が題名をポインタで見分けるので、**毎フレーム同じ番地**を
+// 返さないといけない。カタログの文字列はそのまま使えるが、id を繋いだ
+// ものは 1 度だけ組み立てて使い回す。
+const char *kSettingsTitle;
+const char *kColorsTitle;
+const char *kOverwriteTitle;
+const char *kFolderTitle;
+const char *kPdxFolderTitle;
+const char *kHelpTitle;
+const char *kFileSystemsTitle;
+const char *kFsRemoveTitle;
+const char *kBookmarksTitle;
+const char *kBmRemoveTitle;
+const char *kBmToggleTitle;
+const char *kAboutTitle;
+
+// 題名を作る。id 付きのものは文字列を静的に持ってから返す。
+const char *TitleWithId(const char *key, const char *id) {
+	static std::vector<std::string *> keep;  // 後始末は要らない（起動時に 1 度）
+	std::string *s = new std::string(std::string(Msg(key)) + id);
+	keep.push_back(s);
+	return s->c_str();
+}
+
+void InitTitles() {
+	if (kSettingsTitle != 0) return;
+	kSettingsTitle = Msg("Dialog.Settings");
+	kColorsTitle = Msg("Dialog.Colors");
+	kOverwriteTitle = Msg("Dialog.Overwrite");
+	// 見出しだけ用途で変えて、ポップアップとしては同じものとして扱う。
+	kFolderTitle = TitleWithId("Dialog.Folder", "###mxv2folder");
+	kPdxFolderTitle = TitleWithId("Dialog.PdxFolder", "###mxv2folder");
+	kHelpTitle = Msg("Dialog.Help");
+	kFileSystemsTitle = Msg("Dialog.FileSystems");
+	kFsRemoveTitle = Msg("Dialog.FsRemove");
+	kBookmarksTitle = Msg("Dialog.Bookmarks");
+	// 見出しはファイルシステムの削除確認と同じなので、別のポップアップとして
+	// 扱ってもらうために "###" で id を分ける。
+	kBmRemoveTitle = TitleWithId("Dialog.BookmarkRemove", "###mxv2bmremove");
+	// Shift+M の確認。ダイアログを開かずにメイン画面から直に出す。
+	kBmToggleTitle = TitleWithId("Dialog.BookmarkToggle", "###mxv2bmtoggle");
+	kAboutTitle = Msg("Dialog.About");
+}
+
+// 文言に ImGui の id を足した名札。同じ文言を 1 つの画面で何度も使うため。
+std::string L(const char *key, const char *id) {
+	return std::string(Msg(key)) + id;
+}
 
 // 表示倍率を変えたあと、実際に適用するまでの待ち時間。
 const uint32_t kZoomApplyDelayMs = 200;
@@ -85,10 +117,10 @@ Rgb FromFloat3(const float *f) {
 }
 
 // 色見本 + カラーピッカー。変わったら true。
-bool ColorRow(const char *label, Rgb *c) {
+bool ColorRow(const std::string &label, Rgb *c) {
 	float f[3];
 	ToFloat3(*c, f);
-	if (!ImGui::ColorEdit3(label, f, ImGuiColorEditFlags_NoInputs)) return false;
+	if (!ImGui::ColorEdit3(label.c_str(), f, ImGuiColorEditFlags_NoInputs)) return false;
 	*c = FromFloat3(f);
 	return true;
 }
@@ -97,13 +129,13 @@ bool ColorRow(const char *label, Rgb *c) {
 // 分けてある（colors.h 参照）。変わったら true。
 //
 // 合成の強さ。背景に対する alpha なので 0..100 で意味が閉じている。
-bool AlphaRow(const char *label, int *v) {
-	return ImGui::SliderInt(label, v, 0, 100);
+bool AlphaRow(const std::string &label, int *v) {
+	return ImGui::SliderInt(label.c_str(), v, 0, 100);
 }
 
 // 素材に掛ける乗算ゲイン。100 が素通しで、それより上は明るくなる。
-bool GainRow(const char *label, int *v) {
-	return ImGui::SliderInt(label, v, 0, 200);
+bool GainRow(const std::string &label, int *v) {
+	return ImGui::SliderInt(label.c_str(), v, 0, 200);
 }
 
 // バージョン情報の字の大きさを決める物差し。NOTICE は等幅 80 桁で書いて
@@ -199,8 +231,7 @@ std::string LoadAboutText() {
 	if (ReadWholeFile(JoinPath(ExecutableDir(), "NOTICE"), &data) && !data.empty()) {
 		return std::string((const char *)&data[0], data.size());
 	}
-	return "NOTICE が見つかりません。\n"
-	       "配布するときは実行ファイルの隣に NOTICE を置いてください。";
+	return std::string(Msg("About.NoticeMissing")) + "\n" + Msg("About.NoticeHint");
 }
 
 std::string TrimSpaces(const std::string &s) {
@@ -214,15 +245,15 @@ std::string TrimSpaces(const std::string &s) {
 // スキン名はそのままフォルダ名になるので、使えないものを弾く。
 bool CheckSkinName(const std::string &name, std::string *err) {
 	if (name.empty()) {
-		*err = "名前を入れてください。";
+		*err = Msg("Colors.NameEmpty");
 		return false;
 	}
 	if (name == "." || name == ".." || name[name.size() - 1] == '.') {
-		*err = "その名前は使えません。";
+		*err = Msg("Colors.NameReserved");
 		return false;
 	}
 	if (name.find_first_of("\\/:*?\"<>|") != std::string::npos) {
-		*err = "名前に \\ / : * ? \" < > | は使えません。";
+		*err = Msg("Colors.NameChars");
 		return false;
 	}
 	return true;
@@ -285,11 +316,13 @@ SettingsUi::~SettingsUi() {
 bool SettingsUi::Init(Screen *screen, const AssetPaths &paths, std::string *err) {
 	if (ready_) return true;
 	if (screen == 0 || screen->window() == 0 || screen->renderer() == 0) {
-		*err = "設定 UI の初期化にはウィンドウが要ります。";
+		*err = Msg("Error.NeedWindow");
 		return false;
 	}
 
 	paths_ = paths;
+	InitTitles();
+	LoadHelpRows();
 	ScanSkins();
 
 	// 最初のイベントが来る前に倍率を知っておく。
@@ -341,12 +374,12 @@ bool SettingsUi::Init(Screen *screen, const AssetPaths &paths, std::string *err)
 	}
 
 	if (!ImGui_ImplSDL2_InitForSDLRenderer(screen->window(), screen->renderer())) {
-		*err = "ImGui_ImplSDL2_InitForSDLRenderer に失敗しました。";
+		*err = Msg("Error.ImGuiSdl");
 		ImGui::DestroyContext();
 		return false;
 	}
 	if (!ImGui_ImplSDLRenderer2_Init(screen->renderer())) {
-		*err = "ImGui_ImplSDLRenderer2_Init に失敗しました。";
+		*err = Msg("Error.ImGuiRenderer");
 		ImGui_ImplSDL2_Shutdown();
 		ImGui::DestroyContext();
 		return false;
@@ -439,19 +472,19 @@ void SettingsUi::SaveColorsAs(const std::string &name, Settings *settings, DrawS
 	const std::string dir = paths_.UserSkinDir(name);
 
 	if (!MakeDirectories(dir)) {
-		saveError_ = "フォルダを作れません: " + dir;
+		saveError_ = MsgF("Colors.MakeDirFailed", dir);
 		return;
 	}
 	if (isNewSkin && !isCurrent && !baseRef.empty()) {
 		Ini ini;
 		ini.SetString("Skin", "Base", baseRef);
 		if (!ini.Save(JoinPath(dir, "layout.ini"))) {
-			saveError_ = "layout.ini を書けません: " + dir;
+			saveError_ = MsgF("Colors.LayoutFailed", dir);
 			return;
 		}
 	}
 	if (!draw->colors().Save(JoinPath(dir, kColorsFile))) {
-		saveError_ = "配色を保存できません: " + JoinPath(dir, kColorsFile);
+		saveError_ = MsgF("Colors.SaveFailed", JoinPath(dir, kColorsFile));
 		return;
 	}
 	// 旧い名前のファイルが残っていると、colors.ini に隠れて読まれなくなる。
@@ -566,14 +599,14 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	}
 
 	// ---- 画面 ----------------------------------------------------------
-	if (ImGui::CollapsingHeader("画面", ImGuiTreeNodeFlags_DefaultOpen)) {
+	if (ImGui::CollapsingHeader(Msg("Settings.Screen"), ImGuiTreeNodeFlags_DefaultOpen)) {
 		// スキン。画面サイズごと変わりうるので、選ばれた名前を置いておいて
 		// 実際の作り直しはメインループに任せる。
 		int current = -1;
 		for (size_t i = 0; i < skinNames_.size(); i++) {
 			if (skinNames_[i] == settings->skinName) current = (int)i;
 		}
-		if (ImGui::BeginCombo("スキン", (current >= 0) ? skinNames_[current].c_str()
+		if (ImGui::BeginCombo(Msg("Settings.Skin"), (current >= 0) ? skinNames_[current].c_str()
 		                                              : settings->skinName.c_str())) {
 			for (size_t i = 0; i < skinNames_.size(); i++) {
 				const bool selected = ((int)i == current);
@@ -586,7 +619,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 			ImGui::EndCombo();
 		}
 		ImGui::SameLine();
-		if (ImGui::Button("再読込")) {
+		if (ImGui::Button(Msg("Button.Rescan"))) {
 			ScanSkins();
 			pendingSkin_ = settings->skinName;
 		}
@@ -597,7 +630,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 		// 値が行き来してしまう。確定してから少し待って適用する。
 		int zoom = settings->zoomPercent;
 		ImGui::SetNextItemWidth(80.0f * styleScale_);
-		const bool edited = ImGui::InputInt("表示倍率 (%)", &zoom, 25, 100);
+		const bool edited = ImGui::InputInt(Msg("Settings.Zoom"), &zoom, 25, 100);
 		if (edited) {
 			if (zoom < Screen::kZoomMin) zoom = Screen::kZoomMin;
 			if (zoom > Screen::kZoomMax) zoom = Screen::kZoomMax;
@@ -613,7 +646,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 			zoomApplyAtMs_ = SDL_GetTicks() + kZoomApplyDelayMs;
 		}
 		ImGui::SameLine();
-		if (ImGui::SmallButton("システムに合わせる")) {
+		if (ImGui::SmallButton(Msg("Settings.ZoomSystem"))) {
 			settings->zoomPercent = Screen::SystemZoomPercent();
 			changedFields_ |= Settings::kFieldZoom;
 			pendingZoom_ = settings->zoomPercent;
@@ -627,9 +660,9 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 				const char *label;
 			};
 			static const Item kItems[] = {
-				{ Screen::kScaleSharp, "sharp-bilinear（既定）" },
-				{ Screen::kScaleNearest, "最近傍" },
-				{ Screen::kScaleLinear, "バイリニア" },
+				{ Screen::kScaleSharp, Msg("Settings.FilterSharp") },
+				{ Screen::kScaleNearest, Msg("Settings.FilterNearest") },
+				{ Screen::kScaleLinear, Msg("Settings.FilterLinear") },
 			};
 			const int count = (int)(sizeof(kItems) / sizeof(kItems[0]));
 			const Screen::ScaleMode now = screen->scaleMode();
@@ -637,7 +670,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 			for (int i = 0; i < count; i++) {
 				if (kItems[i].mode == now) label = kItems[i].label;
 			}
-			if (ImGui::BeginCombo("拡大の補間", label)) {
+			if (ImGui::BeginCombo(Msg("Settings.Filter"), label)) {
 				for (int i = 0; i < count; i++) {
 					const bool selected = (kItems[i].mode == now);
 					if (ImGui::Selectable(kItems[i].label, selected)) {
@@ -653,9 +686,9 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	}
 
 	// ---- ファイラー ------------------------------------------------------
-	if (ImGui::CollapsingHeader("ファイラー", ImGuiTreeNodeFlags_DefaultOpen)) {
+	if (ImGui::CollapsingHeader(Msg("Settings.Filer"), ImGuiTreeNodeFlags_DefaultOpen)) {
 		bool largeFont = (settings->fileListFontSize != 0);
-		if (ImGui::Checkbox("大きい文字で表示する", &largeFont)) {
+		if (ImGui::Checkbox(Msg("Settings.LargeFont"), &largeFont)) {
 			settings->fileListFontSize = largeFont ? 1 : 0;
 			changedFields_ |= Settings::kFieldFontSize;
 			draw->SetFileListFontSize(settings->fileListFontSize);
@@ -663,7 +696,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 		}
 
 		bool folderFirst = settings->folderFirst;
-		if (ImGui::Checkbox("フォルダを先に並べる", &folderFirst)) {
+		if (ImGui::Checkbox(Msg("Settings.FolderFirst"), &folderFirst)) {
 			settings->folderFirst = folderFirst;
 			changedFields_ |= Settings::kFieldFolderFirst;
 			filer->SetFolderFirst(folderFirst);
@@ -672,13 +705,13 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	}
 
 	// ---- 演奏 ----------------------------------------------------------
-	if (ImGui::CollapsingHeader("演奏", ImGuiTreeNodeFlags_DefaultOpen)) {
+	if (ImGui::CollapsingHeader(Msg("Settings.Play"), ImGuiTreeNodeFlags_DefaultOpen)) {
 		// 出力サンプリングレート。96kHz を選べるのは、繋いでいる
 		// portable_mdx が対応している版のときだけ（player.h の
 		// X68SOUND_SUPPORT_96KHZ）。対応していなければ項目自体を出さない。
 		if (Player::kSupports96kHz) {
 			int idx = (player->sampleRate() == 96000) ? 1 : 0;
-			if (ImGui::Combo("出力レート", &idx, "48000 Hz\0" "96000 Hz\0")) {
+			if (ImGui::Combo(Msg("Settings.SampleRate"), &idx, "48000 Hz\0" "96000 Hz\0")) {
 				const int rate = idx ? 96000 : 48000;
 				if (rate != player->sampleRate()) {
 					// 実際の切り替え（MXDRV とオーディオ装置の開き直し）は
@@ -688,35 +721,36 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 				settings->sampleRate = rate;
 				changedFields_ |= Settings::kFieldSampleRate;
 			}
-			ImGui::TextDisabled("96000 Hzはお使いの環境では対応していない"
-			                    "可能性があります");
+			ImGui::TextDisabled("%s", Msg("Settings.SampleRateNote"));
 		}
 
 		int loops = settings->loops;
-		if (ImGui::SliderInt("ループ数", &loops, 1, 10)) {
+		if (ImGui::SliderInt(Msg("Settings.Loops"), &loops, 1, 10)) {
 			settings->loops = loops;
 			changedFields_ |= Settings::kFieldLoops;
 			player->SetLoopConfig(settings->loops, settings->fadeout);
 		}
 		bool fadeout = settings->fadeout;
-		if (ImGui::Checkbox("最後にフェードアウトする", &fadeout)) {
+		if (ImGui::Checkbox(Msg("Settings.Fadeout"), &fadeout)) {
 			settings->fadeout = fadeout;
 			changedFields_ |= Settings::kFieldFadeout;
 			player->SetLoopConfig(settings->loops, settings->fadeout);
 		}
-		ImGui::TextDisabled("ループ数とフェードアウトは次の曲から効きます");
+		ImGui::TextDisabled(Msg("Settings.LoopNote"));
 
 		// マスター音量。メイン画面の音量バーとは別で、実際の音量は 2 つの和。
 		int vol = player->masterVolume();
-		if (ImGui::SliderInt("マスター音量", &vol, Player::kVolumeMin, Player::kVolumeMax,
+		if (ImGui::SliderInt(Msg("Settings.MasterVolume"), &vol, Player::kVolumeMin, Player::kVolumeMax,
 		                     "%+d")) {
 			player->SetMasterVolume(vol);
 			changedFields_ |= Settings::kFieldVolume;
 		}
 		settings->masterVolume = player->masterVolume();
-		ImGui::TextDisabled("実際の音量 = マスター %+d + メイン画面 %+d = %+d",
-		                    player->masterVolume(), player->mainVolume(),
-		                    player->effectiveVolume());
+		ImGui::TextDisabled(
+		    "%s", MsgF("Settings.VolumeNote", MsgNum("%+d", player->masterVolume()),
+		               MsgNum("%+d", player->mainVolume()),
+		               MsgNum("%+d", player->effectiveVolume()))
+		              .c_str());
 
 		// 画面を音に合わせて遅らせる量。イベントはサンプル位置で打刻して
 		// あるので、ずれる原因はオーディオ装置のバッファぶんだけ。ふつうは
@@ -724,7 +758,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 		// 手で足す。
 		{
 			bool autoLatency = settings->latencyAuto;
-			if (ImGui::Checkbox("画面の遅れを音に合わせる", &autoLatency)) {
+			if (ImGui::Checkbox(Msg("Settings.LatencyAuto"), &autoLatency)) {
 				settings->latencyAuto = autoLatency;
 				changedFields_ |= Settings::kFieldLatency;
 				player->SetDisplayLatency(autoLatency,
@@ -732,16 +766,19 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 			}
 			if (!autoLatency) {
 				int ms = settings->latencyMs;
-				if (ImGui::SliderInt("画面の遅れ (ms)", &ms, Settings::kLatencyMsMin,
+				if (ImGui::SliderInt(Msg("Settings.Latency"), &ms, Settings::kLatencyMsMin,
 				                     Settings::kLatencyMsMax, "%+d")) {
 					settings->latencyMs = ms;
 					changedFields_ |= Settings::kFieldLatency;
 					player->SetDisplayLatency(false, MsToFrames(ms, player));
 				}
 			}
-			ImGui::TextDisabled("いま %+.1f ms（音の出るバッファ %d サンプル）",
-			                    FramesToMs(player->displayLatencyFrames(), player),
-			                    player->audioBufferFrames());
+			ImGui::TextDisabled(
+			    "%s",
+			    MsgF("Settings.LatencyNow",
+			         MsgNum("%+.1f", FramesToMs(player->displayLatencyFrames(), player)),
+			         MsgNum("%d", player->audioBufferFrames()))
+			        .c_str());
 		}
 
 		if (pdxPathBuf_[0] == '\0' && !settings->pdxPath.empty()) {
@@ -750,11 +787,11 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 		// 打ち込みでも、[参照...] で L キーと同じフォルダ選択からでも指定できる。
 		// ラベルは上の行に出す。横に並べると入力欄と参照ボタンが入らない
 		// （スキンの下限は横 480px）。
-		ImGui::TextUnformatted("PDX の探索先");
+		ImGui::TextUnformatted(Msg("Settings.PdxPath"));
 		{
 			const ImGuiStyle &style = ImGui::GetStyle();
 			const float browseW =
-			    ImGui::CalcTextSize("参照...").x + style.FramePadding.x * 2.0f;
+			    ImGui::CalcTextSize(Msg("Button.Browse")).x + style.FramePadding.x * 2.0f;
 			ImGui::SetNextItemWidth(-(browseW + style.ItemSpacing.x));
 		}
 		if (ImGui::InputText("##pdxpath", pdxPathBuf_, sizeof(pdxPathBuf_))) {
@@ -762,7 +799,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 			changedFields_ |= Settings::kFieldPdxPath;
 		}
 		ImGui::SameLine();
-		if (ImGui::Button("参照...")) {
+		if (ImGui::Button(Msg("Button.Browse"))) {
 			// モーダル同士は入れ子にせず、いったん設定ウィンドウを閉じてから
 			// フォルダ選択を出す。戻ってきたらまた開く。
 			folderTarget_ = kFolderTargetPdx;
@@ -845,62 +882,62 @@ void SettingsUi::BuildColorsWindow(Settings *settings, DrawScreen *draw, Player 
 		Colors &t = draw->colors();
 		bool dirty = false;
 
-		ImGui::SeparatorText("背景");
+		ImGui::SeparatorText(Msg("Colors.Background"));
 		{
 			bool useBitmap = (t.back.bitmap != 0);
-			if (ImGui::Checkbox("背景画像を使う", &useBitmap)) {
+			if (ImGui::Checkbox(Msg("Colors.UseImage"), &useBitmap)) {
 				t.back.bitmap = useBitmap ? 1 : 0;
 				dirty = true;
 			}
-			if (AlphaRow("画像の明るさ", &t.back.bitmapBright)) dirty = true;
-			if (ColorRow("背景色", &t.back.color)) dirty = true;
-			if (AlphaRow("背景色の強さ", &t.back.colorBright)) dirty = true;
+			if (AlphaRow(Msg("Colors.ImageGain"), &t.back.bitmapBright)) dirty = true;
+			if (ColorRow(Msg("Colors.BgColor"), &t.back.color)) dirty = true;
+			if (AlphaRow(Msg("Colors.BgStrength"), &t.back.colorBright)) dirty = true;
 		}
 
-		ImGui::SeparatorText("鍵盤");
+		ImGui::SeparatorText(Msg("Colors.Keyboard"));
 		{
-			if (GainRow("黒鍵", &t.kb.blackBright)) dirty = true;
-			if (GainRow("白鍵", &t.kb.whiteBright)) dirty = true;
-			if (GainRow("押鍵", &t.kb.bright)) dirty = true;
+			if (GainRow(Msg("Colors.BlackKey"), &t.kb.blackBright)) dirty = true;
+			if (GainRow(Msg("Colors.WhiteKey"), &t.kb.whiteBright)) dirty = true;
+			if (GainRow(Msg("Colors.PressedKey"), &t.kb.bright)) dirty = true;
 		}
 
-		ImGui::SeparatorText("ステータス");
+		ImGui::SeparatorText(Msg("Colors.Status"));
 		{
-			if (ColorRow("文字色##st", &t.status.color)) dirty = true;
-			if (AlphaRow("文字の強さ##st", &t.status.colorBright)) dirty = true;
-			if (ColorRow("背景色##st", &t.status.backColor)) dirty = true;
-			if (AlphaRow("背景の強さ##st", &t.status.backColorBright)) dirty = true;
+			if (ColorRow(L("Colors.Text", "##st"), &t.status.color)) dirty = true;
+			if (AlphaRow(L("Colors.TextStrength", "##st"), &t.status.colorBright)) dirty = true;
+			if (ColorRow(L("Colors.Back", "##st"), &t.status.backColor)) dirty = true;
+			if (AlphaRow(L("Colors.BackStrength", "##st"), &t.status.backColorBright)) dirty = true;
 		}
 
-		ImGui::SeparatorText("曲名");
+		ImGui::SeparatorText(Msg("Colors.Title"));
 		{
-			if (ColorRow("文字色##ti", &t.mdxTitle.color)) dirty = true;
-			if (AlphaRow("文字の強さ##ti", &t.mdxTitle.colorBright)) dirty = true;
-			if (ColorRow("背景色##ti", &t.mdxTitle.backColor)) dirty = true;
-			if (AlphaRow("背景の強さ##ti", &t.mdxTitle.backColorBright)) dirty = true;
+			if (ColorRow(L("Colors.Text", "##ti"), &t.mdxTitle.color)) dirty = true;
+			if (AlphaRow(L("Colors.TextStrength", "##ti"), &t.mdxTitle.colorBright)) dirty = true;
+			if (ColorRow(L("Colors.Back", "##ti"), &t.mdxTitle.backColor)) dirty = true;
+			if (AlphaRow(L("Colors.BackStrength", "##ti"), &t.mdxTitle.backColorBright)) dirty = true;
 		}
 
-		ImGui::SeparatorText("ファイラー");
+		ImGui::SeparatorText(Msg("Colors.Filer"));
 		{
-			if (ColorRow("カーソル##fi", &t.filer.cursorColor)) dirty = true;
-			if (AlphaRow("カーソルの強さ##fi", &t.filer.cursorColorBright)) dirty = true;
+			if (ColorRow(L("Colors.Cursor", "##fi"), &t.filer.cursorColor)) dirty = true;
+			if (AlphaRow(L("Colors.CursorStrength", "##fi"), &t.filer.cursorColorBright)) dirty = true;
 			// 「文字の強さ」は下の 4 つの色すべてに効くので、そのあとに置く。
-			if (ColorRow("文字色##fi", &t.filer.color)) dirty = true;
-			if (ColorRow("フォルダ文字色##fi", &t.filer.folderColor)) dirty = true;
-			if (ColorRow("ドライブ文字色##fi", &t.filer.driveColor)) dirty = true;
-			if (ColorRow("ファイルシステム文字色##fi", &t.filer.fileSystemColor)) {
+			if (ColorRow(L("Colors.Text", "##fi"), &t.filer.color)) dirty = true;
+			if (ColorRow(L("Colors.FolderText", "##fi"), &t.filer.folderColor)) dirty = true;
+			if (ColorRow(L("Colors.DriveText", "##fi"), &t.filer.driveColor)) dirty = true;
+			if (ColorRow(L("Colors.FileSystemText", "##fi"), &t.filer.fileSystemColor)) {
 				dirty = true;
 			}
-			if (AlphaRow("文字の強さ##fi", &t.filer.colorBright)) dirty = true;
-			if (ColorRow("背景色##fi", &t.filer.backColor)) dirty = true;
-			if (AlphaRow("背景の強さ##fi", &t.filer.backColorBright)) dirty = true;
+			if (AlphaRow(L("Colors.TextStrength", "##fi"), &t.filer.colorBright)) dirty = true;
+			if (ColorRow(L("Colors.Back", "##fi"), &t.filer.backColor)) dirty = true;
+			if (AlphaRow(L("Colors.BackStrength", "##fi"), &t.filer.backColorBright)) dirty = true;
 		}
 
-		ImGui::SeparatorText("操作ボタン");
+		ImGui::SeparatorText(Msg("Colors.PlayKey"));
 		{
-			if (ColorRow("文字色##pk", &t.playKey.color)) dirty = true;
-			if (AlphaRow("文字の強さ##pk", &t.playKey.colorBright)) dirty = true;
-			if (GainRow("ボタンの明るさ##pk", &t.playKey.keyBright)) dirty = true;
+			if (ColorRow(L("Colors.Text", "##pk"), &t.playKey.color)) dirty = true;
+			if (AlphaRow(L("Colors.TextStrength", "##pk"), &t.playKey.colorBright)) dirty = true;
+			if (GainRow(L("Colors.ButtonGain", "##pk"), &t.playKey.keyBright)) dirty = true;
 		}
 
 		if (dirty) Rebuild(draw, player);
@@ -918,13 +955,13 @@ void SettingsUi::BuildColorsWindow(Settings *settings, DrawScreen *draw, Player 
 // 別の名前にすれば「名前を付けて保存」で新しいスキンができる。
 // 同梱ぶんは読み取り専用なので、書き込み先は必ずユーザーフォルダ側。
 void SettingsUi::BuildSkinSaveRow(Settings *settings, DrawScreen *draw) {
-	ImGui::Text("スキン名");
+	ImGui::TextUnformatted(Msg("Colors.SkinName"));
 	ImGui::SameLine();
 	ImGui::SetNextItemWidth(-FLT_MIN);
 	const bool entered = ImGui::InputText("##skinname", skinNameBuf_, sizeof(skinNameBuf_),
 	                                      ImGuiInputTextFlags_EnterReturnsTrue);
 
-	if (ImGui::Button("保存") || entered) {
+	if (ImGui::Button(Msg("Button.Save")) || entered) {
 		const std::string name = TrimSpaces(skinNameBuf_);
 		saveError_.clear();
 		if (!CheckSkinName(name, &saveError_)) {
@@ -940,7 +977,7 @@ void SettingsUi::BuildSkinSaveRow(Settings *settings, DrawScreen *draw) {
 		saveErrorFresh_ = !saveError_.empty();
 	}
 	ImGui::SameLine();
-	if (ImGui::Button("読み直す")) {
+	if (ImGui::Button(Msg("Button.Reload"))) {
 		pendingSkin_ = settings->skinName;
 	}
 	ImGui::SameLine();
@@ -956,10 +993,10 @@ void SettingsUi::BuildSkinSaveRow(Settings *settings, DrawScreen *draw) {
 	// どこから来ているかは、配色をいじるときに知りたいことが多い。
 	{
 		const std::string &base = draw->skin().baseRef();
-		ImGui::Text("参照元のスキン");
+		ImGui::TextUnformatted(Msg("Colors.BaseSkin"));
 		ImGui::SameLine();
 		if (base.empty()) {
-			ImGui::TextDisabled("(なし)");
+			ImGui::TextDisabled("%s", Msg("Colors.BaseNone"));
 		} else {
 			ImGui::TextDisabled("%s", base.c_str());
 		}
@@ -995,16 +1032,16 @@ void SettingsUi::BuildOverwriteWindow(Settings *settings, DrawScreen *draw) {
 		return;
 	}
 
-	ImGui::Text("スキン \"%s\" はすでにあります。", overwriteName_.c_str());
-	ImGui::Text("配色を上書きしますか？");
+	ImGui::Text("%s", MsgF("Colors.OverwriteMessage", overwriteName_).c_str());
+	ImGui::TextUnformatted(Msg("Colors.OverwriteQuestion"));
 	ImGui::Separator();
-	if (ImGui::Button("上書き")) {
+	if (ImGui::Button(Msg("Button.Overwrite"))) {
 		SaveColorsAs(overwriteName_, settings, draw);
 		saveErrorFresh_ = !saveError_.empty();
 		ImGui::CloseCurrentPopup();
 	}
 	ImGui::SameLine();
-	if (ImGui::Button("キャンセル") || closeOverwrite_) {
+	if (ImGui::Button(Msg("Button.Cancel")) || closeOverwrite_) {
 		closeOverwrite_ = false;
 		ImGui::CloseCurrentPopup();
 	}
@@ -1031,7 +1068,7 @@ void SettingsUi::BuildFileSystemsWindow(Filer *filer) {
 		return;
 	}
 	if (vfs_ == 0) {
-		ImGui::TextUnformatted("ファイルシステムがありません。");
+		ImGui::TextUnformatted(Msg("FileSystems.Empty"));
 		ImGui::EndPopup();
 		return;
 	}
@@ -1064,7 +1101,7 @@ void SettingsUi::BuildFileSystemsWindow(Filer *filer) {
 	}
 
 	if (fsError_.empty()) {
-		ImGui::TextDisabled("薄い項目は削除できないファイルシステムです");
+		ImGui::TextDisabled("%s", Msg("FileSystems.FixedNote"));
 	} else {
 		ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), "%s", fsError_.c_str());
 	}
@@ -1073,7 +1110,7 @@ void SettingsUi::BuildFileSystemsWindow(Filer *filer) {
 
 	// [上へ] [下へ]。端まで来たら押せなくする。
 	ImGui::BeginDisabled(fsSelected_ <= 0);
-	if (ImGui::Button("上へ")) {
+	if (ImGui::Button(Msg("Button.Up"))) {
 		vfs_->Move(fsSelected_, -1);
 		fsSelected_--;
 		changedFields_ |= Settings::kFieldFileSystems;
@@ -1082,7 +1119,7 @@ void SettingsUi::BuildFileSystemsWindow(Filer *filer) {
 	ImGui::EndDisabled();
 	ImGui::SameLine();
 	ImGui::BeginDisabled(fsSelected_ < 0 || fsSelected_ >= count - 1);
-	if (ImGui::Button("下へ")) {
+	if (ImGui::Button(Msg("Button.Down"))) {
 		vfs_->Move(fsSelected_, 1);
 		fsSelected_++;
 		changedFields_ |= Settings::kFieldFileSystems;
@@ -1094,19 +1131,19 @@ void SettingsUi::BuildFileSystemsWindow(Filer *filer) {
 	// 押せない。
 	ImGui::SameLine();
 	ImGui::BeginDisabled(true);
-	ImGui::Button("追加...");
+	ImGui::Button(Msg("Button.AddFs"));
 	ImGui::EndDisabled();
 	if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-		ImGui::SetTooltip("追加できるファイルシステムがありません");
+		ImGui::SetTooltip("%s", Msg("FileSystems.AddNone"));
 	}
 
 	// [削除]。削除できないものはグレーアウト。カレントのものは押せるが、
 	// 押したときに断る（仕様どおり）。
 	ImGui::SameLine();
 	ImGui::BeginDisabled(sel == 0 || !sel->removable());
-	if (ImGui::Button("削除")) {
+	if (ImGui::Button(Msg("Button.Remove"))) {
 		if (sel != 0 && filer != 0 && filer->fs() == sel) {
-			fsError_ = "いま開いているファイルシステムは削除できません。";
+			fsError_ = Msg("FileSystems.RemoveCurrent");
 		} else {
 			fsError_.clear();
 			fsOpenConfirm_ = true;
@@ -1142,9 +1179,11 @@ void SettingsUi::BuildFsRemoveWindow(Filer *filer) {
 	const FileSystem *sel =
 	    (vfs_ != 0 && fsSelected_ >= 0 && fsSelected_ < vfs_->count()) ? vfs_->at(fsSelected_)
 	                                                                  : 0;
-	ImGui::Text("%s を一覧から削除しますか？", sel != 0 ? sel->label().c_str() : "");
+	ImGui::Text("%s", MsgF("FileSystems.RemoveConfirm",
+	                       sel != 0 ? sel->label() : std::string())
+	                      .c_str());
 	ImGui::Separator();
-	if (ImGui::Button("削除")) {
+	if (ImGui::Button(Msg("Button.Remove"))) {
 		vfs_->Unmount(fsSelected_);
 		if (fsSelected_ >= vfs_->count()) fsSelected_ = vfs_->count() - 1;
 		if (fsSelected_ < 0) fsSelected_ = 0;
@@ -1153,7 +1192,7 @@ void SettingsUi::BuildFsRemoveWindow(Filer *filer) {
 		ImGui::CloseCurrentPopup();
 	}
 	ImGui::SameLine();
-	if (ImGui::Button("キャンセル") || fsCloseConfirm_) {
+	if (ImGui::Button(Msg("Button.Cancel")) || fsCloseConfirm_) {
 		fsCloseConfirm_ = false;
 		ImGui::CloseCurrentPopup();
 	}
@@ -1187,7 +1226,7 @@ void SettingsUi::OpenBookmark(Settings *settings, int index) {
 	if (!vfs_->IsDir(ref)) {
 		const std::string parent = vfs_->Parent(ref);
 		if (!vfs_->Exists(ref) || parent.empty() || !vfs_->IsDir(parent)) {
-			bmError_ = "そのフォルダは見つかりません。";
+			bmError_ = Msg("Bookmark.NotFound");
 			return;
 		}
 		list[index] = parent;
@@ -1228,7 +1267,7 @@ void SettingsUi::BuildBookmarksWindow(Settings *settings, Filer *filer) {
 		return;
 	}
 	if (vfs_ == 0) {
-		ImGui::TextUnformatted("ファイルシステムがありません。");
+		ImGui::TextUnformatted(Msg("FileSystems.Empty"));
 		ImGui::EndPopup();
 		return;
 	}
@@ -1245,7 +1284,7 @@ void SettingsUi::BuildBookmarksWindow(Settings *settings, Filer *filer) {
 		const float foot = ImGui::GetFrameHeightWithSpacing() * 3.0f +
 		                   ImGui::GetTextLineHeightWithSpacing();
 		ImGui::BeginChild("##bmlist", ImVec2(0, -foot), ImGuiChildFlags_Borders);
-		if (count == 0) ImGui::TextDisabled("ブックマークがありません");
+		if (count == 0) ImGui::TextDisabled("%s", Msg("Bookmark.Empty"));
 		for (int i = 0; i < count; i++) {
 			char label[512];
 			snprintf(label, sizeof(label), "%s##bm%d", vfs_->DisplayPath(list[i]).c_str(), i);
@@ -1264,19 +1303,19 @@ void SettingsUi::BuildBookmarksWindow(Settings *settings, Filer *filer) {
 	}
 
 	if (bmError_.empty()) {
-		ImGui::TextDisabled("クリックで選択 / ダブルクリックで開く");
+		ImGui::TextDisabled("%s", Msg("Bookmark.Hint"));
 	} else {
 		ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), "%s", bmError_.c_str());
 	}
 
 	// [開く] は 1 行を占有する大きなボタン（仕様どおり）。
 	ImGui::BeginDisabled(bmSelected_ < 0);
-	if (ImGui::Button("開く", ImVec2(-FLT_MIN, 0.0f))) openIndex = bmSelected_;
+	if (ImGui::Button(Msg("Button.Open"), ImVec2(-FLT_MIN, 0.0f))) openIndex = bmSelected_;
 	ImGui::EndDisabled();
 
 	// [上へ] [下へ]。端まで来たら押せなくする。
 	ImGui::BeginDisabled(bmSelected_ <= 0);
-	if (ImGui::Button("上へ")) {
+	if (ImGui::Button(Msg("Button.Up"))) {
 		std::swap(list[bmSelected_], list[bmSelected_ - 1]);
 		bmSelected_--;
 		changedFields_ |= Settings::kFieldBookmarks;
@@ -1284,7 +1323,7 @@ void SettingsUi::BuildBookmarksWindow(Settings *settings, Filer *filer) {
 	ImGui::EndDisabled();
 	ImGui::SameLine();
 	ImGui::BeginDisabled(bmSelected_ < 0 || bmSelected_ >= count - 1);
-	if (ImGui::Button("下へ")) {
+	if (ImGui::Button(Msg("Button.Down"))) {
 		std::swap(list[bmSelected_], list[bmSelected_ + 1]);
 		bmSelected_++;
 		changedFields_ |= Settings::kFieldBookmarks;
@@ -1298,7 +1337,7 @@ void SettingsUi::BuildBookmarksWindow(Settings *settings, Filer *filer) {
 	const bool full = (count >= Settings::kMaxBookmarks);
 	ImGui::SameLine();
 	ImGui::BeginDisabled(cur.empty() || dup || full);
-	if (ImGui::Button("追加")) {
+	if (ImGui::Button(Msg("Button.Add"))) {
 		const int at = (bmSelected_ >= 0) ? bmSelected_ : count;
 		list.insert(list.begin() + at, cur);
 		bmSelected_ = at;
@@ -1308,19 +1347,21 @@ void SettingsUi::BuildBookmarksWindow(Settings *settings, Filer *filer) {
 	ImGui::EndDisabled();
 	if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
 		if (cur.empty()) {
-			ImGui::SetTooltip("ここはブックマークにできません");
+			ImGui::SetTooltip("%s", Msg("Bookmark.AddRoot"));
 		} else if (dup) {
-			ImGui::SetTooltip("%s は追加済みです", vfs_->DisplayPath(cur).c_str());
+			ImGui::SetTooltip("%s",
+			                  MsgF("Bookmark.AddDuplicate", vfs_->DisplayPath(cur)).c_str());
 		} else if (full) {
-			ImGui::SetTooltip("これ以上は追加できません");
+			ImGui::SetTooltip("%s", Msg("Bookmark.AddFull"));
 		} else {
-			ImGui::SetTooltip("%s を追加します", vfs_->DisplayPath(cur).c_str());
+			ImGui::SetTooltip("%s",
+			                  MsgF("Bookmark.AddHint", vfs_->DisplayPath(cur)).c_str());
 		}
 	}
 
 	ImGui::SameLine();
 	ImGui::BeginDisabled(bmSelected_ < 0);
-	if (ImGui::Button("削除")) {
+	if (ImGui::Button(Msg("Button.Remove"))) {
 		bmError_.clear();
 		bmOpenRemove_ = true;
 	}
@@ -1355,10 +1396,12 @@ void SettingsUi::BuildBookmarkRemoveWindow(Settings *settings) {
 
 	std::vector<std::string> &list = settings->bookmarks;
 	const bool valid = (bmSelected_ >= 0 && bmSelected_ < (int)list.size());
-	ImGui::Text("%s をブックマークから削除しますか？",
-	            (valid && vfs_ != 0) ? vfs_->DisplayPath(list[bmSelected_]).c_str() : "");
+	ImGui::Text("%s", MsgF("Bookmark.RemoveConfirm",
+	                       (valid && vfs_ != 0) ? vfs_->DisplayPath(list[bmSelected_])
+	                                            : std::string())
+	                      .c_str());
 	ImGui::Separator();
-	if (ImGui::Button("削除")) {
+	if (ImGui::Button(Msg("Button.Remove"))) {
 		if (valid) {
 			list.erase(list.begin() + bmSelected_);
 			if (bmSelected_ >= (int)list.size()) bmSelected_ = (int)list.size() - 1;
@@ -1367,7 +1410,7 @@ void SettingsUi::BuildBookmarkRemoveWindow(Settings *settings) {
 		ImGui::CloseCurrentPopup();
 	}
 	ImGui::SameLine();
-	if (ImGui::Button("キャンセル") || bmCloseRemove_) {
+	if (ImGui::Button(Msg("Button.Cancel")) || bmCloseRemove_) {
 		bmCloseRemove_ = false;
 		ImGui::CloseCurrentPopup();
 	}
@@ -1406,9 +1449,9 @@ void SettingsUi::BuildBookmarkToggleWindow(Settings *settings, Filer *filer) {
 	const std::string shown = (vfs_ != 0) ? vfs_->DisplayPath(bmToggleRef_) : bmToggleRef_;
 
 	if (at >= 0) {
-		ImGui::Text("%s をブックマークから削除しますか？", shown.c_str());
+		ImGui::Text("%s", MsgF("Bookmark.RemoveConfirm", shown).c_str());
 		ImGui::Separator();
-		if (ImGui::Button("削除")) {
+		if (ImGui::Button(Msg("Button.Remove"))) {
 			list.erase(list.begin() + at);
 			if (bmSelected_ >= (int)list.size()) bmSelected_ = (int)list.size() - 1;
 			changedFields_ |= Settings::kFieldBookmarks;
@@ -1416,14 +1459,14 @@ void SettingsUi::BuildBookmarkToggleWindow(Settings *settings, Filer *filer) {
 		}
 	} else {
 		const bool full = ((int)list.size() >= Settings::kMaxBookmarks);
-		ImGui::Text("%s をブックマークに追加しますか？", shown.c_str());
+		ImGui::Text("%s", MsgF("Bookmark.AddConfirm", shown).c_str());
 		if (full) {
-			ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.45f, 1.0f),
-			                   "ブックマークがいっぱいです。");
+			ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), "%s",
+			                   Msg("Bookmark.Full"));
 		}
 		ImGui::Separator();
 		ImGui::BeginDisabled(full);
-		if (ImGui::Button("追加")) {
+		if (ImGui::Button(Msg("Button.Add"))) {
 			list.push_back(bmToggleRef_);  // 追加は末尾（仕様どおり）
 			changedFields_ |= Settings::kFieldBookmarks;
 			ImGui::CloseCurrentPopup();
@@ -1431,7 +1474,7 @@ void SettingsUi::BuildBookmarkToggleWindow(Settings *settings, Filer *filer) {
 		ImGui::EndDisabled();
 	}
 	ImGui::SameLine();
-	if (ImGui::Button("キャンセル") || bmCloseToggle_) {
+	if (ImGui::Button(Msg("Button.Cancel")) || bmCloseToggle_) {
 		bmCloseToggle_ = false;
 		ImGui::CloseCurrentPopup();
 	}
@@ -1510,41 +1553,28 @@ void SettingsUi::SelectFolderEntry(const std::string &path) {
 // パスの打ち込みと子フォルダの一覧を持つ自前のダイアログにしてある。
 // 決まった行き先は request_ に積んで、実際の移動はメインループに任せる
 // （ファイラーの持ち物はあちらなので、コンテキストメニューと同じ作法）。
-// -h と同じ文面を、キー名と説明に切り分けて持つ。
-//   ・行頭が空白でない行は見出し（「キー操作:」など）
-//   ・それ以外は「空白 2 個以上」で左右に割る
-// 元の文面は空白で桁を揃えてあるが、同梱フォントはプロポーショナルなので
-// そのまま出すと崩れる。表示時に幅を測って揃え直す。
-void SettingsUi::SetHelpText(const std::string &text) {
+// [操作方法] の中身をカタログから作る。-h の出力と同じ一覧
+// （[HelpKeys] [HelpMouse]）を、見出しを挟んで並べたもの。
+void SettingsUi::LoadHelpRows() {
+	static const char *kParts[2][2] = {
+		{ "Help.Keys", "HelpKeys" },
+		{ "Help.Mouse", "HelpMouse" },
+	};
+
 	helpRows_.clear();
+	for (int i = 0; i < 2; i++) {
+		HelpRow head;
+		head.header = true;
+		head.key = Msg(kParts[i][0]);
+		helpRows_.push_back(head);
 
-	size_t pos = 0;
-	while (pos < text.size()) {
-		size_t nl = text.find('\n', pos);
-		if (nl == std::string::npos) nl = text.size();
-		const std::string line = text.substr(pos, nl - pos);
-		pos = nl + 1;
-		if (line.empty()) continue;
-
-		HelpRow row;
-		if (line[0] != ' ') {
-			row.header = true;
-			row.key = line;
+		const std::vector<MsgRow> &rows = MsgList(kParts[i][1]);
+		for (size_t j = 0; j < rows.size(); j++) {
+			HelpRow row;
+			row.key = rows[j].key;
+			row.desc = rows[j].value;
 			helpRows_.push_back(row);
-			continue;
 		}
-
-		const size_t s = line.find_first_not_of(' ');
-		if (s == std::string::npos) continue;
-		const size_t gap = line.find("  ", s);
-		if (gap == std::string::npos) {
-			row.key = line.substr(s);
-		} else {
-			row.key = line.substr(s, gap - s);
-			const size_t d = line.find_first_not_of(' ', gap);
-			if (d != std::string::npos) row.desc = line.substr(d);
-		}
-		helpRows_.push_back(row);
 	}
 }
 
@@ -1680,7 +1710,7 @@ void SettingsUi::BuildFolderWindow(Settings *settings) {
 	{
 		const float inset = ImGui::GetStyle().FramePadding.x;
 		ImGui::Indent(inset);
-		ImGui::TextDisabled("%s", folderDir_.empty() ? "ファイルシステム"
+		ImGui::TextDisabled("%s", folderDir_.empty() ? Msg("Folder.FileSystem")
 		                                             : folderDir_.c_str());
 		ImGui::Unindent(inset);
 	}
@@ -1743,13 +1773,13 @@ void SettingsUi::BuildFolderWindow(Settings *settings) {
 	}
 
 	if (folderError_.empty()) {
-		ImGui::TextDisabled("クリックで選択 / ダブルクリックで移動 / ENTER で開く");
+		ImGui::TextDisabled("%s", Msg("Folder.Hint"));
 	} else {
 		ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), "%s", folderError_.c_str());
 	}
-	if (ImGui::Button("開く")) apply = true;
+	if (ImGui::Button(Msg("Button.Open"))) apply = true;
 	ImGui::SameLine();
-	if (ImGui::Button("キャンセル")) showFolder_ = false;
+	if (ImGui::Button(Msg("Button.Cancel"))) showFolder_ = false;
 
 	if (nextDirValid) {
 		SetFolderDir(nextDir);
@@ -1760,10 +1790,10 @@ void SettingsUi::BuildFolderWindow(Settings *settings) {
 		// ref が空なら「ファイルシステムの選択」。ファイラーは行けるが、
 		// PDX の探索先には指定できない。
 		if (!ok || (!ref.empty() && !vfs_->IsDir(ref))) {
-			folderError_ = "そのフォルダは見つかりません。";
+			folderError_ = Msg("Folder.NotFound");
 		} else if (folderTarget_ == kFolderTargetPdx) {
 			if (ref.empty()) {
-				folderError_ = "そのフォルダは見つかりません。";
+				folderError_ = Msg("Folder.NotFound");
 			} else {
 				settings->pdxPath = ref;
 				snprintf(pdxPathBuf_, sizeof(pdxPathBuf_), "%s", ref.c_str());
@@ -1811,45 +1841,45 @@ void SettingsUi::BuildContextMenu(Settings *settings, DrawScreen *draw, Player *
 			ImGui::CloseCurrentPopup();
 		}
 
-		if (ImGui::MenuItem("開く")) request_ = kRequestOpenCursor;
-		if (ImGui::MenuItem("フォルダを開く...", "L")) {
+		if (ImGui::MenuItem(Msg("Menu.Open"))) request_ = kRequestOpenCursor;
+		if (ImGui::MenuItem(Msg("Menu.Folder"), "L")) {
 			SetFolderDir(filer->currentRef());
 			showFolder_ = true;
 		}
-		if (ImGui::MenuItem("ブックマーク...", "F4")) OpenBookmarks();
+		if (ImGui::MenuItem(Msg("Menu.Bookmarks"), "F4")) OpenBookmarks();
 		{
 			// カレントを控える / 控えを外す。どちらも確認してから実行するので、
 			// ここでは印を立てるだけ（メニューの中で OpenPopup すると入れ子の
 			// ポップアップになってしまう）。
 			const std::string cur = filer->currentRef();
 			const bool has = (FindBookmark(settings->bookmarks, cur) >= 0);
-			if (ImGui::MenuItem(has ? "ブックマークから削除" : "ブックマークに追加",
+			if (ImGui::MenuItem(has ? Msg("Menu.BookmarkRemove") : Msg("Menu.BookmarkAdd"),
 			                    "Shift+M", false, !cur.empty())) {
 				bmOpenToggle_ = true;
 			}
 		}
 
-		if (ImGui::BeginMenu("操作")) {
+		if (ImGui::BeginMenu(Msg("Menu.Control"))) {
 			if (player->paused()) {
-				if (ImGui::MenuItem("演奏再開")) player->Resume();
+				if (ImGui::MenuItem(Msg("Menu.Resume"))) player->Resume();
 			} else {
-				if (ImGui::MenuItem("一時停止")) player->Pause();
+				if (ImGui::MenuItem(Msg("Menu.Pause"))) player->Pause();
 			}
-			if (ImGui::MenuItem("再演奏")) request_ = kRequestReplay;
-			if (ImGui::MenuItem("演奏停止")) player->Stop();
-			if (ImGui::MenuItem("フェードアウト")) player->Fadeout();
+			if (ImGui::MenuItem(Msg("Menu.Replay"))) request_ = kRequestReplay;
+			if (ImGui::MenuItem(Msg("Menu.Stop"))) player->Stop();
+			if (ImGui::MenuItem(Msg("Menu.Fadeout"))) player->Fadeout();
 			ImGui::Separator();
-			if (ImGui::MenuItem("前の曲へ")) request_ = kRequestPrev;
-			if (ImGui::MenuItem("次の曲へ")) request_ = kRequestNext;
+			if (ImGui::MenuItem(Msg("Menu.Prev"))) request_ = kRequestPrev;
+			if (ImGui::MenuItem(Msg("Menu.Next"))) request_ = kRequestNext;
 			ImGui::Separator();
 			// 文言は短めにしてある。スキンの下限が横 480px で、そこでは
 			// サブメニューを左右どちらにも逃がせず、長いとルートに重なる。
-			if (ImGui::MenuItem("自動で次の曲へ (CONT)")) request_ = kRequestToggleCont;
-			if (ImGui::MenuItem("自動で繰り返す (REPEAT)")) request_ = kRequestToggleRepeat;
+			if (ImGui::MenuItem(Msg("Menu.Cont"))) request_ = kRequestToggleCont;
+			if (ImGui::MenuItem(Msg("Menu.Repeat"))) request_ = kRequestToggleRepeat;
 			ImGui::EndMenu();
 		}
 
-		if (ImGui::BeginMenu("マスク")) {
+		if (ImGui::BeginMenu(Msg("Menu.Mask"))) {
 			// チェックが付いている = 鳴っている。ドライバのビットは
 			// 「立っていると飛ばす」ので、表示は反転させる。
 			static const char *kNames[16] = { "ch.1", "ch.2", "ch.3", "ch.4", "ch.5",
@@ -1863,21 +1893,21 @@ void SettingsUi::BuildContextMenu(Settings *settings, DrawScreen *draw, Player *
 				if (ImGui::MenuItem(kNames[i], 0, on)) player->ToggleChannel(i);
 			}
 			ImGui::Separator();
-			if (ImGui::MenuItem("FM マスク/クリア")) player->ToggleChannelGroup(0x00ff);
-			if (ImGui::MenuItem("PCM マスク/クリア")) player->ToggleChannelGroup(0xff00);
-			if (ImGui::MenuItem("全マスク/クリア")) player->ToggleChannelGroup(0xffff);
+			if (ImGui::MenuItem(Msg("Menu.MaskFm"))) player->ToggleChannelGroup(0x00ff);
+			if (ImGui::MenuItem(Msg("Menu.MaskPcm"))) player->ToggleChannelGroup(0xff00);
+			if (ImGui::MenuItem(Msg("Menu.MaskAll"))) player->ToggleChannelGroup(0xffff);
 			ImGui::EndMenu();
 		}
 
 		ImGui::Separator();
-		if (ImGui::MenuItem("設定...", "F1")) visible_ = true;
+		if (ImGui::MenuItem(Msg("Menu.Settings"), "F1")) visible_ = true;
 		// F2 と同じ経路を通す（スキン名の欄を埋め直すため）。
-		if (ImGui::MenuItem("配色設定...", "F2")) OpenColors();
-		if (ImGui::MenuItem("ファイルシステム...", "F3")) OpenFileSystems();
-		if (ImGui::MenuItem("操作方法...", "F11")) showHelp_ = true;
-		if (ImGui::MenuItem("バージョン情報...", "F12")) showAbout_ = true;
+		if (ImGui::MenuItem(Msg("Menu.Colors"), "F2")) OpenColors();
+		if (ImGui::MenuItem(Msg("Menu.FileSystems"), "F3")) OpenFileSystems();
+		if (ImGui::MenuItem(Msg("Menu.Help"), "F11")) showHelp_ = true;
+		if (ImGui::MenuItem(Msg("Menu.About"), "F12")) showAbout_ = true;
 		ImGui::Separator();
-		if (ImGui::MenuItem("終了")) request_ = kRequestQuit;
+		if (ImGui::MenuItem(Msg("Menu.Quit"))) request_ = kRequestQuit;
 
 		ImGui::EndPopup();
 	}

@@ -68,6 +68,24 @@ bool Ini::Save(const std::string &path) const {
 	return WriteWholeFile(path, data);
 }
 
+std::vector<std::string> Ini::Sections() const {
+	std::vector<std::string> out;
+	for (size_t i = 0; i < sections_.size(); i++) {
+		out.push_back(sections_[i].name);
+	}
+	return out;
+}
+
+std::vector<std::string> Ini::Keys(const std::string &section) const {
+	std::vector<std::string> out;
+	const SectionData *s = Find(section);
+	if (s == 0) return out;
+	for (size_t i = 0; i < s->order.size(); i++) {
+		if (s->values.find(s->order[i]) != s->values.end()) out.push_back(s->order[i]);
+	}
+	return out;
+}
+
 Ini::SectionData *Ini::Find(const std::string &name) {
 	for (size_t i = 0; i < sections_.size(); i++) {
 		if (sections_[i].name == name) return &sections_[i];

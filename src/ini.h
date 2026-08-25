@@ -38,6 +38,11 @@ public:
 	// 残さないために使う。
 	void Remove(const std::string &section, const std::string &key);
 
+	// 中身を順番どおりに数え上げる。書いてある順に意味がある使い方
+	// （メッセージカタログの一覧）のために用意してある。
+	std::vector<std::string> Sections() const;
+	std::vector<std::string> Keys(const std::string &section) const;
+
 private:
 	typedef std::map<std::string, std::string> Values;
 

@@ -155,10 +155,6 @@ public:
 	// 文言は main.cpp が持っているので渡してもらう。
 	void SetAboutHeader(const std::string &text) { aboutHeader_ = text; }
 
-	// 操作方法の本文。-h で出すものと同じ文字列を main.cpp から渡してもらう。
-	// 受け取った時点でキー名と説明に切り分ける（表示は桁を揃えて出すため）。
-	void SetHelpText(const std::string &text);
-
 	// メニューから出た「メインループにやってもらうこと」。読んだら消える。
 	// 演奏の開始・曲送り・終了はメインループが状態を持っているので、
 	// ここでは要求だけ返す。
@@ -271,9 +267,9 @@ private:
 
 	// 操作方法のダイアログ。
 	//
-	// 元の文面は空白で桁を揃えてあるが、同梱フォントはプロポーショナルなので
-	// そのまま出すと崩れる。「キー名」と「説明」に切り分けて持っておき、
-	// 表示するときに幅を測って揃える。
+	// 中身はメッセージカタログの [HelpKeys] [HelpMouse]（-h の出力と同じもの）。
+	// 同梱フォントはプロポーショナルなので、空白で桁は揃えられない。
+	// 「キー名」と「説明」に分けて持っておき、表示するときに幅を測って揃える。
 	struct HelpRow {
 		std::string key;   // 見出し行のときは見出しそのもの
 		std::string desc;  // 見出し行と説明の無い行では空
@@ -281,6 +277,7 @@ private:
 
 		HelpRow() : header(false) {}
 	};
+	void LoadHelpRows();
 	void BuildHelpWindow();
 	bool showHelp_;
 	std::vector<HelpRow> helpRows_;

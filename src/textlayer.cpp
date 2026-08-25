@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstring>
 
+#include "message.h"
 #include "screen.h"
 #include "textrender.h"
 
@@ -34,7 +35,7 @@ TextLayer::~TextLayer() {
 
 bool TextLayer::Init(Screen *screen, const std::vector<std::string> &fontDirs, std::string *err) {
 	if (screen == 0 || screen->renderer() == 0) {
-		*err = "文字レイヤーの初期化にはウィンドウが要ります。";
+		*err = Msg("Error.TextLayerNeedWindow");
 		return false;
 	}
 	fontDirs_ = fontDirs;
@@ -78,7 +79,7 @@ bool TextLayer::Resize(Screen *screen, std::string *err) {
 	const int w = ToOut(screen->width(), sx);
 	const int h = ToOut(screen->height(), sy);
 	if (w <= 0 || h <= 0) {
-		*err = "文字レイヤーの大きさが求められません。";
+		*err = Msg("Error.TextLayerSize");
 		return false;
 	}
 
@@ -91,7 +92,7 @@ bool TextLayer::Resize(Screen *screen, std::string *err) {
 	texture_ = SDL_CreateTexture(screen->renderer(), SDL_PIXELFORMAT_ARGB8888,
 	                             SDL_TEXTUREACCESS_STREAMING, w, h);
 	if (texture_ == 0) {
-		*err = std::string("文字レイヤーのテクスチャを作れません: ") + SDL_GetError();
+		*err = MsgF("Error.TextLayerTexture", SDL_GetError());
 		return false;
 	}
 	SDL_SetTextureBlendMode(texture_, SDL_BLENDMODE_BLEND);

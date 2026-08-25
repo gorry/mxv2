@@ -6,6 +6,8 @@
 #include <cmath>
 #include <cstring>
 
+#include "message.h"
+
 namespace mxv2 {
 
 Screen::Screen()
@@ -37,7 +39,7 @@ int Screen::SystemZoomPercent() {
 bool Screen::Open(const std::string &title, int width, int height, int zoomPercent,
                   std::string *err) {
 	if (width <= 0 || height <= 0) {
-		*err = "画面サイズが不正です。";
+		*err = Msg("Error.ScreenSize");
 		return false;
 	}
 	if (zoomPercent < kZoomMin) zoomPercent = kZoomMin;
@@ -50,7 +52,7 @@ bool Screen::Open(const std::string &title, int width, int height, int zoomPerce
 	                           width_ * zoom_ / 100, height_ * zoom_ / 100,
 	                           SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
 	if (window_ == 0) {
-		*err = std::string("SDL_CreateWindow に失敗しました: ") + SDL_GetError();
+		*err = MsgF("Error.CreateWindow", SDL_GetError());
 		return false;
 	}
 
@@ -60,7 +62,7 @@ bool Screen::Open(const std::string &title, int width, int height, int zoomPerce
 		renderer_ = SDL_CreateRenderer(window_, -1, SDL_RENDERER_SOFTWARE);
 	}
 	if (renderer_ == 0) {
-		*err = std::string("SDL_CreateRenderer に失敗しました: ") + SDL_GetError();
+		*err = MsgF("Error.CreateRenderer", SDL_GetError());
 		Close();
 		return false;
 	}
@@ -72,7 +74,7 @@ bool Screen::Open(const std::string &title, int width, int height, int zoomPerce
 	texture_ = SDL_CreateTexture(renderer_, SDL_PIXELFORMAT_ARGB8888,
 	                             SDL_TEXTUREACCESS_STREAMING, width_, height_);
 	if (texture_ == 0) {
-		*err = std::string("SDL_CreateTexture に失敗しました: ") + SDL_GetError();
+		*err = MsgF("Error.CreateTexture", SDL_GetError());
 		Close();
 		return false;
 	}
@@ -214,11 +216,11 @@ void Screen::Present() {
 
 bool Screen::Resize(int width, int height, std::string *err) {
 	if (width <= 0 || height <= 0) {
-		*err = "画面サイズが不正です。";
+		*err = Msg("Error.ScreenSize");
 		return false;
 	}
 	if (renderer_ == 0) {
-		*err = "ウィンドウが開かれていません。";
+		*err = Msg("Error.ScreenNotOpen");
 		return false;
 	}
 	if (width == width_ && height == height_) return true;
@@ -226,7 +228,7 @@ bool Screen::Resize(int width, int height, std::string *err) {
 	SDL_Texture *tex = SDL_CreateTexture(renderer_, SDL_PIXELFORMAT_ARGB8888,
 	                                     SDL_TEXTUREACCESS_STREAMING, width, height);
 	if (tex == 0) {
-		*err = std::string("SDL_CreateTexture に失敗しました: ") + SDL_GetError();
+		*err = MsgF("Error.CreateTexture", SDL_GetError());
 		return false;
 	}
 	if (texture_ != 0) SDL_DestroyTexture(texture_);

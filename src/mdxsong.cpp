@@ -6,6 +6,7 @@
 #include <cstring>
 
 #include "fileutil.h"
+#include "message.h"
 #include "text.h"
 #include "vfs.h"
 
@@ -116,7 +117,7 @@ bool LoadMdxSong(const Vfs &vfs,
 
 	std::vector<uint8_t> mdxImage;
 	if (!vfs.Read(mdxRef, &mdxImage) || mdxImage.empty()) {
-		*err = "MDX ファイルを読み込めません: " + mdxRef;
+		*err = MsgF("Error.MdxRead", mdxRef);
 		return false;
 	}
 	const uint32_t mdxImageSize = (uint32_t)mdxImage.size();
@@ -125,7 +126,7 @@ bool LoadMdxSong(const Vfs &vfs,
 	{
 		char title[512];
 		if (!MdxGetTitle(&mdxImage[0], mdxImageSize, title, sizeof(title))) {
-			*err = "MDX のタイトルを取得できません（壊れている可能性があります）: " + mdxRef;
+			*err = MsgF("Error.MdxTitle", mdxRef);
 			return false;
 		}
 		out->titleSjis = TrimTrailingControl(std::string(title));
@@ -135,7 +136,7 @@ bool LoadMdxSong(const Vfs &vfs,
 	// PDX を要求するか
 	bool hasPdxName = false;
 	if (!MdxHasPdxFileName(&mdxImage[0], mdxImageSize, &hasPdxName)) {
-		*err = "MDX の PDX 情報を取得できません: " + mdxRef;
+		*err = MsgF("Error.MdxPdxInfo", mdxRef);
 		return false;
 	}
 	out->requiresPdx = hasPdxName;
@@ -146,7 +147,7 @@ bool LoadMdxSong(const Vfs &vfs,
 		char name[FILENAME_MAX];
 		memset(name, 0, sizeof(name));
 		if (!MdxGetPdxFileName(&mdxImage[0], mdxImageSize, name, sizeof(name))) {
-			*err = "MDX の PDX ファイル名を取得できません: " + mdxRef;
+			*err = MsgF("Error.MdxPdxName", mdxRef);
 			return false;
 		}
 		out->pdxFileName = std::string(name);
@@ -171,7 +172,7 @@ bool LoadMdxSong(const Vfs &vfs,
 	const uint32_t pdxImageSize = (uint32_t)pdxImage.size();
 	if (!MdxGetRequiredBufferSize(&mdxImage[0], mdxImageSize, pdxImageSize,
 	                              &mdxBufferSize, &pdxBufferSize)) {
-		*err = "MDX のバッファサイズを算出できません: " + mdxRef;
+		*err = MsgF("Error.MdxBufferSize", mdxRef);
 		return false;
 	}
 
@@ -184,7 +185,7 @@ bool LoadMdxSong(const Vfs &vfs,
 	                               (uint32_t)out->mdxBuffer.size(),
 	                               out->pdxBuffer.empty() ? NULL : &out->pdxBuffer[0],
 	                               (uint32_t)out->pdxBuffer.size())) {
-		*err = "MDX バッファの構築に失敗しました: " + mdxRef;
+		*err = MsgF("Error.MdxBuffer", mdxRef);
 		return false;
 	}
 

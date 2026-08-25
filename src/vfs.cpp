@@ -4,6 +4,8 @@
 
 #include <cstring>
 
+#include "message.h"
+
 namespace mxv2 {
 
 namespace {
@@ -65,7 +67,7 @@ std::string SystemRootPath() {
 class LocalFileSystem : public FileSystem {
 public:
 	const char *id() const { return kLocalId; }
-	std::string label() const { return "ローカルファイルシステム"; }
+	std::string label() const { return Msg("Fs.Local"); }
 	const char *prefix() const { return "Local>"; }
 
 	bool available() const {
@@ -276,13 +278,13 @@ void Vfs::Configure(const std::string &assetsDir, const std::string &userDir) {
 
 	// 並び順は filesystem.md の記述順。設定が無いときの初期値になる。
 	if (!assetsDir.empty()) {
-		FileSystem *fs = new RootedFileSystem(kAssetsId, "同梱アセット", "Assets>",
+		FileSystem *fs = new RootedFileSystem(kAssetsId, Msg("Fs.Assets"), "Assets>",
 		                                      JoinPath(assetsDir, "mdx"));
 		owned_.push_back(fs);
 		all_.push_back(fs);
 	}
 	if (!userDir.empty()) {
-		FileSystem *fs = new RootedFileSystem(kUserDirId, "ユーザーフォルダ", "UserDir>",
+		FileSystem *fs = new RootedFileSystem(kUserDirId, Msg("Fs.UserDir"), "UserDir>",
 		                                      JoinPath(userDir, "mdx"));
 		owned_.push_back(fs);
 		all_.push_back(fs);

@@ -6,6 +6,8 @@
 #include <cstdio>
 #include <cstring>
 
+#include "message.h"
+
 namespace mxv2 {
 
 Player *Player::s_instance = 0;
@@ -87,11 +89,11 @@ Player::~Player() {
 
 bool Player::Open(const Config &config, std::string *err) {
 	if (opened_) {
-		*err = "Player は既に初期化されています。";
+		*err = Msg("Error.PlayerOpened");
 		return false;
 	}
 	if (s_instance != 0) {
-		*err = "Player は同時に 1 つしか使えません。";
+		*err = Msg("Error.PlayerSingle");
 		return false;
 	}
 
@@ -107,7 +109,7 @@ bool Player::Open(const Config &config, std::string *err) {
 
 	// MXDRV コンテキスト
 	if (!MxdrvContext_Initialize(&context_, config_.memoryPoolBytes)) {
-		*err = "MxdrvContext_Initialize に失敗しました。";
+		*err = Msg("Error.PlayerContext");
 		return false;
 	}
 	contextReady_ = true;
@@ -115,9 +117,7 @@ bool Player::Open(const Config &config, std::string *err) {
 	int ret = MXDRV_Start(&context_, config_.sampleRate, 0, 0, 0,
 	                      config_.mdxBufferBytes, config_.pdxBufferBytes, 0);
 	if (ret != 0) {
-		char buf[128];
-		snprintf(buf, sizeof(buf), "MXDRV_Start に失敗しました (code=%d)。", ret);
-		*err = buf;
+		*err = MsgF("Error.PlayerStart", MsgNum("%d", ret));
 		Close();
 		return false;
 	}
@@ -137,7 +137,7 @@ bool Player::Open(const Config &config, std::string *err) {
 	readableSem_ = SDL_CreateSemaphore(0);
 	writableSem_ = SDL_CreateSemaphore((Uint32)config_.numAudioBlocks);
 	if (readableSem_ == 0 || writableSem_ == 0) {
-		*err = std::string("SDL_CreateSemaphore に失敗しました: ") + SDL_GetError();
+		*err = MsgF("Error.PlayerSemaphore", SDL_GetError());
 		Close();
 		return false;
 	}
@@ -156,7 +156,7 @@ bool Player::Open(const Config &config, std::string *err) {
 	memset(&have, 0, sizeof(have));
 	audioDevice_ = SDL_OpenAudioDevice(NULL, 0, &want, &have, 0);
 	if (audioDevice_ == 0) {
-		*err = std::string("SDL_OpenAudioDevice に失敗しました: ") + SDL_GetError();
+		*err = MsgF("Error.PlayerAudioDevice", SDL_GetError());
 		Close();
 		return false;
 	}
@@ -180,7 +180,7 @@ bool Player::Open(const Config &config, std::string *err) {
 		OpmIntCallback *slot =
 		    (OpmIntCallback *)MXDRV_GetWork(&context_, MXDRV_CALLBACK_OPMINT);
 		if (slot == 0) {
-			*err = "OPMINT コールバックの登録先を取得できません。";
+			*err = Msg("Error.PlayerOpmInt");
 			Close();
 			return false;
 		}
@@ -256,7 +256,7 @@ void Player::ResetClocks() {
 
 bool Player::PlaySong(const MdxSong &song, std::string *err) {
 	if (!opened_) {
-		*err = "Player が初期化されていません。";
+		*err = Msg("Error.PlayerNotOpened");
 		return false;
 	}
 
@@ -278,9 +278,7 @@ bool Player::PlaySong(const MdxSong &song, std::string *err) {
 		int ret = MXDRV_SetData2(&context_, mdx, (uint32_t)song_.mdxBuffer.size(),
 		                         pdx, (uint32_t)song_.pdxBuffer.size());
 		if (ret != 0) {
-			char buf[128];
-			snprintf(buf, sizeof(buf), "MXDRV_SetData2 に失敗しました (code=%d)。", ret);
-			*err = buf;
+			*err = MsgF("Error.PlayerSetData", MsgNum("%d", ret));
 			return false;
 		}
 	}

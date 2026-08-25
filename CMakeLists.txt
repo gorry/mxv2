@@ -132,6 +132,7 @@ add_executable(mxv2
 	src/fileutil.cpp
 	src/ini.cpp
 	src/mdxsong.cpp
+	src/message.cpp
 	src/mouse.cpp
 	src/player.cpp
 	src/screen.cpp
@@ -154,6 +155,7 @@ add_executable(mxv2
 	src/fileutil.h
 	src/ini.h
 	src/mdxsong.h
+	src/message.h
 	src/mouse.h
 	src/mxdrvptr.h
 	src/player.h
@@ -190,6 +192,8 @@ endif()
 add_executable(mxv2_chunktest
 	tools/chunktest.cpp
 	src/fileutil.cpp
+	src/ini.cpp
+	src/message.cpp
 	src/text.cpp
 	src/mdxsong.cpp
 	src/vfs.cpp

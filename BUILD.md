@@ -115,7 +115,7 @@ cmake --build build --config Release
 | `mxv2_chunktest.exe` | 検証ツール（後述） |
 | `simple_mdx_player.exe` `simple_mdx2wav.exe` | portable_mdx 付属サンプル |
 | `SDL2.dll` | 自動コピー |
-| `assets/` | 素材一式を自動コピー |
+| `assets/` | 素材一式を自動コピー（文言の `assets/locale/` を含む） |
 | `assets/mdx` | 自動作成 |
 | `assets/mdx/ArctanX` | third_party/GUSA-CDg/ArctanX から自動コピー、なければ無視 |
 
@@ -157,6 +157,7 @@ mxv2 [options] [<mdxfile> | <dir>]
     -skin <name>    スキン名 (assets:<name> で同梱ぶんを名指し)
     -zoom <percent> 表示倍率 % (100 でドット等倍)
     -userdir <dir>  設定とユーザー素材の場所
+    -locale <name>  文言の言語 (assets/locale/<name>/message.ini)
     -noquit         演奏終了後も閉じない
 ```
 
@@ -171,6 +172,7 @@ mxv2 [options] [<mdxfile> | <dir>]
 | configure は通るが `SDL.h` が開けない / `SDL2.lib` が見つからない | `third_party/SDL2-2.32.10/` が無い、または VC 開発用パッケージでない（ソース配布には `lib/` が無い）。存在チェックをしていないのでここまで進んでしまう |
 | リンクは通るが起動直後に落ちる | `SDL2.dll` の版が違う。`build/` を捨ててビルドし直す |
 | 素材が見つからないと言われる | `assets/` が実行ファイルの隣に無い。`-assets <dir>` で場所を渡せる |
+| 画面の文字が `Menu.Open` のようなキー名になる | `assets/locale/ja-JP/message.ini` が無い。ログに `message not found:` が出る |
 | 設定を変えても次の起動で戻る | ユーザーフォルダに書けていない。起動ログの `userdir :` の行を見る |
 
 ## 6. ライセンスについて

@@ -21,6 +21,7 @@
 #include "fileutil.h"
 #include "filer.h"
 #include "mdxsong.h"
+#include "message.h"
 #include "mouse.h"
 #include "player.h"
 #include "screen.h"
@@ -104,6 +105,7 @@ struct Options {
 	std::vector<std::string> pdxSearchDirs;  // -pdxpath (複数指定可)
 	std::string assetsDir;
 	std::string userDir;
+	std::string locale;  // 文言の言語。空なら既定 (ja-JP)
 	// 表示を遅らせる時間 (ms)。指定が無ければ音の遅れに自動で合わせる。
 	int latencyMs;
 	bool latencySet;
@@ -119,79 +121,52 @@ struct Options {
 const uint32_t kSeekStepMs = 3 * 1000;
 const uint32_t kSeekFastStepMs = 30 * 1000;
 
-// キーとマウスの操作一覧。-h の出力と [操作方法] ダイアログで同じものを
-// 使うので、文面はここだけに置く。書式指定 (% や %s) は入れないこと。
-const char *kKeyHelpText =
-	    "キー操作:\n"
-	    "  ESC / Q         終了\n"
-	    "  SPACE           一時停止 / 再開\n"
-	    "  F               フェードアウト\n"
-	    "  ENTER           ファイラーの項目を開く\n"
-	    "  BACKSPACE       親フォルダへ（ルートではファイルシステムの選択へ）\n"
-	    "  \\               ファイルシステムのルートへ\n"
-	    "  L               フォルダを選んで移動\n"
-	    "  UP/DOWN         カーソル移動\n"
-	    "  PGUP/PGDN       カーソル移動（ページ単位）\n"
-	    "  HOME/END        カーソル移動（最初/最後）\n"
-	    "  N / B           次 / 前の MDX を演奏\n"
-	    "  C               自動で次の曲へ (CONT)\n"
-	    "  R               自動で繰り返す (REPEAT)\n"
-	    "  TAB             ファイラーの文字サイズ\n"
-	    "  1-8             FM チャンネル (ch.1-8) のマスク切り替え\n"
-	    "  0               FM チャンネルの一括マスク\n"
-	    "  Shift+1-8       PCM チャンネル (ch.P-W) のマスク切り替え\n"
-	    "  Shift+0         PCM チャンネルの一括マスク\n"
-	    "  Ctrl+0          全チャンネルの一括マスク\n"
-	    "  - / +(;)        音量を変更 （マスター音量は[mxv の設定]で）\n"
-	    "  , / .           演奏位置を移動\n"
-	    "  < / >           演奏位置を高速移動\n"
-	    "  F1              [mxv の設定]ダイアログを開く\n"
-	    "  F2              [配色設定]ダイアログを開く\n"
-	    "  F3              [ファイルシステムの設定]ダイアログを開く\n"
-	    "  F4 / M          [ブックマークの設定]ダイアログを開く\n"
-	    "  Shift+M         カレントフォルダをブックマークに追加 / から削除\n"
-	    "  F11 / H         [操作方法]ダイアログを開く\n"
-	    "  F12 / A         [バージョン情報]ダイアログを開く\n"
-	    "マウス操作:\n"
-	    "  バナー          メニュー表示（右クリックでも出る）\n"
-	    "  ファイラー      ファイル/ディレクトリを選択、ダブルクリックで開く\n"
-	    "  鍵盤            そのチャンネルのマスクを切り替え"
-	    "（PCM は横 8 等分で ch.P-W）\n"
-	    "  ステータス欄    FM / PCM のマスクを一括で切り替え\n"
-	    "  PREV            前の曲へ移動\n"
-	    "  STOP            演奏を停止\n"
-	    "  PLAY            演奏を開始\n"
-	    "  FAST            演奏を早送り\n"
-	    "  PAUSE           演奏を一時停止/解除\n"
-	    "  NEXT            次の曲へ移動\n"
-	    "  CONT            自動で次の曲へ\n"
-	    "  REPEAT          自動で繰り返す\n"
-	    "  音量バー        音量を変更 （マスター音量は[mxv の設定]で）\n"
-	    "  プログレスバー  演奏位置を移動\n"
-	    "  ドロップ        MDX を落とすとその場所へ移って演奏"
-	    "（フォルダなら移動だけ）\n";
+// 「名前」と「説明」の 2 段組を 1 行出す。桁は全角を 2 と数えて揃える
+// （同梱フォントの都合で、ダイアログ側も同じ数え方をしている）。
+void PrintRow(const std::string &name, const std::string &desc, int width) {
+	std::string pad;
+	for (int i = mxv2::MsgDisplayWidth(name); i < width; i++) pad += ' ';
+	printf("  %s%s %s\n", name.c_str(), pad.c_str(), desc.c_str());
+}
+
+// 一覧（[UsageOptions] [HelpKeys] [HelpMouse]）を 2 段組で出す。
+// 名前の桁は一番広いものに合わせる。
+void PrintRows(const char *section, int width, const std::string &a0 = std::string(),
+               const std::string &a1 = std::string()) {
+	const std::vector<mxv2::MsgRow> &rows = mxv2::MsgList(section);
+	for (size_t i = 0; i < rows.size(); i++) {
+		PrintRow(rows[i].key, mxv2::MsgFill(rows[i].value, a0, a1), width);
+	}
+}
+
+// 一覧の中で一番広い名前（桁揃えの幅）。
+int RowsWidth(const char *section) {
+	const std::vector<mxv2::MsgRow> &rows = mxv2::MsgList(section);
+	int w = 0;
+	for (size_t i = 0; i < rows.size(); i++) {
+		const int n = mxv2::MsgDisplayWidth(rows[i].key);
+		if (n > w) w = n;
+	}
+	return w;
+}
 
 void PrintUsage(const char *argv0) {
 	printf("%s", AppHeader().c_str());
-	printf(
-	    "usage:\n"
-	    "  %s [options] [<mdxfile> | <dir>]\n"
-	    "options:\n"
-	    "  -zoom <percent> 表示倍率 %% (100 でドット等倍。既定はシステムの拡大率)\n"
-	    "  -loops <n>      自動フェードアウトまでのループ数 (既定 2)\n"
-	    "  -nofade         自動フェードアウトしない\n"
-	    "  -rate <hz>      出力サンプリングレート (44100 / 48000%s。既定 %d)\n"
-	    "  -latency <ms>   表示を遅らせる時間 ms (この起動だけ。ふつうは設定で)\n"
-	    "  -pdxpath <dir>  PDX の追加探索先\n"
-	    "  -assets <dir>   同梱素材の場所 (既定: 実行ファイルの隣の assets)\n"
-	    "  -userdir <dir>  設定とユーザー素材の場所 (既定: OS のユーザーフォルダ)\n"
-	    "  -skin <name>    スキン名 (assets:<name> で同梱ぶんを名指し。既定: Default)\n"
-	    "  -folderfirst    ファイラーでフォルダを先に並べる\n"
-	    "  -noquit         演奏終了後も閉じない\n"
-	    "  -console        ログを出すコンソールを開く (既定は開かない)\n",
-	    argv0, mxv2::Player::kSupports96kHz ? " / 96000" : "",
-	    mxv2::Player::kDefaultSampleRate);
-	printf("%s", kKeyHelpText);
+	printf("usage:\n  %s [options] [<mdxfile> | <dir>]\noptions:\n", argv0);
+	PrintRows("UsageOptions", RowsWidth("UsageOptions"),
+	          mxv2::Player::kSupports96kHz ? " / 96000" : "",
+	          mxv2::MsgNum("%d", mxv2::Player::kDefaultSampleRate));
+
+	// キー・マウスの一覧。ダイアログ ([操作方法]) と同じものを出す。
+	// 桁は両方まとめて揃える（std::max は windows.h の max マクロと
+	// ぶつかるので使わない）。
+	int width = RowsWidth("HelpKeys");
+	const int mouseWidth = RowsWidth("HelpMouse");
+	if (mouseWidth > width) width = mouseWidth;
+	printf("%s\n", mxv2::Msg("Help.Keys"));
+	PrintRows("HelpKeys", width);
+	printf("%s\n", mxv2::Msg("Help.Mouse"));
+	PrintRows("HelpMouse", width);
 }
 
 // 素材と設定の置き場所を決めるオプションだけ先に見る。mxv2.ini はここで
@@ -203,6 +178,8 @@ void PrescanDirs(int argc, char **argv, Options *opt) {
 			opt->assetsDir = argv[++i];
 		} else if (strcmp(argv[i], "-userdir") == 0) {
 			opt->userDir = argv[++i];
+		} else if (strcmp(argv[i], "-locale") == 0) {
+			opt->locale = argv[++i];
 		}
 	}
 }
@@ -217,8 +194,8 @@ bool LoadFileSystems(mxv2::Vfs *vfs, const std::vector<std::string> &refs) {
 		mxv2::FileSystem *fs = 0;
 		std::string rel;
 		if (!vfs->Parse(refs[i], &fs, &rel) || fs == 0) {
-			printf("warning  : 知らないファイルシステムなので削除しました: %s\n",
-			       refs[i].c_str());
+			printf("warning  : %s\n",
+			       mxv2::MsgF("Log.UnknownFileSystem", refs[i]).c_str());
 			fixed = true;
 			continue;
 		}
@@ -239,8 +216,8 @@ bool LoadBookmarks(const mxv2::Vfs &vfs, std::vector<std::string> *refs) {
 		mxv2::FileSystem *fs = 0;
 		std::string rel;
 		if (!vfs.Parse((*refs)[i], &fs, &rel)) {
-			printf("warning  : 知らないファイルシステムなので削除しました: %s\n",
-			       (*refs)[i].c_str());
+			printf("warning  : %s\n",
+			       mxv2::MsgF("Log.UnknownFileSystem", (*refs)[i]).c_str());
 			fixed = true;
 			continue;
 		}
@@ -272,10 +249,15 @@ std::vector<std::string> SaveFileSystems(const mxv2::Vfs &vfs) {
 
 // 音まわりのログ 1 行。起動時と、出力レートを変えて開き直したときに出す。
 void PrintAudioInfo(const mxv2::Player &player, bool latencyAuto) {
-	printf("audio    : %d Hz / buffer %d frames / 表示の遅らせ %d frames (%.1f ms)%s\n",
-	       player.sampleRate(), player.audioBufferFrames(), player.displayLatencyFrames(),
-	       player.displayLatencyFrames() * 1000.0f / player.sampleRate(),
-	       latencyAuto ? " [自動]" : "");
+	// カタログの値は前後の空白が落ちるので、区切りはこちらで足す。
+	std::string line =
+	    mxv2::MsgF("Log.Audio", mxv2::MsgNum("%d", player.sampleRate()),
+	               mxv2::MsgNum("%d", player.audioBufferFrames()),
+	               mxv2::MsgNum("%d", player.displayLatencyFrames()),
+	               mxv2::MsgNum("%.1f", player.displayLatencyFrames() * 1000.0 /
+	                                        player.sampleRate()));
+	if (latencyAuto) line += std::string(" ") + mxv2::Msg("Log.AudioAuto");
+	printf("audio    : %s\n", line.c_str());
 	fflush(stdout);
 }
 
@@ -288,7 +270,7 @@ void MigrateLegacySettings(const std::string &newPath) {
 	std::vector<uint8_t> data;
 	if (!mxv2::FileExists(oldPath) || !mxv2::ReadWholeFile(oldPath, &data)) return;
 	if (!mxv2::WriteWholeFile(newPath, data)) return;
-	printf("settings : %s を引き継ぎました\n", oldPath.c_str());
+	printf("settings : %s\n", mxv2::MsgF("Log.SettingsMigrated", oldPath).c_str());
 }
 
 // mxv2.ini から読んだ設定を、コマンドラインで上書きする。
@@ -297,7 +279,7 @@ bool ParseArgs(int argc, char **argv, Options *opt, mxv2::Settings *st) {
 		const char *a = argv[i];
 		if (a[0] != '-') {
 			if (!opt->target.empty()) {
-				printf("ERROR: 対象が二重に指定されています: %s\n", a);
+				printf("ERROR: %s\n", mxv2::MsgF("Error.TargetTwice", a).c_str());
 				return false;
 			}
 			opt->target = a;
@@ -319,8 +301,10 @@ bool ParseArgs(int argc, char **argv, Options *opt, mxv2::Settings *st) {
 			// 黙って 22050 に落とされる）。ini には残さない。
 			opt->sampleRate = atoi(argv[++i]);
 			if (!mxv2::Player::IsSupportedSampleRate(opt->sampleRate)) {
-				printf("ERROR: 対応していないサンプリングレートです: %d\n",
-				       opt->sampleRate);
+				printf("ERROR: %s\n",
+				       mxv2::MsgF("Error.BadSampleRate",
+				                  mxv2::MsgNum("%d", opt->sampleRate))
+				           .c_str());
 				return false;
 			}
 		} else if (strcmp(a, "-latency") == 0 && i + 1 < argc) {
@@ -336,6 +320,8 @@ bool ParseArgs(int argc, char **argv, Options *opt, mxv2::Settings *st) {
 			i++;
 		} else if (strcmp(a, "-userdir") == 0 && i + 1 < argc) {
 			i++;  // 同上
+		} else if (strcmp(a, "-locale") == 0 && i + 1 < argc) {
+			i++;  // 同上
 		} else if (strcmp(a, "-skin") == 0 && i + 1 < argc) {
 			st->skinName = argv[++i];
 		} else if (strcmp(a, "-console") == 0) {
@@ -343,7 +329,7 @@ bool ParseArgs(int argc, char **argv, Options *opt, mxv2::Settings *st) {
 		} else if (strcmp(a, "-h") == 0 || strcmp(a, "-help") == 0) {
 			return false;
 		} else {
-			printf("ERROR: 不明なオプション: %s\n", a);
+			printf("ERROR: %s\n", mxv2::MsgF("Error.UnknownOption", a).c_str());
 			return false;
 		}
 	}
@@ -380,7 +366,8 @@ std::vector<std::string> PdxSearchDirs(const mxv2::Vfs &vfs, const Options &opt,
 	for (size_t i = 0; i < in.size(); i++) {
 		std::string ref;
 		if (!vfs.Resolve(in[i], std::string(), &ref) || ref.empty()) {
-			printf("warning  : PDX の探索先を読めません: %s\n", in[i].c_str());
+			printf("warning  : %s\n",
+			       mxv2::MsgF("Log.PdxPathUnreadable", in[i]).c_str());
 			continue;
 		}
 		dirs.push_back(ref);
@@ -414,8 +401,8 @@ bool PlayPath(const std::string &path, const mxv2::Vfs &vfs, const Options &opt,
 	printf("play     : %s\n", song.path.c_str());
 	printf("title    : %s\n", song.title.c_str());
 	if (song.requiresPdx && !song.hasPdx) {
-		printf("warning  : PDX (%s) が見つかりません。FM のみで演奏します。\n",
-		       song.pdxFileName.c_str());
+		printf("warning  : %s\n",
+		       mxv2::MsgF("Log.PdxNotFound", song.pdxFileName).c_str());
 	}
 	printf("duration : %.1f sec\n", player->playTimeMs() / 1000.0f);
 	// MSVC の setvbuf は _IOLBF を全バッファ扱いにするので、明示的に流す。
@@ -463,7 +450,7 @@ void OpenCursor(const PlayContext &ctx, mxv2::Filer *filer, mxv2::SettingsUi *ui
 void OpenDropped(const PlayContext &ctx, mxv2::Filer *filer, const std::string &nativePath) {
 	std::string ref;
 	if (!ctx.vfs->Resolve(nativePath, std::string(), &ref) || ref.empty()) {
-		printf("warning  : 場所を読み取れません: %s\n", nativePath.c_str());
+		printf("warning  : %s\n", mxv2::MsgF("Log.DropUnreadable", nativePath).c_str());
 		return;
 	}
 
@@ -476,7 +463,7 @@ void OpenDropped(const PlayContext &ctx, mxv2::Filer *filer, const std::string &
 	// 拡張子だけでなく中身も見る。拡張子を付け替えただけのファイルを
 	// 落とされても演奏を始めないため。
 	if (!mxv2::IsMdxFile(*ctx.vfs, ref)) {
-		printf("warning  : MDX ファイルではありません: %s\n", nativePath.c_str());
+		printf("warning  : %s\n", mxv2::MsgF("Log.DropNotMdx", nativePath).c_str());
 		return;
 	}
 
@@ -504,8 +491,16 @@ int main(int argc, char **argv) {
 	                       ? mxv2::JoinPath(mxv2::ExecutableDir(), "assets")
 	                       : opt.assetsDir;
 	paths.userDir = opt.userDir.empty() ? mxv2::UserDataDir(kUserDirName) : opt.userDir;
+
+	// 文言はここから先すべてカタログ (assets/locale/<ロケール>/message.ini)
+	// から引く。読めなくても動くが、画面にはキー名が出る。
+	if (!mxv2::LoadMessages(paths, opt.locale)) {
+		printf("warning  : message catalog not found: %s (locale %s)\n",
+		       paths.bundledDir.c_str(), mxv2::MessageLocale().c_str());
+	}
 	if (!mxv2::MakeDirectories(paths.userDir)) {
-		printf("warning  : ユーザーフォルダを作れません: %s\n", paths.userDir.c_str());
+		printf("warning  : %s\n",
+		       mxv2::MsgF("Log.UserDirFailed", paths.userDir).c_str());
 	}
 	// 設定 -> コマンドラインの順に読む（後勝ち）。
 	mxv2::Settings settings;
@@ -539,7 +534,8 @@ int main(int argc, char **argv) {
 		const mxv2::FileSystem *userFs = vfs.FindById("userdir");
 		if (userFs != 0 && !userFs->nativeRoot().empty() &&
 		    !mxv2::MakeDirectories(userFs->nativeRoot())) {
-			printf("warning  : %s を作れません\n", userFs->nativeRoot().c_str());
+			printf("warning  : %s\n",
+			       mxv2::MsgF("Log.MakeDirFailed", userFs->nativeRoot()).c_str());
 		}
 	}
 
@@ -552,7 +548,7 @@ int main(int argc, char **argv) {
 	if (!opt.target.empty()) {
 		std::string ref;
 		if (!vfs.Resolve(opt.target, std::string(), &ref) || ref.empty()) {
-			printf("ERROR: 場所を読み取れません: %s\n", opt.target.c_str());
+			printf("ERROR: %s\n", mxv2::MsgF("Error.BadLocation", opt.target).c_str());
 			return EXIT_FAILURE;
 		}
 		if (vfs.IsDir(ref)) {
@@ -591,7 +587,7 @@ int main(int argc, char **argv) {
 	SDL_SetHint(SDL_HINT_WINDOWS_DPI_AWARENESS, "permonitorv2");
 
 	if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER) != 0) {
-		printf("ERROR: SDL_Init に失敗しました: %s\n", SDL_GetError());
+		printf("ERROR: %s\n", mxv2::MsgF("Error.SdlInit", SDL_GetError()).c_str());
 		return EXIT_FAILURE;
 	}
 
@@ -630,8 +626,10 @@ int main(int argc, char **argv) {
 		if (settings.zoomPercent > mxv2::Screen::kZoomMax) {
 			settings.zoomPercent = mxv2::Screen::kZoomMax;
 		}
-		printf("display  : システム拡大率 %d%% / 表示倍率 %d%%\n", systemZoom,
-		       settings.zoomPercent);
+		printf("display  : %s\n",
+		       mxv2::MsgF("Log.Display", mxv2::MsgNum("%d", systemZoom),
+		                  mxv2::MsgNum("%d", settings.zoomPercent))
+		           .c_str());
 	}
 
 	// うまくいかないときの逃げ場。同梱ぶんは必ずあるはずなので名指しする。
@@ -649,7 +647,7 @@ int main(int argc, char **argv) {
 			dirtyFields |= mxv2::Settings::kFieldSkin;
 			if (!skin.Load(paths, settings.skinName, &err)) {
 				printf("ERROR: %s\n", err.c_str());
-				printf("       -assets <dir> で同梱素材の場所を指定してください。\n");
+				printf("       %s\n", mxv2::Msg("Error.HintAssets"));
 				SDL_Quit();
 				return EXIT_FAILURE;
 			}
@@ -682,10 +680,7 @@ int main(int argc, char **argv) {
 		if (!textLayer.Init(&screen, mxv2::FontSearchDirs(skin, paths), &err)) {
 			printf("warning  : %s\n", err.c_str());
 		} else if (!textLayer.available()) {
-			printf("warning  : 日本語フォントが読めません。assets/ に "
-			       "MPLUS1p-Regular.ttf があるか確認してください"
-			       "（font.ttf をユーザーフォルダかスキンに置けば"
-			       "そちらが使われます）。\n");
+			printf("warning  : %s\n", mxv2::Msg("Log.FontMissing"));
 		}
 	}
 
@@ -697,8 +692,8 @@ int main(int argc, char **argv) {
 			// 素材の足りないスキンでも起動できなくならないよう、同梱の
 			// Default へ逃がす（layout.ini を書かずに theme.mxv だけ置いた
 			// ユーザースキンなど）。
-			printf("warning  : スキン %s を使えません: %s\n", settings.skinName.c_str(),
-			       err.c_str());
+			printf("warning  : %s\n",
+			       mxv2::MsgF("Log.SkinUnusable", settings.skinName, err).c_str());
 			const bool retry = (settings.skinName != kFallbackSkin) &&
 			                   skin.Load(paths, kFallbackSkin, &err);
 			if (retry) {
@@ -710,8 +705,7 @@ int main(int argc, char **argv) {
 			}
 			if (!retry || !draw.Init(&skin, &err)) {
 				printf("ERROR: %s\n", err.c_str());
-				printf("       -assets <dir> で同梱素材の場所を、-skin <name> でスキンを"
-				       "指定してください。\n");
+				printf("       %s\n", mxv2::Msg("Error.HintAssetsSkin"));
 				screen.Close();
 				SDL_Quit();
 				return EXIT_FAILURE;
@@ -755,7 +749,6 @@ int main(int argc, char **argv) {
 		}
 		ui.SetVfs(&vfs);
 		ui.SetAboutHeader(AppHeader());
-		ui.SetHelpText(kKeyHelpText);
 	}
 
 	mxv2::Filer filer;
@@ -1107,7 +1100,8 @@ int main(int argc, char **argv) {
 			mxv2::Skin next;
 			std::string err;
 			if (!next.Load(paths, name, &err)) {
-				printf("warning  : スキン %s を読めません: %s\n", name.c_str(), err.c_str());
+				printf("warning  : %s\n",
+				       mxv2::MsgF("Log.SkinUnreadable", name, err).c_str());
 			} else {
 				const mxv2::Skin prev = skin;
 				skin = next;
@@ -1122,8 +1116,8 @@ int main(int argc, char **argv) {
 					ok = draw.Init(&skin, &err);
 				}
 				if (!ok) {
-					printf("warning  : スキン %s に切り替えられません: %s\n", name.c_str(),
-					       err.c_str());
+					printf("warning  : %s\n",
+					       mxv2::MsgF("Log.SkinSwitchFailed", name, err).c_str());
 					skin = prev;
 					screen.Resize(skin.screenW, skin.screenH, &err);
 					textLayer.SetFontDirs(mxv2::FontSearchDirs(skin, paths));
@@ -1166,7 +1160,9 @@ int main(int argc, char **argv) {
 				if (!ok) {
 					// 開けなかったら元のレートへ戻す。それも駄目なら
 					// 音が出せないので続けられない。
-					printf("warning  : %d Hz で開けません: %s\n", want, err.c_str());
+					printf("warning  : %s\n",
+					       mxv2::MsgF("Log.RateOpenFailed", mxv2::MsgNum("%d", want), err)
+					           .c_str());
 					cfg.sampleRate = prevRate;
 					ok = player.Open(cfg, &err);
 					if (!ok) {
@@ -1279,7 +1275,8 @@ int main(int argc, char **argv) {
 			}
 			if (dirtyFields != 0 && now >= saveAtMs) {
 				if (!settings.SaveFields(settingsPath, dirtyFields)) {
-					printf("warning  : 設定を保存できません: %s\n", settingsPath.c_str());
+					printf("warning  : %s\n",
+					       mxv2::MsgF("Log.SettingsSaveFailed", settingsPath).c_str());
 				}
 				dirtyFields = 0;
 			}
@@ -1346,7 +1343,8 @@ int main(int argc, char **argv) {
 			}
 		}
 		if (!settings.SaveFields(settingsPath, dirtyFields)) {
-			printf("warning  : 設定を保存できません: %s\n", settingsPath.c_str());
+			printf("warning  : %s\n",
+			       mxv2::MsgF("Log.SettingsSaveFailed", settingsPath).c_str());
 		}
 	}
 

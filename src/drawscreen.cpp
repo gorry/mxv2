@@ -8,6 +8,7 @@
 
 #include "bmpfile.h"
 #include "fileutil.h"
+#include "message.h"
 
 namespace mxv2 {
 
@@ -87,14 +88,14 @@ bool DrawScreen::Init(const Skin *skin, std::string *err) {
 	InitBlendTables();
 
 	if (skin == 0) {
-		*err = "スキンが指定されていません。";
+		*err = Msg("Error.NoSkin");
 		return false;
 	}
 	skin_ = skin;
 
 	if (!screen_.Create(width(), height(), 24) || !back_.Create(width(), height(), 24) ||
 	    !backBitmap_.Create(width(), height(), 24)) {
-		*err = "画面バッファを確保できません。";
+		*err = Msg("Error.ScreenBuffer");
 		return false;
 	}
 
@@ -154,19 +155,19 @@ bool DrawScreen::LoadAssets(std::string *err) {
 
 	// 組み立て用のバッファ
 	if (!progressBar_.Create(skin_->progW, skin_->progH, 8)) {
-		*err = "プログレスバーのバッファを確保できません。";
+		*err = Msg("Error.ProgressBuffer");
 		return false;
 	}
 	memcpy(progressBar_.palette(), progressBarBase_.palette(), sizeof(Rgb) * 256);
 
 	if (!totalVolBar_.Create(skin_->volW, skin_->volH, 8)) {
-		*err = "音量バーのバッファを確保できません。";
+		*err = Msg("Error.VolumeBuffer");
 		return false;
 	}
 	memcpy(totalVolBar_.palette(), totalVolBarBase_.palette(), sizeof(Rgb) * 256);
 
 	if (!scrollBar_.Create(skin_->scrollW, skin_->scrollH, 8)) {
-		*err = "スクロールバーのバッファを確保できません。";
+		*err = Msg("Error.ScrollBuffer");
 		return false;
 	}
 	memcpy(scrollBar_.palette(), scrollBarBase_.palette(), sizeof(Rgb) * 256);
