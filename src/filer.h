@@ -7,8 +7,11 @@
 // 場所は全て **ref**（"localfs:C:\mdx" のような文字列）で持ち、実際の
 // 読み書きは Vfs 経由で行う。裸のパスをここへ持ち込まないこと（vfs.h）。
 //
-// MDX のタイトルは読み込み時にファイル先頭から取り出して UTF-8 にしておく。
-// 旧 mxv は別スレッドで少しずつ埋めていたが、mxv2 はまとめて読む。
+// MDX のタイトルはファイル先頭から取り出して UTF-8 にしておく。**読むのは
+// 別スレッド**で、届いたぶんを PollTitles() で一覧へ入れる（旧 mxv も別
+// スレッドだった）。フォルダの中の MDX を全部開くことになるので、外部
+// ファイルシステムでは 1 曲 1 リクエストになり、メインスレッドで回すと
+// 画面が止まってしまう。
 
 #ifndef MXV2_FILER_H
 #define MXV2_FILER_H
@@ -19,6 +22,7 @@
 namespace mxv2 {
 
 class FileSystem;
+class TitleReader;
 class Vfs;
 
 enum FileItemType {
@@ -52,6 +56,7 @@ enum FilerOpen {
 class Filer {
 public:
 	Filer();
+	~Filer();
 
 	// 読み書きに使う VFS。一覧を作る前に必ず渡すこと。
 	void SetVfs(const Vfs *vfs) { vfs_ = vfs; }
@@ -62,8 +67,12 @@ public:
 	// 今いるファイルシステム。
 	const FileSystem *fs() const { return fs_; }
 
-	// 一覧を作り直す（タイトルも読み直す）。
+	// 一覧を作り直す（タイトルの読み直しもここから始まる）。
 	void Refresh();
+
+	// 別スレッドが読み終えたタイトルを一覧へ入れる。毎フレーム呼ぶこと。
+	// 入れるものがあれば true（ファイラーを描き直す合図）。
+	bool PollTitles();
 
 	int itemCount() const { return (int)items_.size(); }
 	const FileItem &item(int i) const { return items_[i]; }
@@ -120,7 +129,8 @@ private:
 	void AppendDirs(std::vector<FileItem> *out);
 	void AppendMdx(std::vector<FileItem> *out);
 	void AppendExtras(std::vector<FileItem> *out);
-	void ReadTitles();
+	// 今の一覧のタイトルを読み直させる（読むのは別スレッド）。
+	void StartReadTitles();
 
 	const Vfs *vfs_;
 	const FileSystem *fs_;  // 今いるファイルシステム
@@ -132,6 +142,10 @@ private:
 	int rowHeightPx_;  // 1 行の高さ。0 にはしない（除算に使う）
 	int visibleRows_;
 	bool folderFirst_;
+	TitleReader *titles_;
+
+	Filer(const Filer &);
+	Filer &operator=(const Filer &);
 };
 
 }  // namespace mxv2

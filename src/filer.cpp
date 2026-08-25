@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <cstring>
 
+#include <SDL.h>
+
 #include "fileutil.h"
 #include "mdxsong.h"
 #include "message.h"
@@ -23,7 +25,174 @@ bool LessNoCase(const FileItem &a, const FileItem &b) {
 	return CompareNoCase(a.baseName, b.baseName) < 0;
 }
 
+// 1 曲ぶんのタイトルを読む。読めなければ false（一覧では空欄のまま）。
+bool ReadOneTitle(const Vfs &vfs, const std::string &ref, std::string *out) {
+	std::vector<uint8_t> data;
+	if (!vfs.Read(ref, &data) || data.empty()) return false;
+
+	char title[512];
+	if (!MdxGetTitle(&data[0], (uint32_t)data.size(), title, sizeof(title))) return false;
+	*out = SjisToUtf8(TrimTrailingControl(std::string(title)));
+	return true;
+}
+
 }  // namespace
+
+// MDX のタイトルを別スレッドで読む。
+//
+// フォルダを開くたびに、その中の MDX を全部開くことになる。ローカルなら
+// 一瞬だが、外部ファイルシステム (SMB / Web) では 1 曲 1 リクエストなので、
+// メインスレッドで回すと開いた瞬間に画面が固まる。
+//
+// 依頼には**世代番号**を振ってある。フォルダを移ると番号が変わり、
+// 前のフォルダのぶんは読みかけでも捨てられる（結果が混ざらない）。
+//
+// 読むのは Vfs 経由。今の FileSystem は Configure() のあと増減しないので
+// 別スレッドから触ってよい。**外部ファイルシステムを足し引きできるように
+// するときは、ここの取り決めを見直すこと。**
+class TitleReader {
+public:
+	struct Job {
+		int index;
+		std::string ref;
+	};
+	struct Result {
+		int index;
+		std::string title;
+	};
+
+	TitleReader()
+	    : vfs_(0), mutex_(0), wake_(0), thread_(0), generation_(0), quit_(false) {}
+	~TitleReader() { Stop(); }
+
+	// 読み直しを頼む。前の依頼は捨てる。
+	void Start(const Vfs *vfs, const std::vector<Job> &jobs) {
+		if (jobs.empty()) {
+			if (mutex_ != 0) {
+				SDL_LockMutex(mutex_);
+				generation_++;
+				pending_.clear();
+				done_.clear();
+				SDL_UnlockMutex(mutex_);
+			}
+			return;
+		}
+		if (!EnsureThread()) {
+			// スレッドが作れない環境では、これまでどおりその場で読む。
+			done_.clear();
+			for (size_t i = 0; i < jobs.size(); i++) {
+				Result r;
+				r.index = jobs[i].index;
+				if (ReadOneTitle(*vfs, jobs[i].ref, &r.title)) done_.push_back(r);
+			}
+			return;
+		}
+		SDL_LockMutex(mutex_);
+		vfs_ = vfs;
+		generation_++;
+		pending_ = jobs;
+		done_.clear();
+		SDL_UnlockMutex(mutex_);
+		SDL_SemPost(wake_);
+	}
+
+	// 届いているぶんを引き取る。何も無ければ false。
+	bool Take(std::vector<Result> *out) {
+		out->clear();
+		if (mutex_ == 0) {  // スレッド無しで読んだぶん
+			if (done_.empty()) return false;
+			out->swap(done_);
+			return true;
+		}
+		SDL_LockMutex(mutex_);
+		const bool any = !done_.empty();
+		if (any) out->swap(done_);
+		SDL_UnlockMutex(mutex_);
+		return any;
+	}
+
+private:
+	bool EnsureThread() {
+		if (thread_ != 0) return true;
+		if (mutex_ == 0) mutex_ = SDL_CreateMutex();
+		if (wake_ == 0) wake_ = SDL_CreateSemaphore(0);
+		if (mutex_ == 0 || wake_ == 0) return false;
+		thread_ = SDL_CreateThread(Entry, "mxv2-titles", this);
+		return thread_ != 0;
+	}
+
+	void Stop() {
+		if (thread_ != 0) {
+			SDL_LockMutex(mutex_);
+			quit_ = true;
+			generation_++;  // 読みかけを捨てさせる
+			SDL_UnlockMutex(mutex_);
+			SDL_SemPost(wake_);
+			SDL_WaitThread(thread_, 0);
+			thread_ = 0;
+		}
+		if (wake_ != 0) {
+			SDL_DestroySemaphore(wake_);
+			wake_ = 0;
+		}
+		if (mutex_ != 0) {
+			SDL_DestroyMutex(mutex_);
+			mutex_ = 0;
+		}
+	}
+
+	static int SDLCALL Entry(void *arg) {
+		((TitleReader *)arg)->Run();
+		return 0;
+	}
+
+	void Run() {
+		for (;;) {
+			SDL_SemWait(wake_);
+
+			std::vector<Job> jobs;
+			const Vfs *vfs = 0;
+			uint32_t gen = 0;
+			SDL_LockMutex(mutex_);
+			if (quit_) {
+				SDL_UnlockMutex(mutex_);
+				return;
+			}
+			jobs.swap(pending_);
+			vfs = vfs_;
+			gen = generation_;
+			SDL_UnlockMutex(mutex_);
+			if (vfs == 0) continue;
+
+			for (size_t i = 0; i < jobs.size(); i++) {
+				SDL_LockMutex(mutex_);
+				const bool stale = quit_ || (gen != generation_);
+				SDL_UnlockMutex(mutex_);
+				if (stale) break;
+
+				Result r;
+				r.index = jobs[i].index;
+				if (!ReadOneTitle(*vfs, jobs[i].ref, &r.title)) continue;
+
+				SDL_LockMutex(mutex_);
+				if (gen == generation_) done_.push_back(r);
+				SDL_UnlockMutex(mutex_);
+			}
+		}
+	}
+
+	const Vfs *vfs_;
+	SDL_mutex *mutex_;
+	SDL_sem *wake_;
+	SDL_Thread *thread_;
+	std::vector<Job> pending_;
+	std::vector<Result> done_;
+	uint32_t generation_;
+	bool quit_;
+
+	TitleReader(const TitleReader &);
+	TitleReader &operator=(const TitleReader &);
+};
 
 Filer::Filer()
     : vfs_(0),
@@ -32,7 +201,12 @@ Filer::Filer()
       topPx_(0),
       rowHeightPx_(1),
       visibleRows_(11),
-      folderFirst_(false) {}
+      folderFirst_(false),
+      titles_(new TitleReader()) {}
+
+Filer::~Filer() {
+	delete titles_;
+}
 
 void Filer::SetFolderFirst(bool on) {
 	folderFirst_ = on;
@@ -94,7 +268,7 @@ void Filer::Refresh() {
 	}
 	AppendExtras(&items_);
 
-	ReadTitles();
+	StartReadTitles();
 
 	if (cursor_ >= (int)items_.size()) cursor_ = (int)items_.size() - 1;
 	if (cursor_ < 0) cursor_ = 0;
@@ -171,17 +345,34 @@ void Filer::AppendExtras(std::vector<FileItem> *out) {
 	}
 }
 
-void Filer::ReadTitles() {
+void Filer::StartReadTitles() {
+	std::vector<TitleReader::Job> jobs;
 	for (size_t i = 0; i < items_.size(); i++) {
 		if ((items_[i].type & kFileItemMdx) == 0) continue;
-
-		std::vector<uint8_t> data;
-		if (!vfs_->Read(items_[i].path, &data) || data.empty()) continue;
-
-		char title[512];
-		if (!MdxGetTitle(&data[0], (uint32_t)data.size(), title, sizeof(title))) continue;
-		items_[i].title = SjisToUtf8(TrimTrailingControl(std::string(title)));
+		TitleReader::Job job;
+		job.index = (int)i;
+		job.ref = items_[i].path;
+		jobs.push_back(job);
 	}
+	titles_->Start(vfs_, jobs);
+}
+
+bool Filer::PollTitles() {
+	std::vector<TitleReader::Result> got;
+	if (!titles_->Take(&got)) return false;
+
+	bool changed = false;
+	for (size_t i = 0; i < got.size(); i++) {
+		const int at = got[i].index;
+		// 依頼したときの一覧に対する位置。世代が変わったぶんは捨てられて
+		// いるので、ここへ来るのは今の一覧のものだけ。
+		if (at < 0 || at >= (int)items_.size()) continue;
+		if ((items_[at].type & kFileItemMdx) == 0) continue;
+		if (items_[at].title == got[i].title) continue;
+		items_[at].title = got[i].title;
+		changed = true;
+	}
+	return changed;
 }
 
 void Filer::SetCursor(int i) {

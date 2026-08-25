@@ -95,6 +95,18 @@ bool WantsConsole(int argc, char **argv) {
 	return false;
 }
 
+// 起動時の警告。ウィンドウが開く前に起きたことは、ログに出しても
+// 気付かれないので、ためておいて最初のフレームでダイアログに出す。
+// 演奏中に出る警告（PDX が無い、など）はログだけ。あちらは操作の結果として
+// その場で出るものなので、起動時の箱には入れない。
+typedef std::vector<std::string> Warnings;
+
+void Warn(Warnings *box, const std::string &text) {
+	printf("warning  : %s\n", text.c_str());
+	fflush(stdout);
+	if (box != 0) box->push_back(text);
+}
+
 // ユーザーフォルダの名前。Windows なら %APPDATA%\mxv2\ になる。
 // 設定 (mxv2.ini) と、ユーザーが足したスキンの置き場所。
 const char *kUserDirName = "mxv2";
@@ -187,15 +199,15 @@ void PrescanDirs(int argc, char **argv, Options *opt) {
 // ini に書かれた順でファイルシステムをマウントする。仕様 (filesystem.md) の
 // とおり、知らないものは警告して捨て、削除できないものが抜けていれば足す。
 // 直したところがあれば true を返す（読み終えてから書き戻すため）。
-bool LoadFileSystems(mxv2::Vfs *vfs, const std::vector<std::string> &refs) {
+bool LoadFileSystems(mxv2::Vfs *vfs, const std::vector<std::string> &refs,
+                     Warnings *box) {
 	bool fixed = false;
 	vfs->ClearMounts();
 	for (size_t i = 0; i < refs.size(); i++) {
 		mxv2::FileSystem *fs = 0;
 		std::string rel;
 		if (!vfs->Parse(refs[i], &fs, &rel) || fs == 0) {
-			printf("warning  : %s\n",
-			       mxv2::MsgF("Log.UnknownFileSystem", refs[i]).c_str());
+			Warn(box, mxv2::MsgF("Log.UnknownFileSystem", refs[i]));
 			fixed = true;
 			continue;
 		}
@@ -209,15 +221,15 @@ bool LoadFileSystems(mxv2::Vfs *vfs, const std::vector<std::string> &refs) {
 // 知らないファイルシステムは警告して捨てる。到達できるかどうかはここでは
 // 見ない（時間が掛かるし、外付けが外れているだけかもしれない）。
 // 直したところがあれば true を返す（読み終えてから書き戻すため）。
-bool LoadBookmarks(const mxv2::Vfs &vfs, std::vector<std::string> *refs) {
+bool LoadBookmarks(const mxv2::Vfs &vfs, std::vector<std::string> *refs,
+                   Warnings *box) {
 	bool fixed = false;
 	std::vector<std::string> out;
 	for (size_t i = 0; i < refs->size(); i++) {
 		mxv2::FileSystem *fs = 0;
 		std::string rel;
 		if (!vfs.Parse((*refs)[i], &fs, &rel)) {
-			printf("warning  : %s\n",
-			       mxv2::MsgF("Log.UnknownFileSystem", (*refs)[i]).c_str());
+			Warn(box, mxv2::MsgF("Log.BookmarkUnknownFs", (*refs)[i]));
 			fixed = true;
 			continue;
 		}
@@ -486,6 +498,9 @@ int main(int argc, char **argv) {
 	Options opt;
 	PrescanDirs(argc, argv, &opt);
 
+	// ウィンドウが開く前に出た警告は、ここにためて最初のフレームで見せる。
+	Warnings warnings;
+
 	mxv2::AssetPaths paths;
 	paths.bundledDir = opt.assetsDir.empty()
 	                       ? mxv2::JoinPath(mxv2::ExecutableDir(), "assets")
@@ -498,18 +513,18 @@ int main(int argc, char **argv) {
 	{
 		bool usedFallback = false;
 		if (!mxv2::LoadMessages(paths, opt.locale, &usedFallback)) {
-			printf("warning  : message catalog not found: %s (locale %s)\n",
-			       paths.bundledDir.c_str(), mxv2::MessageLocale().c_str());
+			// カタログが無いので、この 1 本だけは英語のまま出す。
+			char buf[512];
+			snprintf(buf, sizeof(buf), "message catalog not found: %s (locale %s)",
+			         paths.bundledDir.c_str(), mxv2::MessageLocale().c_str());
+			Warn(&warnings, buf);
 		} else if (usedFallback) {
-			printf("warning  : %s\n",
-			       mxv2::MsgF("Log.LocaleFallback", mxv2::MessageLocale(),
-			                  mxv2::kFallbackLocale)
-			           .c_str());
+			Warn(&warnings, mxv2::MsgF("Log.LocaleFallback", mxv2::MessageLocale(),
+			                           mxv2::kFallbackLocale));
 		}
 	}
 	if (!mxv2::MakeDirectories(paths.userDir)) {
-		printf("warning  : %s\n",
-		       mxv2::MsgF("Log.UserDirFailed", paths.userDir).c_str());
+		Warn(&warnings, mxv2::MsgF("Log.UserDirFailed", paths.userDir));
 	}
 	// 設定 -> コマンドラインの順に読む（後勝ち）。
 	mxv2::Settings settings;
@@ -534,17 +549,16 @@ int main(int argc, char **argv) {
 	vfs.Configure(paths.bundledDir, paths.userDir);
 	// ファイラーのルートに並べる順は ini から。読めなかったぶんや足りない
 	// ぶんは LoadFileSystems が補うので、そのときは書き戻す。
-	bool dirtyFileSystems = LoadFileSystems(&vfs, settings.fileSystems);
+	bool dirtyFileSystems = LoadFileSystems(&vfs, settings.fileSystems, &warnings);
 	settings.fileSystems = SaveFileSystems(vfs);
 	// ブックマークも同じく、読めない指定を捨てたら書き戻す。
-	const bool dirtyBookmarks = LoadBookmarks(vfs, &settings.bookmarks);
+	const bool dirtyBookmarks = LoadBookmarks(vfs, &settings.bookmarks, &warnings);
 	// ユーザーフォルダ側の mdx/ は無ければ作る（曲の置き場所として見せる）。
 	{
 		const mxv2::FileSystem *userFs = vfs.FindById("userdir");
 		if (userFs != 0 && !userFs->nativeRoot().empty() &&
 		    !mxv2::MakeDirectories(userFs->nativeRoot())) {
-			printf("warning  : %s\n",
-			       mxv2::MsgF("Log.MakeDirFailed", userFs->nativeRoot()).c_str());
+			Warn(&warnings, mxv2::MsgF("Log.MakeDirFailed", userFs->nativeRoot()));
 		}
 	}
 
@@ -651,7 +665,7 @@ int main(int argc, char **argv) {
 	{
 		std::string err;
 		if (!skin.Load(paths, settings.skinName, &err)) {
-			printf("warning  : %s\n", err.c_str());
+			Warn(&warnings, err);
 			settings.skinName = kFallbackSkin;
 			dirtyFields |= mxv2::Settings::kFieldSkin;
 			if (!skin.Load(paths, settings.skinName, &err)) {
@@ -687,9 +701,9 @@ int main(int argc, char **argv) {
 	{
 		std::string err;
 		if (!textLayer.Init(&screen, mxv2::FontSearchDirs(skin, paths), &err)) {
-			printf("warning  : %s\n", err.c_str());
+			Warn(&warnings, err);
 		} else if (!textLayer.available()) {
-			printf("warning  : %s\n", mxv2::Msg("Log.FontMissing"));
+			Warn(&warnings, mxv2::Msg("Log.FontMissing"));
 		}
 	}
 
@@ -701,8 +715,7 @@ int main(int argc, char **argv) {
 			// 素材の足りないスキンでも起動できなくならないよう、同梱の
 			// Default へ逃がす（layout.ini を書かずに theme.mxv だけ置いた
 			// ユーザースキンなど）。
-			printf("warning  : %s\n",
-			       mxv2::MsgF("Log.SkinUnusable", settings.skinName, err).c_str());
+			Warn(&warnings, mxv2::MsgF("Log.SkinUnusable", settings.skinName, err));
 			const bool retry = (settings.skinName != kFallbackSkin) &&
 			                   skin.Load(paths, kFallbackSkin, &err);
 			if (retry) {
@@ -754,8 +767,10 @@ int main(int argc, char **argv) {
 		std::string err;
 		if (!ui.Init(&screen, paths, &err)) {
 			// 設定 UI が無くても演奏はできるので、警告だけ出して続ける。
-			printf("warning  : %s\n", err.c_str());
+			Warn(&warnings, err);
 		}
+		// ここまでにたまった警告を最初のフレームで見せる。
+		ui.SetStartupWarnings(warnings);
 		ui.SetVfs(&vfs);
 		ui.SetAboutHeader(AppHeader());
 	}
@@ -1202,6 +1217,9 @@ int main(int argc, char **argv) {
 		}
 
 		mouse.Poll(SDL_GetTicks());
+
+		// MDX のタイトルは別スレッドで読んでいる。届いたぶんを取り込む。
+		if (filer.PollTitles()) fileListRefresh = true;
 
 		// 設定 UI はここで組み立てる。配色を変えると 640x480 の
 		// オフスクリーンを作り直すので、下の描画より先に回す。

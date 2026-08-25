@@ -139,6 +139,7 @@ public:
 		if (bmToggleOpen_) { bmCloseToggle_ = true; return true; }
 		if (showAbout_) { showAbout_ = false; return true; }
 		if (showHelp_) { showHelp_ = false; return true; }
+		if (showStartup_) { showStartup_ = false; return true; }
 		if (showFileSystems_) { showFileSystems_ = false; return true; }
 		if (showBookmarks_) { showBookmarks_ = false; return true; }
 		if (showFolder_) { showFolder_ = false; return true; }
@@ -150,6 +151,11 @@ public:
 	// 右クリックで開くコンテキストメニュー（旧 mxv の TrackPopupMenu 相当）。
 	// 設定ウィンドウが閉じていても出す。
 	void OpenContextMenu() { openContextMenu_ = true; }
+
+	// 起動時に出た警告。ウィンドウが開く前に出たものを持ち越して、
+	// 最初のフレームでダイアログとして出す（ログにも同じものが出ている）。
+	// 空なら何も出ない。Init() のあとに渡すこと。
+	void SetStartupWarnings(const std::vector<std::string> &lines);
 
 	// バージョン情報の見出し（名前・版・ビルド日付・著作権表示）。
 	// 文言は main.cpp が持っているので渡してもらう。
@@ -262,7 +268,7 @@ private:
 	// 間は別のものを開けない（先にそれを閉じてもらう）。
 	bool busy() const {
 		return visible_ || showColors_ || showAbout_ || showFolder_ || showHelp_ ||
-		       showFileSystems_ || showBookmarks_;
+		       showFileSystems_ || showBookmarks_ || showStartup_;
 	}
 
 	// 操作方法のダイアログ。
@@ -375,6 +381,11 @@ private:
 	bool bmToggleOpen_;
 	bool bmCloseToggle_;
 	std::string bmToggleRef_;  // Shift+M の確認にかけている場所
+
+	// 起動時の警告。ウィンドウが出る前の printf を持ち越したもの。
+	void BuildStartupWindow();
+	bool showStartup_;
+	std::vector<std::string> startupLines_;
 
 	// コンテキストメニュー
 	void BuildContextMenu(Settings *settings, DrawScreen *draw, Player *player,

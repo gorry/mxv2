@@ -67,6 +67,7 @@ const char *kBookmarksTitle;
 const char *kBmRemoveTitle;
 const char *kBmToggleTitle;
 const char *kAboutTitle;
+const char *kStartupTitle;
 
 // 題名を作る。id 付きのものは文字列を静的に持ってから返す。
 const char *TitleWithId(const char *key, const char *id) {
@@ -94,6 +95,7 @@ void InitTitles() {
 	// Shift+M の確認。ダイアログを開かずにメイン画面から直に出す。
 	kBmToggleTitle = TitleWithId("Dialog.BookmarkToggle", "###mxv2bmtoggle");
 	kAboutTitle = Msg("Dialog.About");
+	kStartupTitle = Msg("Dialog.Startup");
 }
 
 // 文言に ImGui の id を足した名札。同じ文言を 1 つの画面で何度も使うため。
@@ -288,6 +290,7 @@ SettingsUi::SettingsUi()
       showHelp_(false),
       showFileSystems_(false),
       showBookmarks_(false),
+      showStartup_(false),
       bmSelected_(-1),
       bmOpenRemove_(false),
       bmRemoveOpen_(false),
@@ -571,6 +574,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	BuildFileSystemsWindow(filer);
 	BuildBookmarksWindow(settings, filer);
 	BuildBookmarkToggleWindow(settings, filer);
+	BuildStartupWindow();
 	BuildHelpWindow();
 	if (folderReturnToSettings_ && !showFolder_ && !folderOpenPending_ &&
 	    !ImGui::IsPopupOpen(folderTitle())) {
@@ -1553,6 +1557,46 @@ void SettingsUi::SelectFolderEntry(const std::string &path) {
 // パスの打ち込みと子フォルダの一覧を持つ自前のダイアログにしてある。
 // 決まった行き先は request_ に積んで、実際の移動はメインループに任せる
 // （ファイラーの持ち物はあちらなので、コンテキストメニューと同じ作法）。
+void SettingsUi::SetStartupWarnings(const std::vector<std::string> &lines) {
+	startupLines_ = lines;
+	showStartup_ = !startupLines_.empty();
+}
+
+// 起動時の警告。ウィンドウが出る前に起きたこと（ini から捨てた項目、
+// スキンやフォントの取りこぼし）を、最初のフレームでまとめて見せる。
+// ログにも同じものが出ているので、閉じたら二度と出さない。
+void SettingsUi::BuildStartupWindow() {
+	if (!SyncModal(kStartupTitle, &showStartup_)) return;
+
+	const ImGuiIO &io = ImGui::GetIO();
+	float w = 520.0f * styleScale_;
+	float h = 280.0f * styleScale_;
+	if (w > io.DisplaySize.x) w = io.DisplaySize.x;
+	if (h > io.DisplaySize.y) h = io.DisplaySize.y;
+	ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Appearing);
+	ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_Appearing);
+
+	if (!ImGui::BeginPopupModal(kStartupTitle, &showStartup_,
+	                            ImGuiWindowFlags_NoCollapse |
+	                                ImGuiWindowFlags_NoSavedSettings)) {
+		return;
+	}
+
+	{
+		const float foot = ImGui::GetFrameHeightWithSpacing();
+		ImGui::BeginChild("##startup", ImVec2(0, -foot), ImGuiChildFlags_Borders);
+		for (size_t i = 0; i < startupLines_.size(); i++) {
+			ImGui::Bullet();
+			ImGui::TextWrapped("%s", startupLines_[i].c_str());
+		}
+		DragToScroll(&dragScroll_, &dragMoved_, false, false);
+		ImGui::EndChild();
+	}
+	if (ImGui::Button(Msg("Button.Close"), ImVec2(-FLT_MIN, 0.0f))) showStartup_ = false;
+
+	ImGui::EndPopup();
+}
+
 // [操作方法] の中身をカタログから作る。-h の出力と同じ一覧
 // （[HelpKeys] [HelpMouse]）を、見出しを挟んで並べたもの。
 void SettingsUi::LoadHelpRows() {
