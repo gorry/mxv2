@@ -32,6 +32,14 @@ struct MdxSong {
 	MdxSong() : requiresPdx(false), hasPdx(false) {}
 };
 
+// 名前が MDX の拡張子で終わるか（大文字小文字は問わない）。末尾しか見ないので
+// ファイル名でも ref でもよい。
+bool IsMdxFileName(const std::string &name);
+
+// ref が MDX ファイルか。拡張子と中身の両方で確かめる。ファイラーを通らずに
+// 来た指定（ドラッグ＆ドロップ）を鵜呑みにしないため。
+bool IsMdxFile(const Vfs &vfs, const std::string &ref);
+
 // MDX を読み込み、MXDRV へ渡せる形に整える。
 //   pdxSearchDirs: MDX と同じディレクトリで見つからなかったときに探す場所
 //                  （ref。ファイルシステムをまたいでもよい）。

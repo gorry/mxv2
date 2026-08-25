@@ -165,7 +165,9 @@ const char *kKeyHelpText =
 	    "  CONT            自動で次の曲へ\n"
 	    "  REPEAT          自動で繰り返す\n"
 	    "  音量バー        音量を変更 （マスター音量は[mxv の設定]で）\n"
-	    "  プログレスバー  演奏位置を移動\n";
+	    "  プログレスバー  演奏位置を移動\n"
+	    "  ドロップ        MDX を落とすとその場所へ移って演奏"
+	    "（フォルダなら移動だけ）\n";
 
 void PrintUsage(const char *argv0) {
 	printf("%s", AppHeader().c_str());
@@ -417,6 +419,37 @@ void OpenCursor(const PlayContext &ctx, mxv2::Filer *filer, mxv2::SettingsUi *ui
 	}
 }
 
+// ドラッグ＆ドロップで落とされたものを開く。落とし物はネイティブのパスなので、
+// 行き先は必ずローカルファイルシステムになる。
+//   MDX      … そのファイルのあるフォルダへ移ってから演奏（コマンドラインで
+//               MDX を渡したときと同じ）
+//   フォルダ … そこへ移動するだけ
+//   それ以外 … 何もしない
+void OpenDropped(const PlayContext &ctx, mxv2::Filer *filer, const std::string &nativePath) {
+	std::string ref;
+	if (!ctx.vfs->Resolve(nativePath, std::string(), &ref) || ref.empty()) {
+		printf("warning  : 場所を読み取れません: %s\n", nativePath.c_str());
+		return;
+	}
+
+	if (ctx.vfs->IsDir(ref)) {
+		filer->SetCurrentRef(ref);
+		*ctx.fileListRefresh = true;
+		return;
+	}
+
+	// 拡張子だけでなく中身も見る。拡張子を付け替えただけのファイルを
+	// 落とされても演奏を始めないため。
+	if (!mxv2::IsMdxFile(*ctx.vfs, ref)) {
+		printf("warning  : MDX ファイルではありません: %s\n", nativePath.c_str());
+		return;
+	}
+
+	filer->SetCurrentRef(ctx.vfs->Parent(ref));
+	filer->SelectByPath(ref);
+	StartPlay(ctx, ref);
+}
+
 }  // namespace
 
 int main(int argc, char **argv) {
@@ -524,6 +557,12 @@ int main(int argc, char **argv) {
 		printf("ERROR: SDL_Init に失敗しました: %s\n", SDL_GetError());
 		return EXIT_FAILURE;
 	}
+
+	// ドラッグ＆ドロップ。多くの環境では既定で有効だが、環境によっては
+	// 明示しないと届かないので立てておく。
+	SDL_EventState(SDL_DROPBEGIN, SDL_ENABLE);
+	SDL_EventState(SDL_DROPFILE, SDL_ENABLE);
+	SDL_EventState(SDL_DROPCOMPLETE, SDL_ENABLE);
 
 	// 表示倍率が決まっていなければ、システムの拡大率 (175% など) を初期値にする。
 	// 旧い ini の Scale=<整数倍> は「システム拡大率の n 倍」だったので、
@@ -724,6 +763,13 @@ int main(int argc, char **argv) {
 
 	const bool quitWhenDone = opt.quitOnEnd && !startFile.empty();
 
+	// ドラッグ＆ドロップ。SDL は落とされたもの 1 つにつき 1 イベント送って
+	// くるので、まとめて落とされたときは最初の 1 つだけを覚えておき、
+	// 一区切り (DROPCOMPLETE) してから開く。
+	std::string dropPath;
+	bool dropSeen = false;
+	bool dropGroup = false;
+
 	while (!quit) {
 		SDL_Event ev;
 		while (SDL_PollEvent(&ev)) {
@@ -731,6 +777,28 @@ int main(int argc, char **argv) {
 
 			if (ev.type == SDL_QUIT) {
 				quit = true;
+				continue;
+			}
+
+			// ドラッグ＆ドロップ。drop.file は SDL が確保しているので、
+			// 使っても捨てても必ず SDL_free で返す。
+			if (ev.type == SDL_DROPBEGIN) {
+				dropGroup = true;
+				dropSeen = false;
+				dropPath.clear();
+				continue;
+			}
+			if (ev.type == SDL_DROPCOMPLETE) {
+				dropGroup = false;
+				continue;
+			}
+			if (ev.type == SDL_DROPFILE || ev.type == SDL_DROPTEXT) {
+				// 判断に使うのは最初のアイテムだけ。文字列のドロップは扱わない。
+				if (ev.type == SDL_DROPFILE && !dropSeen && ev.drop.file != 0) {
+					dropPath = ev.drop.file;
+					dropSeen = true;
+				}
+				SDL_free(ev.drop.file);
 				continue;
 			}
 
@@ -970,6 +1038,15 @@ int main(int argc, char **argv) {
 					}
 					break;
 			}
+		}
+
+		// 落とされたものを開く。イベントを汲み終えてからにするのは、
+		// まとめて落とされたときに最初のアイテムで決めるため。
+		if (dropSeen && !dropGroup) {
+			const std::string path = dropPath;
+			dropSeen = false;
+			dropPath.clear();
+			OpenDropped(ctx, &filer, path);
 		}
 
 		// 設定ウィンドウでスキンが選ばれていたら、ここで作り直す。

@@ -6,6 +6,7 @@
 #include <cstring>
 
 #include "fileutil.h"
+#include "mdxsong.h"
 #include "text.h"
 #include "vfs.h"
 
@@ -19,12 +20,6 @@ namespace {
 // 無視して並べる（同じものかどうかの判定は FileSystem::SamePath）。
 bool LessNoCase(const FileItem &a, const FileItem &b) {
 	return CompareNoCase(a.baseName, b.baseName) < 0;
-}
-
-bool HasMdxExtension(const std::string &name) {
-	if (name.size() < 4) return false;
-	const std::string ext = name.substr(name.size() - 4);
-	return CompareNoCase(ext, ".mdx") == 0;
 }
 
 }  // namespace
@@ -150,7 +145,8 @@ void Filer::AppendMdx(std::vector<FileItem> *out) {
 	std::vector<FileItem> files;
 	for (size_t i = 0; i < entries.size(); i++) {
 		if (entries[i].isDir) continue;
-		if (!HasMdxExtension(entries[i].name)) continue;
+		// 一覧では拡張子だけで判断する（中身まで見ると全部読むことになる）。
+		if (!IsMdxFileName(entries[i].name)) continue;
 		FileItem f;
 		f.baseName = entries[i].name;
 		f.path = Vfs::MakeRef(fs_, fs_->Join(rel_, entries[i].name));

@@ -89,6 +89,23 @@ bool FindAndReadPdx(const Vfs &vfs,
 
 }  // namespace
 
+bool IsMdxFileName(const std::string &name) {
+	if (name.size() < 4) return false;
+	return CompareNoCase(name.substr(name.size() - 4), ".mdx") == 0;
+}
+
+bool IsMdxFile(const Vfs &vfs, const std::string &ref) {
+	if (!IsMdxFileName(ref)) return false;
+
+	std::vector<uint8_t> image;
+	if (!vfs.Read(ref, &image) || image.empty()) return false;
+	// 「タイトル -> PDX ファイル名 -> 演奏データ」の並びを最後まで辿れたら
+	// MDX とみなす。壊れていればどこかで途切れる。
+	uint32_t ofs = 0;
+	return MdxSeekFileImage(&image[0], (uint32_t)image.size(), MDX_CHUNK_TYPE_MDX_BODY,
+	                        &ofs);
+}
+
 bool LoadMdxSong(const Vfs &vfs,
                  const std::string &mdxRef,
                  const std::vector<std::string> &pdxSearchDirs,
