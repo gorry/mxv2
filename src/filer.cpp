@@ -635,6 +635,13 @@ FilerOpen Filer::Open(std::string *playPath) {
 		return kFilerOpenMoved;
 	}
 	if (f.type & (kFileItemDir | kFileItemDrive)) {
+		// 先頭の ".." は BACKSPACE と同じ扱いにする（GoParent が出てきた
+		// フォルダにカーソルを戻す）。ここだけ別扱いなのは、ふつうの
+		// フォルダは「入る」ので合わせる先が無いから。
+		if (cursor_ == 0 && (f.type & kFileItemDir) != 0) {
+			GoParent();
+			return kFilerOpenMoved;
+		}
 		// 「そこを開けるか」は読み出しスレッドの List が兼ねる。開けなければ
 		// PollDir が元の場所へ戻すので、ここで IsDir を呼ぶ必要はない
 		// （呼ぶと遅いファイルシステムではその場で固まる）。
