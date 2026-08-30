@@ -1242,7 +1242,9 @@ int main(int argc, char **argv) {
 
 		mouse.Poll(SDL_GetTicks());
 
-		// MDX のタイトルは別スレッドで読んでいる。届いたぶんを取り込む。
+		// フォルダの中身も MDX のタイトルも別スレッドで読んでいる。
+		// 届いたぶんをここで取り込む。
+		if (filer.PollDir()) fileListRefresh = true;
 		if (filer.PollTitles()) fileListRefresh = true;
 
 		// 設定 UI はここで組み立てる。配色を変えると 640x480 の

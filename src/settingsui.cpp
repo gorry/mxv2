@@ -13,6 +13,7 @@
 
 #include "drawscreen.h"
 #include "fileutil.h"
+#include "dirlister.h"
 #include "filer.h"
 #include "ini.h"
 #include "message.h"
@@ -231,6 +232,9 @@ float FramesToMs(int frames, const Player *player) {
 	return frames * 1000.0f / (float)player->sampleRate();
 }
 
+// 「読み込み中」を出すまでの待ち時間 (ms)。filer.cpp と同じ考え方。
+const uint32_t kLoadingDelayMs = 250;
+
 // フォルダ名を並べるときの順。ファイラー (filer.cpp) と同じ規則。
 bool LessPathNoCase(const std::string &a, const std::string &b) {
 	return CompareNoCase(a, b) < 0;
@@ -320,6 +324,10 @@ SettingsUi::SettingsUi()
       folderTarget_(kFolderTargetFiler),
       folderReturnToSettings_(false),
       folderOpenPending_(false),
+      folderLister_(new DirLister()),
+      folderLoading_(false),
+      folderTicks_(0),
+      folderHasPrev_(false),
       openedModal_(0) {
 	pdxPathBuf_[0] = '\0';
 	folderPathBuf_[0] = '\0';
@@ -329,6 +337,7 @@ SettingsUi::SettingsUi()
 
 SettingsUi::~SettingsUi() {
 	Shutdown();
+	delete folderLister_;
 }
 
 bool SettingsUi::Init(Screen *screen, const AssetPaths &paths, std::string *err) {
@@ -1293,9 +1302,10 @@ void SettingsUi::BuildFsRemoveWindow(Filer *filer) {
 	                      .c_str());
 	ImGui::Separator();
 	if (ImGui::Button(Msg("Button.Remove"))) {
-		// 動的に足したファイルシステムは実体も捨てるので、タイトルを
-		// 読んでいるスレッドの手が離れるのを待ってからにする。
-		if (filer != 0) filer->WaitTitles();
+		// 動的に足したファイルシステムは実体も捨てるので、フォルダと
+		// タイトルを読んでいるスレッドの手が離れるのを待ってからにする。
+		if (filer != 0) filer->WaitIo();
+		folderLister_->Quiesce();
 		vfs_->RemoveMounted(fsSelected_);
 		if (fsSelected_ >= vfs_->count()) fsSelected_ = vfs_->count() - 1;
 		if (fsSelected_ < 0) fsSelected_ = 0;
@@ -1597,16 +1607,29 @@ void SettingsUi::BuildBookmarkToggleWindow(Settings *settings, Filer *filer) {
 // 行き先が変わったときだけ列挙する。
 // dir が空のときはファイルシステムの選択（マウントされている FS が並ぶ）。
 void SettingsUi::RelistFolder(const std::string &dir) {
-	folderDir_.clear();
-	folderSelected_.clear();
-	folderEntries_.clear();
 	if (vfs_ == 0) return;
 
 	FileSystem *fs = 0;
 	std::string rel;
 	if (!vfs_->Parse(dir, &fs, &rel)) return;
-	folderDir_ = Vfs::MakeRef(fs, rel);
+	const std::string want = Vfs::MakeRef(fs, rel);
 
+	// 読めなかったときに戻る先を控える。読み込み中の（まだ空の）姿は
+	// 控えない（続けて打ち込まれたときに空へ戻ってしまう）。
+	if (!folderLoading_) {
+		folderPrevDir_ = folderDir_;
+		folderPrevSelected_ = folderSelected_;
+		folderPrevEntries_ = folderEntries_;
+		folderHasPrev_ = true;
+	}
+
+	folderLoading_ = false;
+	folderLister_->Cancel();
+	folderDir_ = want;
+	folderSelected_.clear();
+	folderEntries_.clear();
+
+	// ファイルシステムの選択。読み込みは要らない。
 	if (fs == 0) {
 		for (int i = 0; i < vfs_->count(); i++) {
 			FileSystem *m = vfs_->at(i);
@@ -1619,12 +1642,37 @@ void SettingsUi::RelistFolder(const std::string &dir) {
 		return;
 	}
 
-	std::vector<DirEntry> entries;
-	std::vector<std::string> names;
-	if (fs->List(rel, &entries)) {
-		for (size_t i = 0; i < entries.size(); i++) {
-			if (entries[i].isDir) names.push_back(entries[i].name);
+	folderLoading_ = true;
+	folderTicks_ = SDL_GetTicks();
+	folderLister_->Start(vfs_, folderDir_);
+}
+
+// 別スレッドが読み終えた中身を一覧へ入れる。
+void SettingsUi::PollFolderDir() {
+	DirLister::Result r;
+	if (!folderLister_->Take(&r)) return;
+	if (!folderLoading_ || r.ref != folderDir_) return;
+
+	folderLoading_ = false;
+
+	if (!r.ok) {
+		// 開けない場所（打ち込みの途中、読めないドライブ）。前の一覧に戻す。
+		if (folderHasPrev_) {
+			folderDir_ = folderPrevDir_;
+			folderSelected_ = folderPrevSelected_;
+			folderEntries_ = folderPrevEntries_;
 		}
+		return;
+	}
+
+	FileSystem *fs = 0;
+	std::string rel;
+	if (vfs_ == 0 || !vfs_->Parse(folderDir_, &fs, &rel) || fs == 0) return;
+
+	folderEntries_.clear();
+	std::vector<std::string> names;
+	for (size_t i = 0; i < r.entries.size(); i++) {
+		if (r.entries[i].isDir) names.push_back(r.entries[i].name);
 	}
 	std::sort(names.begin(), names.end(), LessPathNoCase);
 	for (size_t i = 0; i < names.size(); i++) {
@@ -1648,6 +1696,8 @@ void SettingsUi::RelistFolder(const std::string &dir) {
 // 一覧に出すフォルダを決めて、入力欄もそこへ合わせる。
 void SettingsUi::SetFolderDir(const std::string &dir) {
 	RelistFolder(dir);
+	// folderDir_ は読み込みを始めた時点で行き先になっている（中身だけが
+	// あとから届く）ので、入力欄はそのまま合わせてよい。
 	snprintf(folderPathBuf_, sizeof(folderPathBuf_), "%s", folderDir_.c_str());
 	folderError_.clear();
 }
@@ -1833,6 +1883,9 @@ void SettingsUi::BuildFolderWindow(Settings *settings, Filer *filer) {
 		return;
 	}
 
+	// 一覧は別スレッドが読んでいる。届いていれば取り込む。
+	PollFolderDir();
+
 	// パスは直接打ってもよい。ENTER は「開く」と同じ扱い。
 	ImGui::SetNextItemWidth(-FLT_MIN);
 	bool apply = ImGui::InputText("##folderpath", folderPathBuf_, sizeof(folderPathBuf_),
@@ -1844,8 +1897,11 @@ void SettingsUi::BuildFolderWindow(Settings *settings, Filer *filer) {
 	if (ImGui::IsItemEdited()) {
 		const std::string typed = folderPathBuf_;
 		std::string ref;
+		// 打ち込みの途中は開けない場所を通るが、**それを確かめるのも
+		// 別スレッドの仕事**（ここで IsDir を呼ぶと 1 打鍵ごとに固まる）。
+		// 開けなければ PollFolderDir が前の一覧に戻す。
 		if (!typed.empty() && vfs_ != 0 && vfs_->Resolve(typed, folderDir_, &ref) &&
-		    vfs_->IsDir(ref) && ref != folderDir_) {
+		    ref != folderDir_) {
 			RelistFolder(ref);
 		}
 		folderError_.clear();
@@ -1908,6 +1964,12 @@ void SettingsUi::BuildFolderWindow(Settings *settings, Filer *filer) {
 			}
 		}
 
+		// 手間取っているときだけ知らせる。ローカルのフォルダは一瞬で
+		// 届くので、すぐ出すとちらつくだけになる。
+		if (folderLoading_ && (SDL_GetTicks() - folderTicks_) >= kLoadingDelayMs) {
+			ImGui::TextDisabled("%s", Msg("Filer.Loading"));
+		}
+
 		// ドラッグでスクロールした指を離したときは、押した行を選ばない。
 		// 中身は指に付いて動くので、離した先には押した行がそのまま居る。
 		// これを拾ってしまうと「スクロールしたつもりが選択された」になる。
@@ -1941,7 +2003,10 @@ void SettingsUi::BuildFolderWindow(Settings *settings, Filer *filer) {
 		const bool ok = (vfs_ != 0) && vfs_->Resolve(want, folderDir_, &ref);
 		// ref が空なら「ファイルシステムの選択」。ファイラーは行けるが、
 		// PDX の探索先には指定できない。
-		if (!ok || (!ref.empty() && !vfs_->IsDir(ref))) {
+		// 今一覧に出している場所なら読めているのが分かっているので、
+		// IsDir は省く（遅いファイルシステムでの往復を 1 回減らす）。
+		const bool known = ok && (ref == folderDir_) && !folderLoading_;
+		if (!ok || (!ref.empty() && !known && !vfs_->IsDir(ref))) {
 			folderError_ = Msg("Folder.NotFound");
 		} else if (folderTarget_ == kFolderTargetPdx) {
 			if (ref.empty()) {

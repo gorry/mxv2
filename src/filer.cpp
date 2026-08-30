@@ -7,6 +7,7 @@
 
 #include <SDL.h>
 
+#include "dirlister.h"
 #include "fileutil.h"
 #include "mdxsong.h"
 #include "message.h"
@@ -24,6 +25,10 @@ namespace {
 bool LessNoCase(const FileItem &a, const FileItem &b) {
 	return CompareNoCase(a.baseName, b.baseName) < 0;
 }
+
+// 「読み込み中」の行を出すまでの待ち時間 (ms)。ローカルのフォルダは
+// 一瞬で届くので、すぐ出すとちらつくだけになる。
+const uint32_t kLoadingRowDelayMs = 250;
 
 // 1 曲ぶんのタイトルを読む。読めなければ false（一覧では空欄のまま）。
 bool ReadOneTitle(const Vfs &vfs, const std::string &ref, std::string *out) {
@@ -240,9 +245,18 @@ Filer::Filer()
       rowHeightPx_(1),
       visibleRows_(11),
       folderFirst_(false),
-      titles_(new TitleReader()) {}
+      titles_(new TitleReader()),
+      lister_(new DirLister()),
+      loading_(false),
+      loadingRow_(false),
+      loadTicks_(0),
+      resetCursor_(true),
+      keepCursor_(0),
+      keepTopPx_(0),
+      hasPendingSelect_(false) {}
 
 Filer::~Filer() {
+	delete lister_;
 	delete titles_;
 }
 
@@ -251,6 +265,7 @@ void Filer::SetFolderFirst(bool on) {
 }
 
 void Filer::SetCurrentRef(const std::string &ref) {
+	SaveView();  // 開けなかったときはここへ戻る
 	fs_ = 0;
 	rel_.clear();
 	currentRef_.clear();
@@ -263,54 +278,183 @@ void Filer::SetCurrentRef(const std::string &ref) {
 			currentRef_ = Vfs::MakeRef(fs, rel);
 		}
 	}
-	Refresh();
-	topPx_ = 0;
-	// 旧 mxv と同じく、開いた直後は 1 番目（".." の次）にカーソルを置く。
-	// ファイルシステムの選択には ".." が無いので、そちらは先頭。
-	cursor_ = (fs_ == 0) ? 0 : std::min((int)items_.size() - 1, 1);
-	if (cursor_ < 0) cursor_ = 0;
+	BeginLoad(true);
 }
 
+// 場所は変えずに読み直す。**ファイルシステムは ref から引き直す**
+// （取り外された直後に呼ばれることがあるので、fs_ を信じない）。
 void Filer::Refresh() {
+	SaveView();
+	const std::string ref = currentRef_;
+	fs_ = 0;
+	rel_.clear();
+	currentRef_.clear();
+	if (vfs_ != 0) {
+		FileSystem *fs = 0;
+		std::string rel;
+		if (vfs_->Parse(ref, &fs, &rel) && fs != 0) {
+			fs_ = fs;
+			rel_ = rel;
+			currentRef_ = Vfs::MakeRef(fs, rel);
+		}
+	}
+	BeginLoad(false);
+}
+
+// 今の見た目を控える。**読み込み中は控えない**（先頭 1 行だけの途中の姿を
+// 控えてしまうと、続けて移動して失敗したときにそこへ戻ることになる）。
+void Filer::SaveView() {
+	if (loading_) return;
+	saved_.ref = currentRef_;
+	saved_.items = items_;
+	saved_.cursor = cursor_;
+	saved_.topPx = topPx_;
+	saved_.valid = true;
+}
+
+void Filer::RestoreView() {
+	loading_ = false;
+	loadingRow_ = false;
+	hasPendingSelect_ = false;
+	pendingSelect_.clear();
+
+	// 戻り先のファイルシステムを引き直す。控えたあとに取り外されていたら
+	// もう戻れないので、ファイルシステムの選択へ抜ける。
+	FileSystem *fs = 0;
+	std::string rel;
+	const bool alive = saved_.valid && vfs_ != 0 && vfs_->Parse(saved_.ref, &fs, &rel);
+	if (!alive || (fs == 0 && !saved_.ref.empty())) {
+		saved_.valid = false;
+		fs_ = 0;
+		rel_.clear();
+		currentRef_.clear();
+		BeginLoad(true);
+		return;
+	}
+
+	fs_ = fs;
+	rel_ = rel;
+	currentRef_ = saved_.ref;
+	items_ = saved_.items;
+	cursor_ = saved_.cursor;
+	topPx_ = saved_.topPx;
+	EnsureCursorVisible();
+}
+
+// 一覧の読み込みを始める。中身が届くのはあとのフレーム (PollDir)。
+// resetCursor が false なら、届いたときにカーソルとスクロールを戻す。
+void Filer::BeginLoad(bool resetCursor) {
+	resetCursor_ = resetCursor;
+	keepCursor_ = cursor_;
+	keepTopPx_ = topPx_;
+	pendingSelect_.clear();
+	hasPendingSelect_ = false;
+	loadingRow_ = false;
+	loading_ = false;
+	lister_->Cancel();
 	items_.clear();
+	// 前のフォルダのタイトル読みも打ち切る（一覧が空になるので、
+	// StartReadTitles は「依頼なし」を伝えることになる）。
+	StartReadTitles();
 	if (vfs_ == 0) return;
 
 	// ファイルシステムの選択。画面固定の行ではなく「ref が空のときの一覧」
 	// として作るので、カーソルもスクロールも当たり判定もそのまま使える。
+	// ここは読み込みが要らないのでその場で仕上げる。
 	if (fs_ == 0) {
 		AppendFileSystems(&items_);
-		if (cursor_ >= (int)items_.size()) cursor_ = (int)items_.size() - 1;
-		if (cursor_ < 0) cursor_ = 0;
-		EnsureCursorVisible();
+		FinishLoad();
 		return;
 	}
 
-	// 先頭は必ず親ディレクトリ。ルートでは「ファイルシステムの選択」へ抜ける
-	// 行になる（旧 mxv はここが "\" で、押しても何も起きなかった）。
-	{
-		FileItem f;
-		const bool atRoot = fs_->IsRoot(rel_);
-		f.baseName = atRoot ? "[FS]" : "..";
-		f.path = atRoot ? std::string() : Vfs::MakeRef(fs_, fs_->Parent(rel_));
-		f.title = fs_->DisplayPath(rel_);
-		f.type = atRoot ? kFileItemFileSystem : kFileItemDir;
-		items_.push_back(f);
-	}
+	// 先頭の行だけ先に出しておく。場所の表示と「戻る」は待たずに使える。
+	AppendParentRow(&items_);
+	loading_ = true;
+	loadTicks_ = SDL_GetTicks();
+	lister_->Start(vfs_, currentRef_);
+}
 
+// 別スレッドが読んできた中身で一覧を組み立てる。
+void Filer::BuildItems(const std::vector<DirEntry> &entries) {
+	items_.clear();
+	AppendParentRow(&items_);
 	if (folderFirst_) {
-		AppendDirs(&items_);
-		AppendMdx(&items_);
+		AppendDirs(entries, &items_);
+		AppendMdx(entries, &items_);
 	} else {
-		AppendMdx(&items_);
-		AppendDirs(&items_);
+		AppendMdx(entries, &items_);
+		AppendDirs(entries, &items_);
 	}
 	AppendExtras(&items_);
+}
+
+// 一覧が揃ったあとの後始末。カーソルを決めてタイトルを読み始める。
+void Filer::FinishLoad() {
+	loading_ = false;
+	loadingRow_ = false;
+
+	if (resetCursor_) {
+		topPx_ = 0;
+		// 旧 mxv と同じく、開いた直後は 1 番目（".." の次）にカーソルを置く。
+		// ファイルシステムの選択には ".." が無いので、そちらは先頭。
+		cursor_ = (fs_ == 0) ? 0 : std::min((int)items_.size() - 1, 1);
+	} else {
+		cursor_ = keepCursor_;
+		topPx_ = keepTopPx_;
+	}
+	if (cursor_ >= (int)items_.size()) cursor_ = (int)items_.size() - 1;
+	if (cursor_ < 0) cursor_ = 0;
 
 	StartReadTitles();
 
-	if (cursor_ >= (int)items_.size()) cursor_ = (int)items_.size() - 1;
-	if (cursor_ < 0) cursor_ = 0;
+	// 読み込み中に頼まれていたカーソル合わせ。
+	if (hasPendingSelect_) {
+		const std::string want = pendingSelect_;
+		hasPendingSelect_ = false;
+		pendingSelect_.clear();
+		SelectByPath(want);
+	}
 	EnsureCursorVisible();
+}
+
+bool Filer::PollDir() {
+	DirLister::Result r;
+	if (lister_->Take(&r)) {
+		// 世代番号で古いものは捨てられているが、念のため場所も見る。
+		if (loading_ && r.ref == currentRef_) {
+			if (!r.ok) {
+				// 読めないドライブや消えたフォルダ。元の場所へ戻す。
+				RestoreView();
+				return true;
+			}
+			BuildItems(r.entries);
+			FinishLoad();
+			return true;
+		}
+	}
+
+	// 手間取っているときだけ「読み込み中」を足す。
+	if (loading_ && !loadingRow_ && (SDL_GetTicks() - loadTicks_) >= kLoadingRowDelayMs) {
+		FileItem f;
+		f.title = Msg("Filer.Loading");
+		f.type = kFileItemLoading;
+		items_.push_back(f);
+		loadingRow_ = true;
+		return true;
+	}
+	return false;
+}
+
+// 先頭は必ず親ディレクトリ。ルートでは「ファイルシステムの選択」へ抜ける
+// 行になる（旧 mxv はここが "\" で、押しても何も起きなかった）。
+void Filer::AppendParentRow(std::vector<FileItem> *out) {
+	FileItem f;
+	const bool atRoot = fs_->IsRoot(rel_);
+	f.baseName = atRoot ? "[FS]" : "..";
+	f.path = atRoot ? std::string() : Vfs::MakeRef(fs_, fs_->Parent(rel_));
+	f.title = fs_->DisplayPath(rel_);
+	f.type = atRoot ? kFileItemFileSystem : kFileItemDir;
+	out->push_back(f);
 }
 
 // ファイルシステムの選択。並び順は [ファイルシステムの設定] で決めたもの。
@@ -334,10 +478,7 @@ void Filer::AppendFileSystems(std::vector<FileItem> *out) {
 	}
 }
 
-void Filer::AppendDirs(std::vector<FileItem> *out) {
-	std::vector<DirEntry> entries;
-	if (!fs_->List(rel_, &entries)) return;
-
+void Filer::AppendDirs(const std::vector<DirEntry> &entries, std::vector<FileItem> *out) {
 	std::vector<FileItem> dirs;
 	for (size_t i = 0; i < entries.size(); i++) {
 		if (!entries[i].isDir) continue;
@@ -351,10 +492,7 @@ void Filer::AppendDirs(std::vector<FileItem> *out) {
 	out->insert(out->end(), dirs.begin(), dirs.end());
 }
 
-void Filer::AppendMdx(std::vector<FileItem> *out) {
-	std::vector<DirEntry> entries;
-	if (!fs_->List(rel_, &entries)) return;
-
+void Filer::AppendMdx(const std::vector<DirEntry> &entries, std::vector<FileItem> *out) {
 	std::vector<FileItem> files;
 	for (size_t i = 0; i < entries.size(); i++) {
 		if (entries[i].isDir) continue;
@@ -395,8 +533,9 @@ void Filer::StartReadTitles() {
 	titles_->Start(vfs_, jobs);
 }
 
-void Filer::WaitTitles() {
+void Filer::WaitIo() {
 	titles_->Quiesce();
+	lister_->Quiesce();
 }
 
 bool Filer::PollTitles() {
@@ -496,7 +635,9 @@ FilerOpen Filer::Open(std::string *playPath) {
 		return kFilerOpenMoved;
 	}
 	if (f.type & (kFileItemDir | kFileItemDrive)) {
-		if (!vfs_->IsDir(f.path)) return kFilerOpenNone;
+		// 「そこを開けるか」は読み出しスレッドの List が兼ねる。開けなければ
+		// PollDir が元の場所へ戻すので、ここで IsDir を呼ぶ必要はない
+		// （呼ぶと遅いファイルシステムではその場で固まる）。
 		SetCurrentRef(f.path);
 		return kFilerOpenMoved;
 	}
@@ -532,6 +673,13 @@ void Filer::GoRoot() {
 
 bool Filer::SelectByPath(const std::string &ref) {
 	if (vfs_ == 0) return false;
+	// 一覧がまだ無いので、届いてから合わせる（SetCurrentRef の直後に
+	// 呼ばれるのが普通なので、ここを外すと毎回外れてしまう）。
+	if (loading_) {
+		pendingSelect_ = ref;
+		hasPendingSelect_ = true;
+		return true;
+	}
 	FileSystem *wantFs = 0;
 	std::string wantRel;
 	if (!vfs_->Parse(ref, &wantFs, &wantRel) || wantFs == 0) return false;

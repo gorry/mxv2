@@ -127,6 +127,7 @@ add_executable(mxv2
 	src/bitmap.cpp
 	src/bmpfile.cpp
 	src/colors.cpp
+	src/dirlister.cpp
 	src/drawscreen.cpp
 	src/filer.cpp
 	src/fileutil.cpp
@@ -150,6 +151,7 @@ add_executable(mxv2
 	src/bmpfile.h
 	src/colors.h
 	src/cp932table.h
+	src/dirlister.h
 	src/dispqueue.h
 	src/drawscreen.h
 	src/filer.h

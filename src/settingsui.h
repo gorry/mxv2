@@ -24,6 +24,7 @@
 
 namespace mxv2 {
 
+class DirLister;
 class DrawScreen;
 class Filer;
 class Player;
@@ -335,8 +336,12 @@ private:
 	// 設定ウィンドウが閉じきってからフォルダ選択を出し、閉じたら開き直す。
 	bool folderReturnToSettings_;
 	bool folderOpenPending_;
-	// 子フォルダの一覧だけ作り直す（入力欄には触らない）。
+	// 子フォルダの一覧だけ作り直す（入力欄には触らない）。**読むのは
+	// 別スレッド**なので、中身が入るのはあとのフレーム (PollFolderDir)。
 	void RelistFolder(const std::string &dir);
+	// 別スレッドが読み終えた中身を取り込む。ダイアログを組み立てる前に
+	// 毎フレーム呼ぶこと。開けなかったときは元の場所へ戻す。
+	void PollFolderDir();
 	// 一覧で選んだものを入力欄へ移す。中へは入らない（そこはダブルクリック）。
 	void SelectFolderEntry(const std::string &path);
 	// 一覧に出すフォルダを決めて、入力欄もそこへ合わせる。
@@ -352,6 +357,17 @@ private:
 		std::string ref;
 	};
 	std::vector<FolderEntry> folderEntries_;
+	// 一覧は別スレッドで読む。外部ファイルシステムでは 1 回の List に
+	// 通信が要るので、打ち込むたびにここで待つと入力ごと固まる。
+	DirLister *folderLister_;
+	bool folderLoading_;
+	uint32_t folderTicks_;                     // 読み始めた時刻
+	// 開けなかったときの戻り先（打ち込みの途中は開けない場所を通るので、
+	// そのたびに一覧が消えないよう、読めるまで前のものを出しておく）。
+	bool folderHasPrev_;
+	std::string folderPrevDir_;
+	std::string folderPrevSelected_;
+	std::vector<FolderEntry> folderPrevEntries_;
 	std::string folderError_;                  // 開けなかったときの文言
 	std::string requestedFolder_;              // kRequestSetFolder の行き先 (ref)
 	char folderPathBuf_[512];                  // パスの入力欄
