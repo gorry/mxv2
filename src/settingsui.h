@@ -26,6 +26,7 @@ namespace mxv2 {
 
 class DirLister;
 class DrawScreen;
+class SongLoader;
 class Filer;
 class Player;
 class Screen;
@@ -42,6 +43,10 @@ public:
 
 	// フォルダ選択とファイルシステムの設定で使う VFS。Init のあとに渡す。
 	void SetVfs(Vfs *vfs) { vfs_ = vfs; }
+
+	// 曲の読み込みスレッド。ファイルシステムを取り外す前に止めるために
+	// 名前を知っておく（読んでいる最中に実体が消えると落ちる）。
+	void SetSongLoader(SongLoader *loader) { songLoader_ = loader; }
 
 	void Shutdown();
 
@@ -359,6 +364,7 @@ private:
 	std::vector<FolderEntry> folderEntries_;
 	// 一覧は別スレッドで読む。外部ファイルシステムでは 1 回の List に
 	// 通信が要るので、打ち込むたびにここで待つと入力ごと固まる。
+	SongLoader *songLoader_;
 	DirLister *folderLister_;
 	bool folderLoading_;
 	uint32_t folderTicks_;                     // 読み始めた時刻

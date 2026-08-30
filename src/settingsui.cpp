@@ -15,6 +15,7 @@
 #include "fileutil.h"
 #include "dirlister.h"
 #include "filer.h"
+#include "songloader.h"
 #include "ini.h"
 #include "message.h"
 #include "player.h"
@@ -324,6 +325,7 @@ SettingsUi::SettingsUi()
       folderTarget_(kFolderTargetFiler),
       folderReturnToSettings_(false),
       folderOpenPending_(false),
+      songLoader_(0),
       folderLister_(new DirLister()),
       folderLoading_(false),
       folderTicks_(0),
@@ -1306,6 +1308,7 @@ void SettingsUi::BuildFsRemoveWindow(Filer *filer) {
 		// タイトルを読んでいるスレッドの手が離れるのを待ってからにする。
 		if (filer != 0) filer->WaitIo();
 		folderLister_->Quiesce();
+		if (songLoader_ != 0) songLoader_->Quiesce();
 		vfs_->RemoveMounted(fsSelected_);
 		if (fsSelected_ >= vfs_->count()) fsSelected_ = vfs_->count() - 1;
 		if (fsSelected_ < 0) fsSelected_ = 0;

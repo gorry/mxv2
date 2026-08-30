@@ -140,6 +140,7 @@ add_executable(mxv2
 	src/settings.cpp
 	src/settingsui.cpp
 	src/skin.cpp
+	src/songloader.cpp
 	src/statuswatch.cpp
 	src/text.cpp
 	src/textlayer.cpp
@@ -166,6 +167,7 @@ add_executable(mxv2
 	src/settings.h
 	src/settingsui.h
 	src/skin.h
+	src/songloader.h
 	src/statuswatch.h
 	src/text.h
 	src/textlayer.h

@@ -28,6 +28,7 @@
 #include "settings.h"
 #include "settingsui.h"
 #include "skin.h"
+#include "songloader.h"
 #include "textlayer.h"
 #include "vfs.h"
 #include "visualizer.h"
@@ -366,6 +367,32 @@ bool ParseArgs(int argc, char **argv, Options *opt, mxv2::Settings *st) {
 	return true;
 }
 
+// 読み込み中の曲。**読み終わるまで前の曲はそのまま鳴っている**ので、
+// ここには「届いたら何をするか」だけを置く。
+struct SongLoad {
+	bool active;
+	std::string path;        // 読んでいる曲の ref
+	uint32_t startTicks;     // 頼んだ時刻 (SDL_GetTicks)
+	bool noticeShown;        // 「読み込み中」を曲名の位置に出したか
+	std::string prevTitle;   // 出す前の曲名（読めなかったときに戻す）
+
+	// 読み終わってから掛け直すもの。出力レートを変えたときだけ使う
+	// （同期だった頃は StartPlay の直後に呼んでいた）。
+	int seekMs;
+	bool pause;
+	uint32_t channelMask;
+	bool hasChannelMask;
+
+	SongLoad()
+	    : active(false),
+	      startTicks(0),
+	      noticeShown(false),
+	      seekMs(0),
+	      pause(false),
+	      channelMask(0),
+	      hasChannelMask(false) {}
+};
+
 // 曲を切り替えるときに触るもの一式。キーボード・マウス・自動送りの
 // どれからでも同じ手順を通すためにまとめてある。
 struct PlayContext {
@@ -376,12 +403,14 @@ struct PlayContext {
 	mxv2::DrawScreen *draw;
 	mxv2::Visualizer *visualizer;
 	mxv2::Screen *screen;
+	mxv2::SongLoader *loader;
 
 	bool *playing;
 	std::string *currentPath;
 	bool *endSeen;
 	bool *chromeRefresh;
 	bool *fileListRefresh;
+	SongLoad *load;
 };
 
 // PDX の探索先。設定の 1 つと -pdxpath の指定を合わせたもの。
@@ -404,50 +433,110 @@ std::vector<std::string> PdxSearchDirs(const mxv2::Vfs &vfs, const Options &opt,
 	return dirs;
 }
 
+// 「読み込み中」を曲名の位置に出すまでの待ち時間 (ms)。ローカルの曲は
+// 一瞬で届くので、すぐ出すとちらつくだけになる。
+const uint32_t kSongNoticeDelayMs = 250;
+
 // 1 曲読み込んで演奏を始める。path は ref。
-bool PlayPath(const std::string &path, const mxv2::Vfs &vfs, const Options &opt,
-              const mxv2::Settings &st, mxv2::Player *player, mxv2::DrawScreen *draw,
-              mxv2::Visualizer *visualizer, mxv2::Screen *screen) {
-	mxv2::MdxSong song;
-	std::string err;
-	if (!mxv2::LoadMdxSong(vfs, path, PdxSearchDirs(vfs, opt, st), &song, &err)) {
-		printf("ERROR: %s\n", err.c_str());
-		return false;
-	}
-	if (!player->PlaySong(song, &err)) {
-		printf("ERROR: %s\n", err.c_str());
-		return false;
-	}
+// **読むのは別スレッド**なので、ここは依頼を出すだけ。実際に音が変わるのは
+// PollSong が結果を受け取ったとき。それまでは前の曲がそのまま鳴っている。
+void StartPlayResume(const PlayContext &ctx, const std::string &path,
+                     int seekMs, bool pause, uint32_t channelMask, bool hasChannelMask) {
+	SongLoad *ld = ctx.load;
+	ld->active = true;
+	ld->path = path;
+	ld->startTicks = SDL_GetTicks();
+	ld->noticeShown = false;
+	ld->prevTitle.clear();
+	ld->seekMs = seekMs;
+	ld->pause = pause;
+	ld->channelMask = channelMask;
+	ld->hasChannelMask = hasChannelMask;
 
-	visualizer->Reset();
-	draw->Reload();
-	draw->PutMDXTitle(song.title);
-	if (screen != 0) {
-		screen->SetTitle(song.title.empty() ? std::string("mxv2")
-		                                    : ("mxv2 - " + song.title));
-	}
-
-	printf("play     : %s\n", song.path.c_str());
-	printf("title    : %s\n", song.title.c_str());
-	if (song.requiresPdx && !song.hasPdx) {
-		printf("warning  : %s\n",
-		       mxv2::MsgF("Log.PdxNotFound", song.pdxFileName).c_str());
-	}
-	printf("duration : %.1f sec\n", player->playTimeMs() / 1000.0f);
-	// MSVC の setvbuf は _IOLBF を全バッファ扱いにするので、明示的に流す。
-	fflush(stdout);
-	return true;
+	ctx.loader->Start(ctx.vfs, path, PdxSearchDirs(*ctx.vfs, *ctx.opt, *ctx.settings));
+	*ctx.endSeen = false;
 }
 
-// PlayPath にメインループ側の状態更新を足したもの。
 void StartPlay(const PlayContext &ctx, const std::string &path) {
-	const bool ok = PlayPath(path, *ctx.vfs, *ctx.opt, *ctx.settings, ctx.player, ctx.draw,
-	                         ctx.visualizer, ctx.screen);
-	*ctx.playing = ok;
-	if (ok) *ctx.currentPath = path;
-	*ctx.endSeen = false;
-	*ctx.chromeRefresh = true;
-	*ctx.fileListRefresh = true;
+	StartPlayResume(ctx, path, 0, false, 0, false);
+}
+
+// 読み終わった曲を演奏へ渡す。毎フレーム呼ぶこと。何か起きたら true。
+bool PollSong(const PlayContext &ctx) {
+	SongLoad *ld = ctx.load;
+
+	mxv2::SongLoader::Result r;
+	if (ctx.loader->Take(&r)) {
+		// 世代番号で古いものは捨てられているが、念のため行き先も見る。
+		if (ld->active && r.ref == ld->path) {
+			ld->active = false;
+			const std::string prevTitle = ld->prevTitle;
+			const bool restoreTitle = ld->noticeShown;
+			ld->noticeShown = false;
+
+			std::string err;
+			if (!r.ok) {
+				printf("ERROR: %s\n", r.err.c_str());
+				fflush(stdout);
+				if (restoreTitle) ctx.draw->PutMDXTitle(prevTitle);
+				*ctx.playing = false;
+				*ctx.chromeRefresh = true;
+				*ctx.fileListRefresh = true;
+				return true;
+			}
+			if (!ctx.player->PlaySong(r.song, &err)) {
+				printf("ERROR: %s\n", err.c_str());
+				fflush(stdout);
+				if (restoreTitle) ctx.draw->PutMDXTitle(prevTitle);
+				*ctx.playing = false;
+				*ctx.chromeRefresh = true;
+				*ctx.fileListRefresh = true;
+				return true;
+			}
+
+			ctx.visualizer->Reset();
+			ctx.draw->Reload();
+			ctx.draw->PutMDXTitle(r.song.title);
+			if (ctx.screen != 0) {
+				ctx.screen->SetTitle(r.song.title.empty()
+				                         ? std::string("mxv2")
+				                         : ("mxv2 - " + r.song.title));
+			}
+
+			// 出力レートを変えたときの掛け直し。曲を掛け直すとマスクが
+			// 消えるので、ここで入れ直す。
+			if (ld->seekMs != 0) ctx.player->SeekMs(ld->seekMs);
+			if (ld->pause) ctx.player->Pause();
+			if (ld->hasChannelMask) ctx.player->SetChannelMask(ld->channelMask);
+
+			printf("play     : %s\n", r.song.path.c_str());
+			printf("title    : %s\n", r.song.title.c_str());
+			if (r.song.requiresPdx && !r.song.hasPdx) {
+				printf("warning  : %s\n",
+				       mxv2::MsgF("Log.PdxNotFound", r.song.pdxFileName).c_str());
+			}
+			printf("duration : %.1f sec\n", ctx.player->playTimeMs() / 1000.0f);
+			// MSVC の setvbuf は _IOLBF を全バッファ扱いにするので、明示的に流す。
+			fflush(stdout);
+
+			*ctx.playing = true;
+			*ctx.currentPath = r.ref;
+			*ctx.endSeen = false;
+			*ctx.chromeRefresh = true;
+			*ctx.fileListRefresh = true;
+			return true;
+		}
+	}
+
+	// 手間取っているときだけ、曲名の位置で知らせる。
+	if (ld->active && !ld->noticeShown &&
+	    (SDL_GetTicks() - ld->startTicks) >= kSongNoticeDelayMs) {
+		ld->prevTitle = ctx.draw->mdxTitle();
+		ctx.draw->PutMDXTitle(mxv2::Msg("Player.Loading"));
+		ld->noticeShown = true;
+		return true;
+	}
+	return false;
 }
 
 // ファイラーのカーソルを開く。曲なら演奏、フォルダやファイルシステムなら移動、
@@ -814,6 +903,11 @@ int main(int argc, char **argv) {
 	bool playing = false;
 	std::string currentPath;
 
+	// 曲の読み込みは別スレッド。届いたぶんを PollSong が演奏へ渡す。
+	mxv2::SongLoader songLoader;
+	SongLoad songLoad;
+	ui.SetSongLoader(&songLoader);
+
 	// 演奏終了時のふるまい
 	bool autoNext = false;    // CONT
 	bool autoRepeat = false;  // REPEAT
@@ -832,11 +926,13 @@ int main(int argc, char **argv) {
 	ctx.draw = &draw;
 	ctx.visualizer = &visualizer;
 	ctx.screen = &screen;
+	ctx.loader = &songLoader;
 	ctx.playing = &playing;
 	ctx.currentPath = &currentPath;
 	ctx.endSeen = &endSeen;
 	ctx.chromeRefresh = &chromeRefresh;
 	ctx.fileListRefresh = &fileListRefresh;
+	ctx.load = &songLoad;
 
 	if (!startFile.empty()) StartPlay(ctx, startFile);
 
@@ -1224,11 +1320,10 @@ int main(int argc, char **argv) {
 					player.SetMainVolume(mainVol);
 					player.SetChannelMask(mask);
 					if (wasPlaying && !keep.empty()) {
-						StartPlay(ctx, keep);
-						if (atMs != 0) player.SeekMs(atMs);
-						if (wasPaused) player.Pause();
-						// 曲の掛け直しと空回しでマスクが消えるので入れ直す。
-						player.SetChannelMask(mask);
+						// 掛け直しは読み終わってからになるので、位置・
+						// 一時停止・マスクは PollSong へ預ける
+						// （曲の掛け直しと空回しでマスクが消えるため）。
+						StartPlayResume(ctx, keep, atMs, wasPaused, mask, true);
 					}
 					visualizer.Reset();
 					draw.Reload();
@@ -1242,10 +1337,11 @@ int main(int argc, char **argv) {
 
 		mouse.Poll(SDL_GetTicks());
 
-		// フォルダの中身も MDX のタイトルも別スレッドで読んでいる。
-		// 届いたぶんをここで取り込む。
+		// フォルダの中身も MDX のタイトルも曲そのものも別スレッドで
+		// 読んでいる。届いたぶんをここで取り込む。
 		if (filer.PollDir()) fileListRefresh = true;
 		if (filer.PollTitles()) fileListRefresh = true;
+		PollSong(ctx);
 
 		// 設定 UI はここで組み立てる。配色を変えると 640x480 の
 		// オフスクリーンを作り直すので、下の描画より先に回す。
@@ -1361,7 +1457,8 @@ int main(int argc, char **argv) {
 			}
 		}
 
-		if (playing && player.playTerminated()) {
+		// 読み込み中は前の曲が鳴り続けているので、その終わりで次へ送らない。
+		if (playing && !songLoad.active && player.playTerminated()) {
 			if (!endSeen) {
 				endSeen = true;
 				endFrame = frame;

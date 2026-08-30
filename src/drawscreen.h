@@ -98,6 +98,8 @@ public:
 
 	// ---- 画面下部 ---------------------------------------------------
 	void PutMDXTitle(const std::string &titleUtf8);
+	// 今出している曲名。読み込み中の知らせを出す前に控えておくのに使う。
+	const std::string &mdxTitle() const { return mdxTitle_; }
 	void PutProgressBar(uint32_t nowTimeMs, uint32_t playTimeMs, bool refresh);
 	// 音量は -100..+100（0 が中央）。つまみの画素位置は中で計算する。
 	void PutTotalVolBar(int volume, bool refresh);
