@@ -2,48 +2,90 @@
 
 #include "text.h"
 
-#ifdef _WIN32
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#endif
+#include "cp932table.h"
 
 namespace mxv2 {
 
+namespace {
+
+// CP932 の既定文字 (・)。対応の無いバイト列はここへ落ちる。
+// Windows の MultiByteToWideChar(932) がそうしているので、それに合わせた。
+const unsigned kDefaultChar = 0x30FB;
+
+// Unicode 1 文字を UTF-8 で足す。CP932 の対応先は BMP に収まるので
+// 3 バイトまでしか出ない。
+void AppendUtf8(std::string *out, unsigned cp) {
+	if (cp < 0x80) {
+		*out += (char)cp;
+	} else if (cp < 0x800) {
+		*out += (char)(0xC0 | (cp >> 6));
+		*out += (char)(0x80 | (cp & 0x3F));
+	} else {
+		*out += (char)(0xE0 | (cp >> 12));
+		*out += (char)(0x80 | ((cp >> 6) & 0x3F));
+		*out += (char)(0x80 | (cp & 0x3F));
+	}
+}
+
+bool IsLeadByte(unsigned char b) {
+	return (b >= cp932::kLeadLo1 && b <= cp932::kLeadHi1) ||
+	       (b >= cp932::kLeadLo2 && b <= cp932::kLeadHi2);
+}
+
+int LeadIndex(unsigned char b) {
+	if (b <= cp932::kLeadHi1) return (int)b - cp932::kLeadLo1;
+	return (cp932::kLeadHi1 - cp932::kLeadLo1 + 1) + ((int)b - cp932::kLeadLo2);
+}
+
+// 単バイト文字。ASCII と半角カナのほかに、CP932 だけが持つ割り当てが
+// 4 つある (0xA0 / 0xFD / 0xFE / 0xFF → U+F8F0-U+F8F3 の私用領域)。
+// 相方の無い先行バイトもここへ来るので、その場合は既定文字。
+unsigned SingleByteChar(unsigned char b) {
+	if (b < 0x80) return b;
+	if (b >= 0xA1 && b <= 0xDF) return 0xFF61 + ((unsigned)b - 0xA1);
+	switch (b) {
+		case 0x80: return 0x0080;
+		case 0xA0: return 0xF8F0;
+		case 0xFD: return 0xF8F1;
+		case 0xFE: return 0xF8F2;
+		case 0xFF: return 0xF8F3;
+		default: return kDefaultChar;
+	}
+}
+
+}  // namespace
+
 std::string SjisToUtf8(const std::string &sjis) {
-	if (sjis.empty()) return std::string();
-
-#ifdef _WIN32
-	const UINT kCodePageShiftJis = 932;
-	int wlen = MultiByteToWideChar(kCodePageShiftJis, 0, sjis.c_str(), (int)sjis.size(), NULL, 0);
-	if (wlen <= 0) return sjis;
-	std::wstring w((size_t)wlen, L'\0');
-	MultiByteToWideChar(kCodePageShiftJis, 0, sjis.c_str(), (int)sjis.size(), &w[0], wlen);
-
-	int ulen = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), wlen, NULL, 0, NULL, NULL);
-	if (ulen <= 0) return sjis;
-	std::string u((size_t)ulen, '\0');
-	WideCharToMultiByte(CP_UTF8, 0, w.c_str(), wlen, &u[0], ulen, NULL, NULL);
-	return u;
-#else
-	// TODO(Phase 7): 変換テーブルを持たせる。それまでは ASCII のみ通し、
-	//   2 バイト文字は U+FFFD (REPLACEMENT CHARACTER) に潰す。
-	//   文字の「描画」は OS 非依存になったが、MDX タイトルの Shift-JIS →
-	//   UTF-8 変換だけはまだ Windows の CP932 に頼っている。Android /
-	//   Emscripten では曲名が全て豆腐になるので、ここを埋めるのが先決。
 	std::string out;
-	out.reserve(sjis.size());
-	for (size_t i = 0; i < sjis.size(); i++) {
-		unsigned char c = (unsigned char)sjis[i];
-		if (c < 0x80) {
-			out += (char)c;
+	out.reserve(sjis.size() + sjis.size() / 2);
+
+	size_t i = 0;
+	while (i < sjis.size()) {
+		const unsigned char c = (unsigned char)sjis[i];
+		if (!IsLeadByte(c)) {
+			AppendUtf8(&out, SingleByteChar(c));
+			i++;
 			continue;
 		}
-		bool lead = (c >= 0x81 && c <= 0x9f) || (c >= 0xe0 && c <= 0xfc);
-		if (lead && i + 1 < sjis.size()) i++;
-		out += "\xEF\xBF\xBD";
+
+		// 先行バイト。後続が無いとき、および後続が 0x00 のときは 1 バイトで
+		// 打ち切る。それ以外は対応が無くても 2 バイトまとめて食う
+		// （どちらも Windows の CP932 変換の振る舞いに合わせたもの）。
+		const unsigned char t = (i + 1 < sjis.size()) ? (unsigned char)sjis[i + 1] : 0x00;
+		if (t == 0x00) {
+			AppendUtf8(&out, kDefaultChar);
+			i++;
+			continue;
+		}
+
+		unsigned u = 0;
+		if (t >= cp932::kTrailLo && t <= cp932::kTrailHi) {
+			u = cp932::kDoubleByte[LeadIndex(c) * cp932::kTrailCount + ((int)t - cp932::kTrailLo)];
+		}
+		AppendUtf8(&out, (u != 0) ? u : kDefaultChar);
+		i += 2;
 	}
 	return out;
-#endif
 }
 
 std::string TrimTrailingControl(const std::string &s) {

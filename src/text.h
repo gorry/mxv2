@@ -10,10 +10,10 @@
 
 namespace mxv2 {
 
-// Shift_JIS -> UTF-8。
-// TODO(Phase 7): 現在 Windows では OS の CP932 変換に頼っている。
-//   Android / Emscripten 用に自前の変換テーブルへ差し替える。
-//   ここが mxv2 に残っている唯一のプラットフォーム依存。
+// Shift_JIS (CP932) -> UTF-8。
+// 変換表 src/cp932table.h を自前で引くので、どのプラットフォームでも同じ
+// 結果になる（表は Windows の CP932 変換から書き出したもの）。
+// 対応の無いバイト列は CP932 の既定文字 U+30FB (・) に落ちる。
 std::string SjisToUtf8(const std::string &sjis);
 
 // 末尾の制御文字 (CR / LF / EOF / 空白) を落とす。

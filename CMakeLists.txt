@@ -149,6 +149,7 @@ add_executable(mxv2
 	src/bitmap.h
 	src/bmpfile.h
 	src/colors.h
+	src/cp932table.h
 	src/dispqueue.h
 	src/drawscreen.h
 	src/filer.h
