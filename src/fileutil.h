@@ -44,7 +44,18 @@ std::string ExecutableDir();
 // 実行ファイルの隣は書けるとは限らない（Program Files の下、Android の apk の
 // 中）ので、設定やユーザーが足した素材はこちらへ置く。appName はフォルダ名に
 // そのまま使う。取得できなければ実行ファイルの隣を返す。
+//
+// **ここは「ユーザーが中身を差し替える場所」でもある**（font.ttf、スキン、
+// 曲）。だから Android では、外から見える
+// /sdcard/Android/data/<パッケージ>/files/ を返す。
 std::string UserDataDir(const std::string &appName);
+
+// 前の版がユーザーフォルダに使っていた場所（末尾に区切りを含む）。
+// 引き取りたいものがあるときだけ見る。今と同じか、そもそも無ければ空。
+//
+// Android の 2026-08-31 より前の版は、外から見えない内部ストレージ
+// (/data/data/<パッケージ>/files/) に設定を置いていた。
+std::string LegacyUserDataDir(const std::string &appName);
 
 // ディレクトリか。
 bool IsDirectory(const std::string &path);

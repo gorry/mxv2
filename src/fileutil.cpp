@@ -242,7 +242,28 @@ std::string ExecutableDir() {
 }
 
 std::string UserDataDir(const std::string &appName) {
-#if defined(__ANDROID__) || defined(__EMSCRIPTEN__)
+#if defined(__ANDROID__)
+	// Android のアプリ専用の置き場所は 2 つある。
+	//   内部 /data/data/<パッケージ>/files/
+	//     … 他のアプリからもパソコンからも**見えない**。SDL_GetPrefPath は
+	//        こちらを返す。
+	//   外部 /sdcard/Android/data/<パッケージ>/files/
+	//     … USB でパソコンから見えるし adb push でも入る。権限は要らず、
+	//        アンインストールで消える。
+	// ユーザーフォルダは font.ttf やスキンや曲を**ユーザーが置く場所**なので、
+	// 見えなければ意味がない。外部を使う。
+	//
+	// なお、このフォルダは getExternalFilesDir を呼ぶまで作られない。
+	// SDL_AndroidGetExternalStoragePath() がそれを呼ぶので、**ここを通ること
+	// 自体がフォルダを作ることでもある**（呼ばなければ、パソコンから見ても
+	// そんなフォルダは無い、と言われる）。
+	if ((SDL_AndroidGetExternalStorageState() & SDL_ANDROID_EXTERNAL_STORAGE_WRITE) != 0) {
+		const char *ext = SDL_AndroidGetExternalStoragePath();
+		if (ext != NULL && ext[0] != '\0') return WithSeparator(std::string(ext));
+	}
+	// 外部が使えない端末では内部へ落とす（見えないが、動きはする）。
+	return LegacyUserDataDir(appName);
+#elif defined(__EMSCRIPTEN__)
 	// 内部ストレージの場所は OS ごとに違ううえに実行時にしか分からない。
 	char *pref = SDL_GetPrefPath("", appName.c_str());
 	if (pref == NULL) return ExecutableDir();
@@ -267,6 +288,21 @@ std::string UserDataDir(const std::string &appName) {
 		base = JoinPath(home, ".local/share");
 	}
 	return WithSeparator(JoinPath(base, appName));
+#endif
+}
+
+std::string LegacyUserDataDir(const std::string &appName) {
+#if defined(__ANDROID__)
+	// 2026-08-31 より前は、ここ（外から見えない内部ストレージ）に
+	// mxv2.ini を置いていた。
+	char *pref = SDL_GetPrefPath("", appName.c_str());
+	if (pref == NULL) return ExecutableDir();
+	std::string dir = WithSeparator(std::string(pref));
+	SDL_free(pref);
+	return dir;
+#else
+	(void)appName;
+	return std::string();
 #endif
 }
 

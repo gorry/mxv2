@@ -345,16 +345,30 @@ void PrintAudioInfo(const mxv2::Player &player, bool latencyAuto) {
 	fflush(stdout);
 }
 
-// 旧い版は実行ファイルの隣に mxv2.ini を置いていた。ユーザーフォルダ側が
-// まだ無ければ、そこから 1 度だけ引き取る（元は残す）。
+// 前の版が mxv2.ini を置いていた場所から、1 度だけ引き取る（元は残す）。
+// 引き取り先が既にあれば何もしない。心当たりは 2 つ:
+//   ・実行ファイルの隣（デスクトップの旧い版）
+//   ・Android の内部ストレージ（外から見えないので、ユーザーフォルダを
+//     外部へ移した 2026-08-31 より前の版）
 void MigrateLegacySettings(const std::string &newPath) {
 	if (mxv2::FileExists(newPath)) return;
 
-	const std::string oldPath = mxv2::JoinPath(mxv2::ExecutableDir(), "mxv2.ini");
-	std::vector<uint8_t> data;
-	if (!mxv2::FileExists(oldPath) || !mxv2::ReadWholeFile(oldPath, &data)) return;
-	if (!mxv2::WriteWholeFile(newPath, data)) return;
-	printf("settings : %s\n", mxv2::MsgF("Log.SettingsMigrated", oldPath).c_str());
+	std::vector<std::string> olds;
+	olds.push_back(mxv2::JoinPath(mxv2::ExecutableDir(), "mxv2.ini"));
+	{
+		const std::string legacy = mxv2::LegacyUserDataDir(kUserDirName);
+		if (!legacy.empty()) olds.push_back(mxv2::JoinPath(legacy, "mxv2.ini"));
+	}
+
+	for (size_t i = 0; i < olds.size(); i++) {
+		const std::string &oldPath = olds[i];
+		if (mxv2::DirNameOf(oldPath) == mxv2::DirNameOf(newPath)) continue;
+		std::vector<uint8_t> data;
+		if (!mxv2::FileExists(oldPath) || !mxv2::ReadWholeFile(oldPath, &data)) continue;
+		if (!mxv2::WriteWholeFile(newPath, data)) continue;
+		printf("settings : %s\n", mxv2::MsgF("Log.SettingsMigrated", oldPath).c_str());
+		return;
+	}
 }
 
 // mxv2.ini から読んだ設定を、コマンドラインで上書きする。
