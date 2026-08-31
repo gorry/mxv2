@@ -29,6 +29,39 @@ namespace mxv2 {
 
 namespace {
 
+#ifdef __ANDROID__
+// 新しく作るディレクトリのモード。**グループに書き込みを持たせる**。
+//
+// Android の外部アプリ領域 (/sdcard/Android/data/<パッケージ>/files/) は、
+// パソコンのエクスプローラや端末のファイルマネージャからは
+// **ext_data_rw グループ**として見える。0755 で作るとグループに書き込みが
+// 無いので、**その中へ外からファイルを置けない**（フォルダは見えるのに
+// 書き込めない、という症状になる）。
+//
+// setgid は親から引き継がれるので、こちらで立てる必要はない。
+const int kNewDirMode = 0770;
+#elif !defined(_WIN32)
+const int kNewDirMode = 0755;
+#endif
+
+// グループの書き込みが落ちているディレクトリを直す。umask に削られたぶんと、
+// 前の版が 0755 で作ってしまったものが対象。
+//
+// **足りないビットを足すだけにして、モードを丸ごと渡さないこと。**
+// Android 自身が作る files/ には setgid が立っており (drwxrws---)、
+// chmod に 0770 を渡すとそれを落としてしまう。しかも FUSE 越しでは
+// setgid を立て直せない（chmod 02770 は通るが立たない）ので、落とすと戻せない。
+void FixSharedDirMode(const std::string &path) {
+#ifdef __ANDROID__
+	struct stat st;
+	if (stat(path.c_str(), &st) != 0) return;
+	if ((st.st_mode & S_IWGRP) != 0) return;  // すでに書ける。触らない
+	(void)chmod(path.c_str(), (st.st_mode & 07777) | S_IWGRP);
+#else
+	(void)path;
+#endif
+}
+
 #ifdef _WIN32
 std::wstring Utf8ToWide(const std::string &s) {
 	if (s.empty()) return std::wstring();
@@ -331,7 +364,10 @@ bool MakeDirectories(const std::string &pathIn) {
 		path.erase(path.size() - 1);
 	}
 
-	if (IsDirectory(path)) return true;
+	if (IsDirectory(path)) {
+		FixSharedDirMode(path);  // 前の版が作ったものも直す
+		return true;
+	}
 
 	// 親を先に作る。ParentDir はルートまで来ると同じものを返すので、
 	// それを打ち止めにする。
@@ -346,7 +382,11 @@ bool MakeDirectories(const std::string &pathIn) {
 	if (CreateDirectoryW(w.c_str(), NULL)) return true;
 	return GetLastError() == ERROR_ALREADY_EXISTS;
 #else
-	if (mkdir(path.c_str(), 0755) == 0) return true;
+	if (mkdir(path.c_str(), kNewDirMode) == 0) {
+		// umask に削られたぶんを戻す。
+		FixSharedDirMode(path);
+		return true;
+	}
 	return IsDirectory(path);
 #endif
 }
