@@ -117,6 +117,17 @@ public:
 	// 次のポーリング (最大 1/50 秒後) で反映される。
 	void RequestStatusRefresh() { statusRefresh_.store(true, std::memory_order_relaxed); }
 
+	// 「画面に出ている鍵盤とレベルメーターを消してほしい」という要求。
+	// **演奏位置が飛ぶとき**（曲の切り替え・シーク）に立てる。
+	//
+	// 消すのは Visualizer の仕事で、Player からは頼むだけ。イベントは
+	// デコード位置で打刻され、画面に出るのは再生位置まで追いついた分だけ
+	// なので、**Player 側からは「いま画面に何が出ているか」が分からない**
+	// （StatusWatch が覚えているのはデコード位置の状態）。
+	bool TakeDisplayReset() const {
+		return displayReset_.exchange(false, std::memory_order_relaxed);
+	}
+
 	// ループ数と自動フェードアウト。設定 UI から変えられる。
 	// 総演奏時間の計算に効くので、反映は次に曲を読み込んだときから。
 	void SetLoopConfig(int maxLoops, bool autoFadeout);
@@ -239,6 +250,9 @@ private:
 	std::atomic<int> maxLoops_;
 	std::atomic<bool> autoFadeout_;
 	std::atomic<bool> statusRefresh_;
+	// 鍵盤を消してほしいという要求。読む側 (TakeDisplayReset) が const な
+	// 参照しか持たないので mutable。立てるのは PlaySong / SeekMs。
+	mutable std::atomic<bool> displayReset_;
 
 	MdxSong song_;
 	int masterVolume_;

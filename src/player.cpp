@@ -69,6 +69,7 @@ Player::Player()
       displayLatencyFrames_(0),
       audioBufferFrames_(0),
       statusRefresh_(false),
+      displayReset_(false),
       masterVolume_(0),
       mainVolume_(0),
       playing_(false),
@@ -293,6 +294,10 @@ bool Player::PlaySong(const MdxSong &song, std::string *err) {
 	}
 
 	watch_.Bind(&context_);
+	// 画面に出ている鍵盤を消させる。下の Reset で「前は鳴っていた」という
+	// 記憶が、Clear でまだ消費されていない消す指示が無くなるので、
+	// **これが無いと前の曲の鍵盤が残る**。
+	displayReset_.store(true, std::memory_order_relaxed);
 	watch_.Reset();
 	dispQueue_.Clear();
 	ResetClocks();
@@ -330,11 +335,35 @@ void Player::SetAudioSuspended(bool suspended) {
 	}
 }
 
+// 停止。**曲の頭へ戻す**（PLAY TIME は 00:00 に戻り、そこで止まる）。
+//
+// MXDRV_Stop は音を止めるだけで、ワークの PLAYTIME は MXDRV_GetPCM を
+// 回しているかぎり進み続ける。デコードスレッドとオーディオ装置も止めないと、
+// 鳴っていないのに演奏位置だけが進んでいく。
 void Player::Stop() {
 	if (!opened_) return;
+
+	// PlaySong / SeekMs と同じ手順で先に止める。
+	SDL_PauseAudioDevice(audioDevice_, 1);
+	StopDecodeThread();
+
 	Lock();
 	MXDRV_Stop(&context_);
 	Unlock();
+
+	// まだ画面に出していないぶんは捨て、出ているぶんは消させる。
+	// **画面に描いてある鍵盤を消すのは Visualizer::AllOff の仕事**
+	// （イベントはデコード位置で打刻されていて、画面は再生位置までしか
+	// 進んでいないので、ここからは何が出ているか分からない）。
+	displayReset_.store(true, std::memory_order_relaxed);
+	dispQueue_.Clear();
+
+	// 再生位置も頭へ戻す。PLAY TIME はここで 00:00 になり、デコードが
+	// 止まっているのでもう進まない。
+	ResetClocks();
+	nowTimeMs_.store(0, std::memory_order_relaxed);
+	playTerminate_.store(false, std::memory_order_relaxed);
+	fadeoutStarted_ = false;
 	playing_ = false;
 	paused_ = false;
 }
@@ -382,6 +411,11 @@ bool Player::SeekMs(uint32_t ms) {
 	MXDRV_PlayAt(&context_, ms, fade ? loops : loops + 1, fade ? 1 : 0);
 	SetChannelMask(mask);
 
+	// 飛ぶ前に鳴っていた鍵盤を画面から消させる。watch_.Reset() は
+	// 「前は鳴っていた」という記憶ごと捨てるので、そのままだと**もう
+	// 鳴っていないと分かっても消す指示 (DISP_KEYOFF) が出ない**。
+	// dispQueue_.Clear() で、まだ消費されていない消す指示も無くなる。
+	displayReset_.store(true, std::memory_order_relaxed);
 	watch_.Reset();
 	dispQueue_.Clear();
 	ResetClocks();

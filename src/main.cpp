@@ -1576,6 +1576,11 @@ int main(int argc, char **argv) {
 			}
 		}
 
+		// 演奏位置が飛んだ（曲の切り替え・シーク）か止まったときは、
+		// **新しいイベントを描く前に**画面の鍵盤とレベルメーターを消す。
+		// 順番が逆だと、飛んだ先で鳴り始めた鍵盤まで消してしまう。
+		if (player.TakeDisplayReset()) visualizer.AllOff();
+
 		const uint64_t frame = player.visualFrame();
 		visualizer.Consume(&player.dispQueue(), frame);
 		visualizer.UpdateChrome(player, chromeRefresh, autoNext, autoRepeat,

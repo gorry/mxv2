@@ -12,7 +12,18 @@ Visualizer::Visualizer(DrawScreen *draw) : draw_(draw) {
 
 void Visualizer::Reset() {
 	memset(levelMeter_, 0, sizeof(levelMeter_));
+	memset(noteOn_, 0, sizeof(noteOn_));
 }
+
+namespace {
+
+// 鍵盤の段と鍵の番号が表に収まるか。範囲外は覚えないだけで描画はそのまま通す
+// （描く側が最終的に弾く）。
+bool NoteInRange(int row, int key, int rows, int keys) {
+	return row >= 0 && row < rows && key >= 0 && key < keys;
+}
+
+}  // namespace
 
 void Visualizer::Consume(DispQueue *queue, uint64_t visualFrame) {
 	if (draw_ == 0) return;
@@ -28,14 +39,24 @@ void Visualizer::Consume(DispQueue *queue, uint64_t visualFrame) {
 		const int row = w.param1 & 0x0f;
 
 		switch (w.cmd) {
+			// 押している鍵は覚えておく。止めたときに消すのに要る (AllOff)。
 			case DISP_KEYOFF:
 				draw_->PutNoteOff(w.param2, w.param1);
+				if (NoteInRange(w.param1, w.param2, kNoteRows, kNoteKeys)) {
+					noteOn_[w.param1][w.param2] = false;
+				}
 				break;
 			case DISP_KEYON:
 				draw_->PutNoteOn(w.param2, w.param1, w.param3, 0);
+				if (NoteInRange(w.param1, w.param2, kNoteRows, kNoteKeys)) {
+					noteOn_[w.param1][w.param2] = true;
+				}
 				break;
 			case DISP_KEYBEND:
 				draw_->PutNoteOn(w.param2, w.param1, w.param3, 1);
+				if (NoteInRange(w.param1, w.param2, kNoteRows, kNoteKeys)) {
+					noteOn_[w.param1][w.param2] = true;
+				}
 				break;
 
 			case DISP_VOLUME:
@@ -109,6 +130,20 @@ void Visualizer::Consume(DispQueue *queue, uint64_t visualFrame) {
 				break;
 		}
 	}
+}
+
+void Visualizer::AllOff() {
+	if (draw_ == 0) return;
+
+	for (int row = 0; row < kNoteRows; row++) {
+		for (int key = 0; key < kNoteKeys; key++) {
+			if (!noteOn_[row][key]) continue;
+			draw_->PutNoteOff(key, row);
+			noteOn_[row][key] = false;
+		}
+	}
+	memset(levelMeter_, 0, sizeof(levelMeter_));
+	for (int ch = 0; ch < 8; ch++) draw_->PutLevelMeter(levelMeter_[ch], ch);
 }
 
 void Visualizer::UpdateChrome(const Player &player, bool refresh, bool autoNext,
