@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<!-- タイトルバーもステータスバーも出さない。画面は mxv2 が全部描く。 -->
+	<style name="AppTheme" parent="android:Theme.NoTitleBar.Fullscreen">
+	</style>
+</resources>

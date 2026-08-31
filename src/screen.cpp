@@ -28,6 +28,12 @@ Screen::~Screen() {
 }
 
 int Screen::SystemZoomPercent() {
+#ifdef __ANDROID__
+	// Android の窓は画面いっぱいで、拡大は SDL_RenderSetLogicalSize が
+	// 面倒を見る（余った側は帯になる）。DPI から出すと 400% などになって
+	// 意味を持たないので、等倍を既定にする。
+	return 100;
+#else
 	float hdpi = 0.0f;
 	if (SDL_GetDisplayDPI(0, NULL, &hdpi, NULL) != 0) return 100;
 	if (hdpi <= 0.0f) return 100;
@@ -36,6 +42,7 @@ int Screen::SystemZoomPercent() {
 	if (percent < kZoomMin) percent = kZoomMin;
 	if (percent > kZoomMax) percent = kZoomMax;
 	return percent;
+#endif
 }
 
 bool Screen::Open(const std::string &title, int width, int height, int zoomPercent,

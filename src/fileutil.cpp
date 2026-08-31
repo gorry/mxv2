@@ -205,7 +205,13 @@ std::string JoinPath(const std::string &dir, const std::string &name) {
 }
 
 std::string ExecutableDir() {
-#ifdef _WIN32
+#if defined(__ANDROID__)
+	// apk の中に「実行ファイルの隣」は無い。同梱素材は初回起動時に内部
+	// ストレージへ展開する（androidassets.cpp）ので、その置き場所を返す。
+	const char *base = SDL_AndroidGetInternalStoragePath();
+	if (base == NULL) return std::string("./");
+	return WithSeparator(std::string(base));
+#elif defined(_WIN32)
 	std::wstring buf(MAX_PATH, L'\0');
 	for (;;) {
 		DWORD n = GetModuleFileNameW(NULL, &buf[0], (DWORD)buf.size());

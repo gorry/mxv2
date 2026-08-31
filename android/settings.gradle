@@ -1,0 +1,4 @@
+// mxv2 の Android ビルド。ネイティブ側は 1 つ上の CMakeLists.txt を呼ぶだけで、
+// Gradle プロジェクトはこの android/ に閉じている。
+rootProject.name = 'mxv2'
+include ':app'

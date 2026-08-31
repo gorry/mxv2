@@ -16,6 +16,13 @@
 #include <windows.h>
 #endif
 
+#ifdef __ANDROID__
+#include <android/log.h>
+#include <unistd.h>
+
+#include "androidassets.h"
+#endif
+
 #include "assetpath.h"
 #include "drawscreen.h"
 #include "fileutil.h"
@@ -59,6 +66,41 @@ const int kVolumeKeyStep = 5;
 // 値が変わるので、手が止まってからまとめて 1 回書く。
 const uint32_t kSettingsSaveDelayMs = 400;
 
+#ifdef __ANDROID__
+// 標準出力を logcat へ流す番人。Android のアプリは標準出力がどこにも
+// 繋がっていないので、そのままでは printf が消えてしまう。パイプに
+// 差し替えて、こちらの端を読んだぶんだけ logcat へ渡す。
+//
+// **SDL_Log は使わないこと。** SDL の既定のログ出力は logcat へ書いたあと
+// stderr にも同じものを書くので、stderr までパイプに差し替えていると
+// 「読んだものをまた書く」の輪ができて延々と回り続ける。ここでは
+// stdout だけを差し替え、書き出しも __android_log_write を直に呼ぶ。
+int LogcatPumpThread(void *data) {
+	const int fd = (int)(intptr_t)data;
+	std::string line;
+	char buf[512];
+	for (;;) {
+		const ssize_t n = read(fd, buf, sizeof(buf));
+		if (n <= 0) break;
+		for (ssize_t i = 0; i < n; i++) {
+			if (buf[i] == '\n') {
+				__android_log_write(ANDROID_LOG_INFO, "mxv2", line.c_str());
+				line.clear();
+			} else if (buf[i] != '\r') {
+				line += buf[i];
+			}
+		}
+		// 行の途中で溜め込みすぎないよう、長すぎるものはそこで出す。
+		if (line.size() >= 1024) {
+			__android_log_write(ANDROID_LOG_INFO, "mxv2", line.c_str());
+			line.clear();
+		}
+	}
+	if (!line.empty()) __android_log_write(ANDROID_LOG_INFO, "mxv2", line.c_str());
+	return 0;
+}
+#endif
+
 // 標準出力の行き先を用意する。
 //
 // Windows では GUI アプリとしてリンクしてあるので、既定ではコンソールが無く
@@ -66,9 +108,21 @@ const uint32_t kSettingsSaveDelayMs = 400;
 //   ・出力がすでにファイル等へ繋がっているなら何もしない（リダイレクト）
 //   ・端末から起動されたならその端末へ出す（新しい窓は開かない）
 //   ・それも無く wantConsole なら、新しくコンソールを開く（-console / -h）
-// Windows 以外は元から標準出力があるので何もしない。
+// Android は標準出力が捨てられるので、パイプ経由で logcat へ流す
+// （logcat -s mxv2 で読める。SDL 自身のログは SDL/APP など別のタグに出る）。
+// それ以外は元から標準出力があるので何もしない。
 void SetupConsole(bool wantConsole) {
-#ifdef _WIN32
+#if defined(__ANDROID__)
+	(void)wantConsole;
+	int fds[2];
+	if (pipe(fds) != 0) return;
+	// stderr は差し替えない（SDL のログがそこへ二重に出るため。上の注記）。
+	if (dup2(fds[1], STDOUT_FILENO) < 0) return;
+	close(fds[1]);
+	SDL_Thread *th = SDL_CreateThread(LogcatPumpThread, "logcat", (void *)(intptr_t)fds[0]);
+	// スレッドが作れなくても動きはする（ログが出ないだけ）。
+	if (th != 0) SDL_DetachThread(th);
+#elif defined(_WIN32)
 	{
 		const HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
 		if (h != NULL && h != INVALID_HANDLE_VALUE) return;
@@ -612,6 +666,15 @@ int main(int argc, char **argv) {
 	                       ? mxv2::JoinPath(mxv2::ExecutableDir(), "assets")
 	                       : opt.assetsDir;
 	paths.userDir = opt.userDir.empty() ? mxv2::UserDataDir(kUserDirName) : opt.userDir;
+
+#ifdef __ANDROID__
+	// apk の assets は fopen で開けないので、まず内部ストレージへ展開して
+	// 「実行ファイルの隣」と同じ姿にする。ここから先は Windows と同じ道を通る。
+	// カタログを読む前なので、ここで出る警告だけは英語のまま。
+	mxv2::ExtractBundledAssets(mxv2::ExecutableDir(), &warnings);
+	// 曲の置き場所 assets/mdx は空でも作る（Windows では CMake が作っている）。
+	mxv2::MakeDirectories(mxv2::JoinPath(paths.bundledDir, "mdx"));
+#endif
 
 	// 文言はここから先すべてカタログ (assets/locale/<ロケール>/message.ini)
 	// から引く。知らないロケールを渡されたときは英語で代用する。

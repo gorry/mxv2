@@ -1,0 +1,159 @@
+// mxv2 本体は Windows と同じ mxv2/CMakeLists.txt をそのまま呼んで作る。
+// Android 固有の分岐は CMakeLists.txt の if(ANDROID) だけに閉じてある。
+//
+// 機械ごとに変わる場所（SDK / NDK / SDL2 のソース）は local.properties で渡す。
+// リポジトリには入れない。用意の仕方は BUILD.md を見ること。
+
+apply plugin: 'com.android.application'
+
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+	localPropertiesFile.withInputStream { localProperties.load(it) }
+}
+
+// NDK が SDK の外にあるときの場所。**local.properties のキーは ndk.dir ではなく
+// ndk.path** にしてある。ndk.dir は AGP 自身が読んでしまい、こちらの ndkPath と
+// 衝突する (CXX1100) 上に、それ自体が非推奨で警告が出る (CXX5106)。
+def ndkDir = localProperties.getProperty('ndk.path') ?: System.getenv('ANDROID_NDK_HOME')
+
+// mxv2 のルート（CMakeLists.txt と src/ がある場所）。
+def mxv2Dir = rootProject.file('..')
+
+// apk へ入れる素材の置き場所（下の prepareMxv2Assets / generateMxv2AssetIndex）。
+def mxv2AssetsDir = layout.buildDirectory.dir('generated/mxv2-assets')
+def mxv2AssetIndexDir = layout.buildDirectory.dir('generated/mxv2-assetindex')
+
+// SDL2 は Android ではソースからビルドする。Java 側（SDLActivity など）も
+// 同じソースツリーから直に読む。third_party は無改変で置くだけなので、
+// ここへ複製はしない。
+def sdlSrcDir = file(localProperties.getProperty('sdl2.src.dir')
+		?: new File(mxv2Dir, 'third_party/SDL2-2.32.10-src').path)
+
+android {
+	namespace 'net.gorry.mxv2'
+	compileSdk 34
+	// 使う NDK の版。SDK の中 (sdk/ndk/<版>) にあれば AGP が自分で見つける。
+	// SDK の外に置いてあるときは local.properties の ndk.path で場所を渡す
+	// （その NDK の版がここと食い違うと CXX1104 で止まる）。
+	ndkVersion '28.2.13676358'
+	if (ndkDir != null) {
+		ndkPath = ndkDir
+	}
+	if (ndkDir != null) {
+		ndkPath = ndkDir
+	}
+
+	defaultConfig {
+		applicationId 'net.gorry.mxv2'
+		// NDK r28 は android-21 未満を切ったので 21 から。
+		minSdk 21
+		targetSdk 34
+		versionCode 1
+		// src/main.cpp の kAppVersion に合わせる。
+		versionName '2026.0820.1'
+		externalNativeBuild {
+			cmake {
+				arguments '-DANDROID_STL=c++_static'
+			}
+		}
+		ndk {
+			// gradle.properties の mxv2.abiFilters。abiFilters は可変長引数なので
+			// 1 つずつ渡す。
+			project.property('mxv2.abiFilters').split(',').each { abiFilters it.trim() }
+		}
+	}
+
+	externalNativeBuild {
+		cmake {
+			path new File(mxv2Dir, 'CMakeLists.txt')
+			// SDL2 のソースの CMakeLists.txt は cmake_minimum_required が
+			// 古いので、SDK 同梱の 3.22.1 で作る。
+			version '3.22.1'
+		}
+	}
+
+	sourceSets {
+		main {
+			java.srcDirs += new File(sdlSrcDir, 'android-project/app/src/main/java').path
+			// apk の assets は「実行ファイルの隣」と同じ姿にする
+			// （assets/ と NOTICE / LICENSE が並ぶ）。中身は下の
+			// prepareMxv2Assets が組み立て、索引は generateMxv2AssetIndex が作る。
+			assets.srcDirs = [mxv2AssetsDir, mxv2AssetIndexDir]
+		}
+	}
+
+	compileOptions {
+		sourceCompatibility JavaVersion.VERSION_17
+		targetCompatibility JavaVersion.VERSION_17
+	}
+
+	buildTypes {
+		release {
+			minifyEnabled false
+			proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+		}
+	}
+
+	lint {
+		abortOnError false
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 同梱素材を apk へ入れる。
+//
+// Windows は CMake が実行ファイルの隣へ assets/ と NOTICE / LICENSE を
+// コピーしている。Android も同じ姿を apk の assets に作り、起動時に
+// 内部ストレージへ展開する（src/androidassets.cpp）。
+//
+// **apk の中は列挙できない**ので、何を展開するかはビルド時に作る索引
+// assetindex.txt が持つ。書式は「crc32 サイズ 相対パス」。
+// ---------------------------------------------------------------------------
+
+// 同梱する MDX（無ければ何もしない。CMake の BUNDLED_MDX_DIR と同じ場所）。
+def bundledMdxDir = new File(mxv2Dir, 'third_party/GUSA-CDg/ArctanX')
+
+def mxv2AssetSpec = { spec ->
+	spec.from(new File(mxv2Dir, 'assets')) { into 'assets' }
+	spec.from(mxv2Dir) { include 'NOTICE', 'LICENSE' }
+	if (bundledMdxDir.isDirectory()) {
+		spec.from(bundledMdxDir) { into 'assets/mdx/ArctanX' }
+	}
+}
+
+tasks.register('prepareMxv2Assets', Sync) {
+	description = '同梱素材を apk へ入れる形に並べる'
+	into mxv2AssetsDir
+	mxv2AssetSpec(it)
+}
+
+tasks.register('generateMxv2AssetIndex', Copy) {
+	description = '展開する顔ぶれの索引 (assetindex.txt) を作る'
+	// 索引そのものは doLast で書くが、入力の変化を Gradle に見せるために
+	// 同じ顔ぶれを一度ここへ通す（作られた複製は使わない）。
+	into layout.buildDirectory.dir('intermediates/mxv2-assetindex-input')
+	mxv2AssetSpec(it)
+	doLast {
+		def root = destinationDir
+		def lines = new StringBuilder()
+		lines.append('# mxv2 asset index (crc32 size path)\n')
+		def files = []
+		root.eachFileRecurse(groovy.io.FileType.FILES) { files << it }
+		files.sort { it.path }
+		files.each { f ->
+			def rel = root.toPath().relativize(f.toPath()).toString().replace('\\', '/')
+			def crc = new java.util.zip.CRC32()
+			crc.update(f.bytes)
+			lines.append(String.format('%08x %d %s\n', crc.value, f.length(), rel))
+		}
+		def outDir = file(mxv2AssetIndexDir)
+		outDir.mkdirs()
+		new File(outDir, 'assetindex.txt').setText(lines.toString(), 'UTF-8')
+	}
+}
+
+// assets を集める前に両方を走らせる。
+tasks.matching { it.name.startsWith('merge') && it.name.endsWith('Assets') }.configureEach {
+	dependsOn 'prepareMxv2Assets', 'generateMxv2AssetIndex'
+}

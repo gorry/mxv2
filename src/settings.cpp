@@ -9,8 +9,16 @@
 
 namespace mxv2 {
 
+// 既定のスキン。Android は縦長の画面なので Phone (480x720) を既定にする
+// （Windows は横長の Default 640x480）。どちらも設定で変えられる。
+#ifdef __ANDROID__
+const char kDefaultSkinName[] = "Phone";
+#else
+const char kDefaultSkinName[] = "Default";
+#endif
+
 Settings::Settings()
-    : skinName("Default"),
+    : skinName(kDefaultSkinName),
       zoomPercent(0),
       legacyScale(0),
       scaleFilter("sharp"),

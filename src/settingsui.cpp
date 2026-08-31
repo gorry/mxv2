@@ -766,7 +766,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 			changedFields_ |= Settings::kFieldFadeout;
 			player->SetLoopConfig(settings->loops, settings->fadeout);
 		}
-		ImGui::TextDisabled(Msg("Settings.LoopNote"));
+		ImGui::TextDisabled("%s", Msg("Settings.LoopNote"));
 
 		// マスター音量。メイン画面の音量バーとは別で、実際の音量は 2 つの和。
 		int vol = player->masterVolume();

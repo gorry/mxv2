@@ -10,17 +10,19 @@
 | CMake | 3.20 以降 | 開発は 3.31.8 で行っている |
 | C++ コンパイラ | C++11 | Windows は Visual Studio 2022 (MSVC 19.44) で開発・検証している |
 
-**動作を確認しているのは Windows / MSVC のみ。** CMake は他のプラットフォーム
-向けの記述も持っているが（SDL2 を `find_package` で探す）、まだ試していない。
+**動作を確認しているのは Windows / MSVC と Android。** Android のビルドは
+「6. Android 版のビルド」を見ること。それ以外のプラットフォーム向けの記述も
+CMake は持っているが（SDL2 を `find_package` で探す）、まだ試していない。
 
 ## 2. third_party/ を用意する
 
-3 つのライブラリを、次のパスに展開する。
+ライブラリを次のパスに展開する（SDL2 のソースは Android のときだけ）。
 
 ```
 mxv2/
     third_party/
         SDL2-2.32.10/     SDL2 の VC 開発用パッケージ
+        SDL2-2.32.10-src/ SDL2 のソース（Android のときだけ）
         imgui/            Dear ImGui v1.92.4
         portable_mdx/     演奏モジュール
 ```
@@ -45,6 +47,16 @@ mxv2/
 `-DSDL2_ROOT=<パス>` で場所を指定する。ただし **2.0.18 以降が必要**
 （Dear ImGui の SDL_Renderer バックエンドが `SDL_RenderGeometry` を使う）。
 Windows 以外では `find_package(SDL2)` で探すので、この展開は不要。
+
+### SDL2 2.32.10 のソース（Android のときだけ）
+
+Android では SDL2 をソースからビルドし、Java 側（`SDLActivity` など）も同じ
+ソースツリーから読む。同じページの **`SDL2-2.32.10.zip`**（ソース配布）を
+`third_party/SDL2-2.32.10-src/` へ展開する。`src/` と `android-project/` が
+並んでいれば正しい。
+
+**上の VC 用パッケージとは別に置くこと。** あちらは Windows のビルドが使う。
+場所を変えたいときは `-DSDL2_SRC_ROOT=<パス>`。
 
 ### Dear ImGui v1.92.4
 
@@ -175,7 +187,74 @@ mxv2 [options] [<mdxfile> | <dir>]
 | 画面の文字が `Menu.Open` のようなキー名になる | `assets/locale/` が無い。ログに `message not found:` が出る。ロケール名が違うだけなら英語で出る（`Locale ... was not found`） |
 | 設定を変えても次の起動で戻る | ユーザーフォルダに書けていない。起動ログの `userdir :` の行を見る |
 
-## 6. ライセンスについて
+## 6. Android 版のビルド
+
+`android/` に Gradle プロジェクトがある。ネイティブ側は Windows と同じ
+`CMakeLists.txt` をそのまま呼ぶ（Android 固有の分岐は `if(ANDROID)` だけ）。
+
+### 用意するもの
+
+| | 版 | 開発に使っているもの |
+|---|---|---|
+| Android SDK | platform 34 以上 | `platforms/android-34` と build-tools |
+| NDK | r28c (28.2.13676358) | `app/build.gradle` の `ndkVersion` と揃える |
+| JDK | 17 以上 | OpenJDK 21.0.2 |
+| Gradle | 8.7 | `android/gradlew` が拾ってくる |
+| CMake | 3.22.1 | **SDK 同梱のもの**（SDL2 のソースが 3.31 では通らない） |
+
+`third_party/SDL2-2.32.10-src/` が要る（上の「SDL2 2.32.10 のソース」）。
+
+### local.properties
+
+`android/local.properties` に場所を書く。**git には入れない**。
+
+```
+sdk.dir=D:/dev/android-sdk
+ndk.path=D:/dev/android-ndk
+```
+
+`ndk.path` は NDK が SDK の外にあるときだけ。SDK の中（`sdk/ndk/<版>`）に
+あれば `ndkVersion` から見つかるので要らない。**キー名は `ndk.dir` ではない**
+（あちらは AGP 自身が読んでしまい、非推奨の警告が出る）。
+
+### ビルドと実行
+
+```sh
+cd android
+./gradlew assembleDebug
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb shell am start -n net.gorry.mxv2/.MainActivity
+```
+
+生成物は `app/build/outputs/apk/debug/app-debug.apk`。ABI は
+`gradle.properties` の `mxv2.abiFilters`（既定は `arm64-v8a` だけ）。
+
+- **ログは logcat へ出る。** mxv2 の `printf` はタグ `mxv2`、SDL 自身のログは
+  `SDL` / `SDL/APP`。`adb logcat -s mxv2 SDL` で読める。
+- **コマンドライン引数**はインテントの extra `args` で渡せる。
+
+  ```sh
+  adb shell am start -n net.gorry.mxv2/.MainActivity --esa args "assets:ArctanX/am_field.mdx"
+  ```
+
+- 設定と展開した素材は `/data/data/net.gorry.mxv2/files/` の下。debug ビルド
+  なら `adb shell run-as net.gorry.mxv2 ls files/` で覗ける。作り直したい
+  ときは `run-as net.gorry.mxv2 rm files/mxv2.ini`。
+
+### 素材の届き方
+
+apk の `assets/` は **`fopen` で開けず、列挙もできない**。そこで
+
+1. Gradle の `prepareMxv2Assets` が「実行ファイルの隣」と同じ姿
+   （`assets/` と `NOTICE` / `LICENSE`）を組み立てて apk に入れる。
+   同梱 MDX（`third_party/GUSA-CDg/ArctanX`）があれば一緒に入る。
+2. `generateMxv2AssetIndex` が索引 `assetindex.txt`（crc32・サイズ・パス）を作る。
+3. 起動時に `src/androidassets.cpp` が索引を見て、**変わったものだけ**内部
+   ストレージへ展開する。
+
+素材を差し替えたら `assembleDebug` し直せば、次の起動で展開もやり直される。
+
+## 7. ライセンスについて
 
 mxv2 は Apache License Version 2.0（`LICENSE`）。
 

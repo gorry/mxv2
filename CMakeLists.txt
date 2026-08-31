@@ -54,7 +54,31 @@ endif()
 #   portable_mdx 同梱の 2.0.7 では Dear ImGui の SDL_Renderer バックエンドが
 #   要求する SDL_RenderGeometry (2.0.18 以降) が無いため差し替えた。
 #   SDL2_ROOT を指定すれば別の SDL2 に切り替えられる。
+#
+#   Android には配布バイナリが無いので、ソースからビルドする。Windows のビルドが
+#   使う third_party/SDL2-2.32.10 は VC 用パッケージで include と lib しか無いため、
+#   ソースは別フォルダ (SDL2_SRC_ROOT) に置いて両者を混ぜない。
 # ---------------------------------------------------------------------------
+if(ANDROID)
+
+set(SDL2_SRC_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/SDL2-2.32.10-src" CACHE PATH
+	"SDL2 のソースのルートディレクトリ (Android で使う)")
+
+if(NOT EXISTS "${SDL2_SRC_ROOT}/CMakeLists.txt")
+	message(FATAL_ERROR "SDL2 のソースが見つかりません: ${SDL2_SRC_ROOT}")
+endif()
+
+# APK に入れるのは libSDL2.so だけでよい。静的版とテスト類は作らない。
+set(SDL_SHARED ON CACHE BOOL "" FORCE)
+set(SDL_STATIC OFF CACHE BOOL "" FORCE)
+set(SDL_TEST OFF CACHE BOOL "" FORCE)
+add_subdirectory("${SDL2_SRC_ROOT}" sdl2-build)
+
+add_library(sdl2 INTERFACE)
+target_link_libraries(sdl2 INTERFACE SDL2::SDL2 SDL2::SDL2main)
+
+else()
+
 set(SDL2_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/SDL2-2.32.10" CACHE PATH
 	"SDL2 のルートディレクトリ")
 
@@ -73,6 +97,8 @@ if(WIN32)
 else()
 	find_package(SDL2 REQUIRED)
 	target_link_libraries(sdl2 INTERFACE SDL2::SDL2 SDL2::SDL2main)
+endif()
+
 endif()
 
 # ---------------------------------------------------------------------------
@@ -100,7 +126,10 @@ endif()
 # ---------------------------------------------------------------------------
 # Phase 0: 土台検証用。portable_mdx 付属サンプルをそのままビルドする。
 #   ここが鳴らなければ以降の全てが成立しないため、最初に確認する。
+#   Android は APK に共有ライブラリしか入らないので作らない。
 # ---------------------------------------------------------------------------
+if(NOT ANDROID)
+
 add_executable(simple_mdx_player
 	"${PORTABLE_MDX_DIR}/examples/simple_mdx_player/main.c"
 )
@@ -118,10 +147,12 @@ if(MSVC)
 	target_compile_definitions(simple_mdx2wav PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
 
+endif()
+
 # ---------------------------------------------------------------------------
 # mxv2 本体
 # ---------------------------------------------------------------------------
-add_executable(mxv2
+set(MXV2_SOURCES
 	src/main.cpp
 	src/assetpath.cpp
 	src/bitmap.cpp
@@ -175,11 +206,30 @@ add_executable(mxv2
 	src/vfs.h
 	src/visualizer.h
 )
+
+# apk の assets を内部ストレージへ展開する係。Android でしか意味を持たない
+# ので、他のプラットフォームでは足さない。
+if(ANDROID)
+	list(APPEND MXV2_SOURCES src/androidassets.cpp src/androidassets.h)
+endif()
+
+# Android では実行ファイルではなく共有ライブラリを作る。SDLActivity が
+# getLibraries() の最後の名前 (= mxv2) を dlopen し、SDL_main を呼ぶ。
+if(ANDROID)
+	add_library(mxv2 SHARED ${MXV2_SOURCES})
+else()
+	add_executable(mxv2 ${MXV2_SOURCES})
+endif()
+
 target_include_directories(mxv2 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(mxv2 PRIVATE portable_mdx sdl2 imgui)
 if(WIN32)
 	# OS の「フォルダを探す」ダイアログ (IFileOpenDialog)
 	target_link_libraries(mxv2 PRIVATE ole32 shell32)
+endif()
+if(ANDROID)
+	# printf を logcat へ流す (__android_log_write)
+	target_link_libraries(mxv2 PRIVATE log)
 endif()
 
 # Windows では GUI アプリとしてリンクする。コンソールアプリのままだと、
@@ -198,6 +248,8 @@ endif()
 # 検証用ツール
 #   mxv2 のデコード分割が波形を変えないことを確認する。SDL 不要。
 # ---------------------------------------------------------------------------
+if(NOT ANDROID)
+
 add_executable(mxv2_chunktest
 	tools/chunktest.cpp
 	src/fileutil.cpp
@@ -213,6 +265,8 @@ if(MSVC)
 	target_compile_definitions(mxv2_chunktest PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
 
+endif()
+
 # SDL2.dll を実行ファイルの隣に置く
 if(WIN32)
 	foreach(_target simple_mdx_player mxv2)
@@ -222,6 +276,10 @@ if(WIN32)
 		)
 	endforeach()
 endif()
+
+# ここから下は「実行ファイルの隣」に素材を並べる話なので、Android では行わない。
+# APK の assets の届け方は Phase C で別に用意する。
+if(NOT ANDROID)
 
 # 素材ビットマップとスキンを実行ファイルの隣の assets/ へ置く
 add_custom_command(TARGET mxv2 POST_BUILD
@@ -255,3 +313,5 @@ add_custom_command(TARGET mxv2 POST_BUILD
 	COMMAND ${CMAKE_COMMAND} -E copy_if_different
 		"${CMAKE_CURRENT_SOURCE_DIR}/LICENSE" "$<TARGET_FILE_DIR:mxv2>/LICENSE"
 )
+
+endif()

@@ -8,3 +8,8 @@ third_party/
 testdata/
 userdata/
 pic/
+
+# Android (Gradle / AGP が作るもの、機械ごとの場所)
+.gradle/
+.cxx/
+local.properties
