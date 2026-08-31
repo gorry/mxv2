@@ -215,6 +215,14 @@ if(ANDROID)
 	list(APPEND MXV2_SOURCES src/androidassets.cpp src/androidassets.h)
 endif()
 
+# 実行ファイルに埋めるアイコン。SDL2 はウィンドウクラスのアイコンとして
+# 「最初のアイコンリソース」を拾うので、これだけでエクスプローラにも
+# ウィンドウにもタスクバーにも効く（res/mxv2.rc）。
+# Android のアイコンは android/app/src/main/res/mipmap-* 側。
+if(WIN32)
+	list(APPEND MXV2_SOURCES res/mxv2.rc)
+endif()
+
 # Android では実行ファイルではなく共有ライブラリを作る。SDLActivity が
 # getLibraries() の最後の名前 (= mxv2) を dlopen し、SDL_main を呼ぶ。
 if(ANDROID)

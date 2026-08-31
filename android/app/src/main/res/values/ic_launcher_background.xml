@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<!-- 元画像の縁の色。tools/make_icons.py が書き出す。 -->
+	<color name="ic_launcher_background">#353329</color>
+</resources>

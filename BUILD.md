@@ -280,7 +280,41 @@ Windows と同じく、ルート直下の `font.ttf` はユーザーぶんが同
 （`/data/data/net.gorry.mxv2/files/bundled/`）にある。あちらは読むだけの
 場所なので、外から見えなくてよい。
 
-## 7. ライセンスについて
+## 7. アイコン
+
+アイコンの元画像は `pic/icon_mxv2.png`（1024x1024）。**`pic/` は
+`.gitignore` で外してある**ので、リポジトリに入っているのは書き出したほう。
+元の絵を描き直したときだけ、次を流し直して書き出しを差し替える。
+
+```
+pip install pillow
+python tools/make_icons.py
+```
+
+書き出す先:
+
+| 場所 | 用途 |
+|---|---|
+| `res/mxv2.ico` | Windows。`res/mxv2.rc` から実行ファイルへ埋める |
+| `android/app/src/main/res/mipmap-*/ic_launcher.png` | Android の昔ながらのアイコン (API 25 まで) |
+| `android/app/src/main/res/mipmap-*/ic_launcher_foreground.png` | アダプティブアイコンの前景 |
+| `android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml` | アダプティブアイコンの定義 |
+| `android/app/src/main/res/values/ic_launcher_background.xml` | その下地の色（元画像の縁の色） |
+
+**Windows はリソースを 1 つ置くだけでよい。** SDL2 はウィンドウクラスを
+作るとき、ヒントが無ければ `EnumResourceNames(RT_GROUP_ICON)` で
+**いちばん最初のアイコン**を拾う。エクスプローラの決め方と同じなので、
+`SDL_SetWindowIcon` を呼ばなくてもエクスプローラ・ウィンドウ・タスクバーの
+すべてに効く。`res/mxv2.rc` にアイコンを足すときは、必ず今のものより
+**後ろの ID** にすること。
+
+**Android のアダプティブアイコンは中央 2/3 に絵を置いてある。** 画布は
+108dp だがランチャーが見せるのは中央 72dp だけで、そこに円や角丸の型が
+掛かる。元画像は端まで絵があり文字も横いっぱいなので、画布いっぱいに
+広げると文字が切れる。2/3 に収めると、角丸の型ならほぼ全部、円の型でも
+四隅（上の状態表示と下の鍵盤）が落ちるだけで済む。
+
+## 8. ライセンスについて
 
 mxv2 は Apache License Version 2.0（`LICENSE`）。
 
