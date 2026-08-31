@@ -208,9 +208,16 @@ std::string ExecutableDir() {
 #if defined(__ANDROID__)
 	// apk の中に「実行ファイルの隣」は無い。同梱素材は初回起動時に内部
 	// ストレージへ展開する（androidassets.cpp）ので、その置き場所を返す。
+	//
+	// **内部ストレージの根そのものではなく、その下の bundled/ にする。**
+	// SDL_RWFromFile は相対パスを渡されると、まず
+	// <内部ストレージ>/<相対パス> を開きにいき、無いときだけ apk の assets を
+	// 見る。根に展開すると、展開したものが apk の中身を覆い隠してしまい、
+	// 2 回目からは**古い展開結果をそのまま読み直すだけ**になる
+	// （素材を差し替えても新しいものが取り出せない）。
 	const char *base = SDL_AndroidGetInternalStoragePath();
 	if (base == NULL) return std::string("./");
-	return WithSeparator(std::string(base));
+	return WithSeparator(JoinPath(std::string(base), "bundled"));
 #elif defined(_WIN32)
 	std::wstring buf(MAX_PATH, L'\0');
 	for (;;) {

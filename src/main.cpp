@@ -613,6 +613,23 @@ void OpenCursor(const PlayContext &ctx, mxv2::Filer *filer, mxv2::SettingsUi *ui
 	}
 }
 
+// 画面をまるごと描き直させる。GL コンテキストが失われたあと
+// (SDL_RENDER_DEVICE_RESET / TARGETS_RESET) と、バックグラウンドから戻った
+// ときに呼ぶ。テクスチャは中身だけでなく**器ごと**無効になっているので
+// 作り直し、mxv2 は差分更新なので**「もう描いた」印まで戻す**。
+void ForceRedrawAll(mxv2::Screen *screen, mxv2::TextLayer *textLayer, mxv2::DrawScreen *draw,
+                    mxv2::Player *player, mxv2::SettingsUi *ui, bool *chromeRefresh,
+                    bool *fileListRefresh) {
+	std::string err;
+	if (!screen->ResetTextures(&err)) printf("warning  : %s\n", err.c_str());
+	if (!textLayer->Rebuild(screen, &err)) printf("warning  : %s\n", err.c_str());
+	ui->HandleDeviceReset();
+	draw->Reload();
+	player->RequestStatusRefresh();
+	*chromeRefresh = true;
+	*fileListRefresh = true;
+}
+
 // ドラッグ＆ドロップで落とされたものを開く。落とし物はネイティブのパスなので、
 // 行き先は必ずローカルファイルシステムになる。
 //   MDX      … そのファイルのあるフォルダへ移ってから演奏（コマンドラインで
@@ -976,6 +993,8 @@ int main(int argc, char **argv) {
 	bool autoRepeat = false;  // REPEAT
 
 	bool quit = false;
+	// 端末がバックグラウンドへ回した (Android)。描くのも音も止める。
+	bool inBackground = false;
 	bool endSeen = false;
 	uint64_t endFrame = 0;
 	// 演奏終了後の余韻 (1 秒)。出力レートで数えるので固定値にはできない。
@@ -1053,9 +1072,32 @@ int main(int argc, char **argv) {
 				}
 			}
 
-			// ESC はまず開いているダイアログを閉じる。閉じるものが無ければ
-			// 下へ流して、いつもどおり終了に使う。
-			if (ev.type == SDL_KEYDOWN && ev.key.keysym.sym == SDLK_ESCAPE &&
+			// 端末のライフサイクル (Android)。バックグラウンドでは描かない
+			// ——描き続けると OS に止められる——ので、印を立てて音も止める。
+			if (ev.type == SDL_APP_WILLENTERBACKGROUND) {
+				inBackground = true;
+				player.SetAudioSuspended(true);
+				continue;
+			}
+			if (ev.type == SDL_APP_DIDENTERFOREGROUND) {
+				inBackground = false;
+				player.SetAudioSuspended(false);
+				ForceRedrawAll(&screen, &textLayer, &draw, &player, &ui, &chromeRefresh,
+				               &fileListRefresh);
+				continue;
+			}
+
+			// GL コンテキストが飛んだ。テクスチャを作り直して描き直す。
+			if (ev.type == SDL_RENDER_DEVICE_RESET || ev.type == SDL_RENDER_TARGETS_RESET) {
+				ForceRedrawAll(&screen, &textLayer, &draw, &player, &ui, &chromeRefresh,
+				               &fileListRefresh);
+				continue;
+			}
+
+			// ESC と戻るキーは、まず開いているダイアログを閉じる。閉じるものが
+			// 無ければ下へ流す（ESC は終了、戻るキーは親フォルダへ）。
+			if (ev.type == SDL_KEYDOWN &&
+			    (ev.key.keysym.sym == SDLK_ESCAPE || ev.key.keysym.sym == SDLK_AC_BACK) &&
 			    ui.CloseDialog()) {
 				continue;
 			}
@@ -1117,9 +1159,12 @@ int main(int argc, char **argv) {
 
 			const SDL_Keycode key = ev.key.keysym.sym;
 			switch (key) {
+				// 終了は必ず確認してから。押し間違いで演奏が止まるのを防ぐ
+				// （ウィンドウの × とコンテキストメニューの [終了] は、
+				// 意図してそこを選んでいるので確認しない）。
 				case SDLK_ESCAPE:
 				case SDLK_q:
-					quit = true;
+					ui.OpenQuitConfirm();
 					break;
 
 				case SDLK_F1:
@@ -1205,6 +1250,19 @@ int main(int argc, char **argv) {
 					filer.GoParent();
 					fileListRefresh = true;
 					break;
+
+				// Android の戻るキー。ダイアログ（上で処理済み）→ 親フォルダ
+				// → 終了の確認、の順に効く。ESC のようにいきなり閉じない。
+				case SDLK_AC_BACK: {
+					const std::string before = filer.currentRef();
+					filer.GoParent();
+					if (filer.currentRef() == before) {
+						ui.OpenQuitConfirm();
+					} else {
+						fileListRefresh = true;
+					}
+					break;
+				}
 				case SDLK_BACKSLASH:
 					filer.GoRoot();
 					fileListRefresh = true;
@@ -1396,6 +1454,13 @@ int main(int argc, char **argv) {
 					PrintAudioInfo(player, cfg.displayLatencyAuto);
 				}
 			}
+		}
+
+		// バックグラウンドでは 1 フレームも描かない。イベントが来るまで
+		// 寝て待つ（描かないまま回すと、ただ CPU を焼くだけになる）。
+		if (inBackground) {
+			SDL_WaitEventTimeout(NULL, 200);
+			continue;
 		}
 
 		mouse.Poll(SDL_GetTicks());

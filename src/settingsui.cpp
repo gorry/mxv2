@@ -71,6 +71,7 @@ const char *kBmToggleTitle;
 const char *kAboutTitle;
 const char *kStartupTitle;
 const char *kAddFsTitle;
+const char *kQuitTitle;
 
 // 題名を作る。id 付きのものは文字列を静的に持ってから返す。
 const char *TitleWithId(const char *key, const char *id) {
@@ -100,6 +101,7 @@ void InitTitles() {
 	kAboutTitle = Msg("Dialog.About");
 	kStartupTitle = Msg("Dialog.Startup");
 	kAddFsTitle = Msg("Dialog.AddFs");
+	kQuitTitle = Msg("Dialog.Quit");
 }
 
 // 文言に ImGui の id を足した名札。同じ文言を 1 つの画面で何度も使うため。
@@ -284,6 +286,8 @@ SettingsUi::SettingsUi()
       hasJapaneseFont_(false),
       styleScale_(0.0f),
       inputScale_(1.0f),
+      inputOffsetX_(0.0f),
+      inputOffsetY_(0.0f),
       vfs_(0),
       pendingSampleRate_(0),
       pendingZoom_(0),
@@ -312,6 +316,9 @@ SettingsUi::SettingsUi()
       bmCloseRemove_(false),
       bmOpenToggle_(false),
       bmToggleOpen_(false),
+      quitAsk_(false),
+      quitOpen_(false),
+      quitClose_(false),
       bmCloseToggle_(false),
       fsSelected_(0),
       addFsOpen_(false),
@@ -356,6 +363,7 @@ bool SettingsUi::Init(Screen *screen, const AssetPaths &paths, std::string *err)
 
 	// 最初のイベントが来る前に倍率を知っておく。
 	screen->GetRenderScale(&inputScale_, 0);
+	screen->GetRenderOffset(&inputOffsetX_, &inputOffsetY_);
 	if (inputScale_ <= 0.0f) inputScale_ = 1.0f;
 
 	IMGUI_CHECKVERSION();
@@ -434,10 +442,16 @@ void SettingsUi::ProcessEvent(const SDL_Event &ev) {
 	// **渡す前に**倍率へ直す。ここで直さずに後から io.MousePos を上書きしても、
 	// ImGui::NewFrame() がキューを適用する際に上書きが打ち消され、
 	// 拡大前の位置のコントロールが 1 フレームだけ反応してしまう。
+	//
+	// **倍率だけでなく、レターボックスのぶんもずらす。** 窓の縦横比が
+	// キャンバスと違うとき（Android は窓が画面いっぱいなので必ず、Windows でも
+	// 窓を引き伸ばせば）、キャンバスは真ん中に寄って上下か左右に帯ができる。
+	// ImGui は窓の左上を原点に描くので、帯のぶんを足さないと押した場所と
+	// 反応する場所が食い違う。
 	if (ev.type == SDL_MOUSEMOTION) {
 		SDL_Event scaled = ev;
-		scaled.motion.x = (int)(ev.motion.x * inputScale_ + 0.5f);
-		scaled.motion.y = (int)(ev.motion.y * inputScale_ + 0.5f);
+		scaled.motion.x = (int)(ev.motion.x * inputScale_ + inputOffsetX_ + 0.5f);
+		scaled.motion.y = (int)(ev.motion.y * inputScale_ + inputOffsetY_ + 0.5f);
 		ImGui_ImplSDL2_ProcessEvent(&scaled);
 		return;
 	}
@@ -561,9 +575,16 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	screen->GetRenderScale(&scale, 0);
 	if (scale <= 0.0f) scale = 1.0f;
 	inputScale_ = scale;
+	screen->GetRenderOffset(&inputOffsetX_, &inputOffsetY_);
 	{
 		ImGuiIO &io = ImGui::GetIO();
-		io.DisplaySize = ImVec2(screen->width() * scale, screen->height() * scale);
+		// 描く場所は窓の左上が原点（BeginNativeScale が論理サイズを外す）
+		// なので、ImGui の画面はキャンバスではなく**実出力そのもの**にする。
+		// キャンバスより広ければ帯のぶんまで使えるだけで、ダイアログは
+		// 画面の真ん中に出る。
+		int outW = 0, outH = 0;
+		screen->GetOutputSize(&outW, &outH);
+		io.DisplaySize = ImVec2((float)outW, (float)outH);
 		io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
 	}
 	const bool scaleChanged = ApplyScale(scale);
@@ -600,6 +621,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	BuildFileSystemsWindow(filer);
 	BuildBookmarksWindow(settings, filer);
 	BuildBookmarkToggleWindow(settings, filer);
+	BuildQuitWindow();
 	BuildStartupWindow();
 	BuildHelpWindow();
 	if (folderReturnToSettings_ && !showFolder_ && !folderOpenPending_ &&
@@ -1073,6 +1095,45 @@ void SettingsUi::BuildOverwriteWindow(Settings *settings, DrawScreen *draw) {
 	ImGui::SameLine();
 	if (ImGui::Button(Msg("Button.Cancel")) || closeOverwrite_) {
 		closeOverwrite_ = false;
+		ImGui::CloseCurrentPopup();
+	}
+	ImGui::EndPopup();
+}
+
+// 終了の確認。Android の戻るキーで、ダイアログも戻る先も無いときに出す。
+// メイン画面から直に開くので、単独のモーダルとして扱う。
+void SettingsUi::BuildQuitWindow() {
+	if (quitAsk_) {
+		quitAsk_ = false;
+		ImGui::OpenPopup(kQuitTitle);
+	}
+
+	quitOpen_ = ImGui::IsPopupOpen(kQuitTitle);
+	if (!quitOpen_) {
+		quitClose_ = false;
+		return;
+	}
+
+	CenterNextWindow(ImGuiCond_Appearing);
+	if (!ImGui::BeginPopupModal(kQuitTitle, NULL,
+	                            ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
+	                                ImGuiWindowFlags_AlwaysAutoResize)) {
+		return;
+	}
+
+	ImGui::TextUnformatted(Msg("Dialog.QuitQuestion"));
+	ImGui::Separator();
+	// Enter でも終了できるようにする。ESC で開いて ESC で閉じられる一方、
+	// 「はい」がマウスでしか押せないと、キーボードだけでは終われなくなる。
+	const bool enter =
+	    ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter);
+	if (ImGui::Button(Msg("Button.Quit")) || enter) {
+		request_ = kRequestQuit;
+		ImGui::CloseCurrentPopup();
+	}
+	ImGui::SameLine();
+	if (ImGui::Button(Msg("Button.Cancel")) || quitClose_) {
+		quitClose_ = false;
 		ImGui::CloseCurrentPopup();
 	}
 	ImGui::EndPopup();
@@ -2184,6 +2245,14 @@ void SettingsUi::BuildContextMenu(Settings *settings, DrawScreen *draw, Player *
 			ImGui::EndPopup();
 		}
 	}
+}
+
+// GL コンテキストが失われたあと。ImGui のバックエンドが持っている
+// テクスチャ（フォントアトラス）は器ごと無効になっているので捨てる。
+// 次の NewFrame() が自分で作り直す。
+void SettingsUi::HandleDeviceReset() {
+	if (!ready_) return;
+	ImGui_ImplSDLRenderer2_DestroyDeviceObjects();
 }
 
 void SettingsUi::Render(Screen *screen) {

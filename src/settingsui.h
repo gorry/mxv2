@@ -116,6 +116,18 @@ public:
 		bmOpenToggle_ = true;
 	}
 
+	// 終了の確認。Android の戻るキーで、もう戻る先が無いときに出す
+	// （いきなり閉じると押し間違いで演奏が止まるため）。
+	// [終了] を選ぶと TakeRequest() が kRequestQuit を返す。
+	void OpenQuitConfirm() {
+		if (busy()) return;
+		quitAsk_ = true;
+	}
+
+	// GL コンテキストが失われたあと、ImGui が持っているテクスチャを
+	// 作り直させる（次のフレームで自分で作り直す）。
+	void HandleDeviceReset();
+
 	// 操作方法のダイアログ (F11 / H)。文面は main.cpp の -h と同じもの。
 	void OpenHelp() {
 		if (busy()) return;
@@ -143,6 +155,7 @@ public:
 		// ブックマークも同じ作り。Shift+M の確認だけは単独で開く。
 		if (bmRemoveOpen_) { bmCloseRemove_ = true; return true; }
 		if (bmToggleOpen_) { bmCloseToggle_ = true; return true; }
+		if (quitOpen_) { quitClose_ = true; return true; }
 		if (showAbout_) { showAbout_ = false; return true; }
 		if (showHelp_) { showHelp_ = false; return true; }
 		// ファイルシステムの追加はその設定ダイアログの中に入れ子で開く。
@@ -258,6 +271,9 @@ private:
 	// ImGui は実解像度で動かすので、SDL から届く論理座標のマウス位置を
 	// この倍率で直してからバックエンドへ渡す。Build で毎フレーム更新する。
 	float inputScale_;
+	// レターボックス（キャンバスが実出力より小さいときの余白）。実ピクセル。
+	float inputOffsetX_;
+	float inputOffsetY_;
 
 	// 表示倍率 (%) は「入力を確定してから少し待って」適用する。
 	// 操作中に適用するとウィンドウの大きさが変わり、それに合わせて
@@ -412,6 +428,7 @@ private:
 	// ポップアップの id を分けてある（同じ id を 2 か所から開こうとすると
 	// 開き直しに失敗する）。
 	void BuildBookmarkToggleWindow(Settings *settings, Filer *filer);
+	void BuildQuitWindow();
 	// index のブックマークを開く。ファイルを指していたら「そのファイルの
 	// あるフォルダ」へ直してから開く（開けなければ bmError_ に理由）。
 	void OpenBookmark(Settings *settings, int index);
@@ -426,6 +443,9 @@ private:
 	bool bmOpenToggle_;        // 次のフレームで Shift+M の確認を開く
 	bool bmToggleOpen_;
 	bool bmCloseToggle_;
+	bool quitAsk_;             // 次のフレームで終了の確認を開く
+	bool quitOpen_;
+	bool quitClose_;
 	std::string bmToggleRef_;  // Shift+M の確認にかけている場所
 
 	// 起動時の警告。ウィンドウが出る前の printf を持ち越したもの。

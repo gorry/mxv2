@@ -77,6 +77,21 @@ public:
 	// レンダラの内容をウィンドウへ出す。
 	void Present();
 
+	// レンダラの実出力サイズ（実ピクセル）。窓の大きさとは限らない（HiDPI）。
+	void GetOutputSize(int *w, int *h) const;
+
+	// キャンバスを実出力の真ん中へ置いたときの、左と上の余白（レターボックス）。
+	// 窓の縦横比がキャンバスと違うと余りが出る。Android のように窓が画面
+	// いっぱいのときは必ず出るので、実ピクセルで座標を扱うところ
+	// （Dear ImGui）はこのぶんずらして考える必要がある。
+	void GetRenderOffset(float *ox, float *oy) const;
+
+	// テクスチャを作り直す。GL コンテキストが失われたあと
+	// （Android でバックグラウンドから戻ったとき。SDL_RENDER_DEVICE_RESET /
+	// SDL_RENDER_TARGETS_RESET）に呼ぶ。器ごと無効になっているので、
+	// 中身を描き直すだけでは戻らない。
+	bool ResetTextures(std::string *err);
+
 	// 論理サイズを変える（スキンの切り替え）。ウィンドウとレンダラは
 	// 作り直さないので、Dear ImGui のバックエンドを繋いだままでよい。
 	bool Resize(int width, int height, std::string *err);

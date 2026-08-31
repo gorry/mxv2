@@ -235,6 +235,27 @@ void Screen::Present() {
 	SDL_RenderPresent(renderer_);
 }
 
+bool Screen::ResetTextures(std::string *err) {
+	if (renderer_ == 0) {
+		*err = Msg("Error.ScreenNotOpen");
+		return false;
+	}
+	// 中身だけでなく器も無効になっている（GL のオブジェクトごと失われる）
+	// ので、作り直す。キャンバスの中身は毎フレーム丸ごと転送しているから、
+	// 描き直しはいつもの経路に任せてよい。
+	SDL_Texture *tex = SDL_CreateTexture(renderer_, SDL_PIXELFORMAT_ARGB8888,
+	                                     SDL_TEXTUREACCESS_STREAMING, width_, height_);
+	if (tex == 0) {
+		*err = MsgF("Error.CreateTexture", SDL_GetError());
+		return false;
+	}
+	if (texture_ != 0) SDL_DestroyTexture(texture_);
+	texture_ = tex;
+	ReleasePreTexture();  // 2 段拡大の中間テクスチャも作り直す
+	SetScaleMode(scaleMode_);
+	return true;
+}
+
 bool Screen::Resize(int width, int height, std::string *err) {
 	if (width <= 0 || height <= 0) {
 		*err = Msg("Error.ScreenSize");
@@ -271,6 +292,32 @@ void Screen::SetZoom(int zoomPercent) {
 	zoom_ = zoomPercent;
 	if (window_ == 0) return;
 	SDL_SetWindowSize(window_, width_ * zoom_ / 100, height_ * zoom_ / 100);
+}
+
+void Screen::GetOutputSize(int *w, int *h) const {
+	if (w != 0) *w = width_;
+	if (h != 0) *h = height_;
+	if (renderer_ == 0) return;
+	int outW = 0, outH = 0;
+	if (SDL_GetRendererOutputSize(renderer_, &outW, &outH) != 0) return;
+	if (outW <= 0 || outH <= 0) return;
+	if (w != 0) *w = outW;
+	if (h != 0) *h = outH;
+}
+
+void Screen::GetRenderOffset(float *ox, float *oy) const {
+	if (ox != 0) *ox = 0.0f;
+	if (oy != 0) *oy = 0.0f;
+	if (renderer_ == 0 || width_ <= 0 || height_ <= 0) return;
+
+	int outW = 0, outH = 0;
+	GetOutputSize(&outW, &outH);
+	float s = 1.0f;
+	GetRenderScale(&s, 0);
+	// SDL はキャンバスを実出力の真ん中へ置く（アスペクト比を保った残りが
+	// 上下または左右の帯になる）。
+	if (ox != 0) *ox = (outW - width_ * s) * 0.5f;
+	if (oy != 0) *oy = (outH - height_ * s) * 0.5f;
 }
 
 void Screen::GetRenderScale(float *sx, float *sy) const {

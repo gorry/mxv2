@@ -49,6 +49,7 @@ Player::Player()
       contextReady_(false),
       mxdrvStarted_(false),
       audioDevice_(0),
+      audioSuspended_(false),
       readableSem_(0),
       writableSem_(0),
       readBlock_(0),
@@ -305,8 +306,28 @@ bool Player::PlaySong(const MdxSong &song, std::string *err) {
 	MXDRV_Play2(&context_);
 
 	StartDecodeThread();
-	SDL_PauseAudioDevice(audioDevice_, 0);
+	ResumeAudioDevice();
 	return true;
+}
+
+// オーディオ装置を動かす。バックグラウンドへ回っているあいだは止めたまま
+// にする（復帰したときに SetAudioSuspended が動かす）。
+void Player::ResumeAudioDevice() {
+	if (audioDevice_ == 0 || audioSuspended_) return;
+	SDL_PauseAudioDevice(audioDevice_, 0);
+}
+
+void Player::SetAudioSuspended(bool suspended) {
+	if (audioSuspended_ == suspended) return;
+	audioSuspended_ = suspended;
+	if (!opened_ || audioDevice_ == 0) return;
+	if (suspended) {
+		SDL_PauseAudioDevice(audioDevice_, 1);
+	} else if (playing_) {
+		// 何も掛かっていないのに動かすと、空のキューを読んで
+		// アンダーランに数えられてしまう。
+		SDL_PauseAudioDevice(audioDevice_, 0);
+	}
 }
 
 void Player::Stop() {
@@ -371,7 +392,7 @@ bool Player::SeekMs(uint32_t ms) {
 	paused_ = false;  // MXDRV_PlayAt は演奏を掛け直すので一時停止は解ける
 
 	StartDecodeThread();
-	SDL_PauseAudioDevice(audioDevice_, 0);
+	ResumeAudioDevice();
 	return true;
 }
 

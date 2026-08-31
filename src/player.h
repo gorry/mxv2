@@ -103,6 +103,13 @@ public:
 	void Resume();
 	void Fadeout();
 
+	// 端末の都合で音を止める / 戻す（Android でバックグラウンドへ回ったとき）。
+	// 一時停止 (Pause) とは別物で、こちらは**演奏位置も止まる**。
+	// オーディオ装置ごと止めるので playedFrames が進まず、復帰したときに
+	// 表示との対応がずれない。
+	void SetAudioSuspended(bool suspended);
+	bool audioSuspended() const { return audioSuspended_; }
+
 	// 演奏位置を ms 単位で移動する。旧 mxv の MX_PlayAt_A。
 	bool SeekMs(uint32_t ms);
 
@@ -176,6 +183,8 @@ public:
 	const MdxSong &song() const { return song_; }
 
 private:
+	void ResumeAudioDevice();
+
 	static void SDLCALL AudioCallbackTrampoline(void *userdata, uint8_t *stream, int len);
 	static int DecodeThreadTrampoline(void *arg);
 	static void OpmIntTrampoline(MxdrvContext *context);
@@ -237,6 +246,7 @@ private:
 	void ApplyVolume();
 	bool playing_;
 	bool paused_;
+	bool audioSuspended_;
 	bool fadeoutStarted_;
 	uint32_t playTimeMs_;
 	std::atomic<uint32_t> nowTimeMs_;
