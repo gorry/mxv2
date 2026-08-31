@@ -26,6 +26,10 @@ struct Settings {
 	// 拡大時の補間方法。"nearest" / "linear" / "sharp"。
 	// 実際の値との変換は Screen::ScaleModeFromName / ScaleModeName。
 	std::string scaleFilter;
+	// 指で操作する端末向けに、ダイアログの押せるところを広げるか。
+	// kTouchAuto なら Screen::TouchPreferred() に従う（Android は有効）。
+	int touchUi;
+	enum TouchUi { kTouchAuto = 0, kTouchOn = 1, kTouchOff = 2 };
 
 	// [Filer]
 	int fileListFontSize;  // 0 = 小 / 1 = 大 (旧 mxv の FontSize)
@@ -90,6 +94,7 @@ struct Settings {
 		kFieldFileSystems = 1 << 12,
 		kFieldSampleRate = 1 << 13,
 		kFieldBookmarks = 1 << 14,
+		kFieldTouchUi = 1 << 15,
 	};
 
 	Settings();

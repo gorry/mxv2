@@ -54,6 +54,16 @@ const int kNumFontCandidates = (int)(sizeof(kFontCandidates) / sizeof(kFontCandi
 
 const float kFontSizePx = 15.0f;
 
+// 指で押すところの高さの下限 (mm)。指の腹が当たる幅として Material Design は
+// 48dp (約 7.6mm)、Apple は 44pt (約 7mm) を勧めているが、mxv2 のダイアログは
+// 項目が多く画面が狭いので、下限として 6mm を採る。
+const float kTouchTargetMm = 6.0f;
+
+// その行の中で字が占める割合。行だけ太くして字が小さいままだと、押せても
+// 読めない。0.6 なら 6mm の行に 3.6mm の字で、上下に 1.2mm ずつ余白が残る。
+// 日本語は仮想ボディいっぱいに書かれるので、漢字の実寸はほぼこの値になる。
+const float kTouchFontRatio = 0.6f;
+
 // ダイアログの題名。文言はカタログ、"###" 以降は ImGui の id。
 // SyncModal が題名をポインタで見分けるので、**毎フレーム同じ番地**を
 // 返さないといけない。カタログの文字列はそのまま使えるが、id を繋いだ
@@ -219,6 +229,50 @@ void DragToScroll(bool *dragging, bool *moved, bool hasTitleBar, bool fromItems)
 	*dragging = true;
 }
 
+// 補足や注意の 1 行。**折り返す**。指で操作する端末では字が大きくなるので、
+// 折り返さないと携帯の狭い画面で右が切れて読めなくなる。
+// 部品のラベル（チェックボックスの文言など）は ImGui が折り返してくれないので、
+// そちらは短いままにしておくこと。
+void TextWrapColor(const ImVec4 &color, const char *text) {
+	ImGui::PushStyleColor(ImGuiCol_Text, color);
+	ImGui::PushTextWrapPos(0.0f);
+	ImGui::TextUnformatted(text);
+	ImGui::PopTextWrapPos();
+	ImGui::PopStyleColor();
+}
+
+void TextNote(const char *text) {
+	TextWrapColor(ImGui::GetStyle().Colors[ImGuiCol_TextDisabled], text);
+}
+
+void TextError(const char *text) {
+	TextWrapColor(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), text);
+}
+
+// 確認ダイアログの本文。`AlwaysAutoResize` のままだと、長いパスが 1 行で
+// 伸びてダイアログが画面からはみ出す。折り返す位置を決めて幅を頭打ちにする。
+void ConfirmText(const char *text) {
+	const ImGuiIO &io = ImGui::GetIO();
+	const ImGuiStyle &style = ImGui::GetStyle();
+	float w = ImGui::GetFontSize() * 24.0f;  // 24 文字ぶんを目安に
+	const float max = io.DisplaySize.x - style.WindowPadding.x * 2.0f;
+	if (w > max) w = max;
+	ImGui::PushTextWrapPos(ImGui::GetCursorScreenPos().x + w);
+	ImGui::TextUnformatted(text);
+	ImGui::PopTextWrapPos();
+}
+
+// 横に並べる。ただし次に置くものが残り幅に入らないなら、並べずに次の行へ
+// 落とす。字が大きくなると「入力欄 + ラベル + ボタン」が 1 行に収まらなく
+// なるので、そのときだけ折り返る。label には次に置くボタンの文言を渡す。
+void SameLineOrWrap(const char *label) {
+	const ImGuiStyle &style = ImGui::GetStyle();
+	const float need = ImGui::CalcTextSize(label).x + style.FramePadding.x * 2.0f;
+	// 直前の項目を置き終わったところなので、カーソルは次の行の頭にある。
+	const float right = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
+	if (ImGui::GetItemRectMax().x + style.ItemSpacing.x + need <= right) ImGui::SameLine();
+}
+
 // ダイアログを画面の中央に出す。基準点 (pivot) を真ん中にして渡すので、
 // 大きさが決まっていないダイアログ（AlwaysAutoResize）でも中央に来る。
 void CenterNextWindow(ImGuiCond cond) {
@@ -286,6 +340,10 @@ SettingsUi::SettingsUi()
       visible_(false),
       hasJapaneseFont_(false),
       styleScale_(0.0f),
+      touchUi_(false),
+      touchMinPx_(0.0f),
+      touchFontPx_(0.0f),
+      dialogGrow_(1.0f),
       inputScale_(1.0f),
       vfs_(0),
       pendingSampleRate_(0),
@@ -467,15 +525,78 @@ bool SettingsUi::wantCaptureKeyboard() const {
 
 // 表示倍率に合わせてスタイルとフォントの大きさを作り直す。
 // ImGui 1.92 はフォントを要求時に焼き直すので、拡大しても字がぼけない。
-bool SettingsUi::ApplyScale(float scale) {
-	if (scale == styleScale_) return false;
+//
+// touch が立っているときは、押せるところの高さが kTouchTargetMm を下回らない
+// ように余白を広げる。**字の大きさは変えない**（携帯の狭い画面で、字まで
+// 大きくすると一度に読める項目が減ってしまう）。
+//
+// 広げるのは 2 か所:
+//   ・ボタン・チェックボックス・入力欄の高さ = 字の高さ + FramePadding.y * 2
+//   ・一覧の行 (Selectable) の当たり判定 = 字の高さ + ItemSpacing.y
+//     （ImGui は行同士に隙間ができないよう、Selectable の箱を ItemSpacing.y の
+//     半分ずつ上下へ広げる。だから ItemSpacing.y を足すとそのまま行が太くなる）
+bool SettingsUi::ApplyScale(float scale, bool touch) {
+	if (scale == styleScale_ && touch == touchUi_) return false;
 	styleScale_ = scale;
+	touchUi_ = touch;
+
+	touchMinPx_ = 0.0f;
+	touchFontPx_ = 0.0f;
+	dialogGrow_ = 1.0f;
+
+	// 字の大きさ。ふつうはキャンバスの拡大率どおりだが、指で操作するときは
+	// 行の高さの kTouchFontRatio になるまで大きくする。
+	float fontScale = scale;
+	if (touch) {
+		// ImGui は実ピクセルで描くので、mm から出した値はそのまま使える。
+		touchMinPx_ = kTouchTargetMm * Screen::PixelsPerMm();
+		touchFontPx_ = touchMinPx_ * kTouchFontRatio;
+		if (touchFontPx_ > kFontSizePx * fontScale) fontScale = touchFontPx_ / kFontSizePx;
+	}
 
 	ImGuiStyle &style = ImGui::GetStyle();
 	style = baseStyle_;
-	style.ScaleAllSizes(scale);
-	style.FontScaleDpi = scale;
+	// 余白や角の丸めは**字に合わせて**拡げる。字だけ大きくすると、窓の内側の
+	// 余白や区切りが相対的に痩せて見える。
+	style.ScaleAllSizes(fontScale);
+	style.FontScaleDpi = fontScale;
+
+	if (touch) {
+		const float lineH = kFontSizePx * fontScale;
+
+		const float padY = (touchMinPx_ - lineH) * 0.5f;
+		if (padY > style.FramePadding.y) style.FramePadding.y = padY;
+		const float gapY = touchMinPx_ - lineH;
+		if (gapY > style.ItemSpacing.y) style.ItemSpacing.y = gapY;
+		// 縦だけ広げると横に潰れて見えるので、横も同じだけ確保する。
+		if (padY > style.FramePadding.x) style.FramePadding.x = padY;
+
+		// つまみも指で掴めるように。ただしスクロールバーの幅まで 6mm に
+		// すると画面をかなり食うので、そこは 2/3 (4mm) を下限にする。
+		const float bar = touchMinPx_ * 0.66f;
+		if (style.ScrollbarSize < bar) style.ScrollbarSize = bar;
+		if (style.GrabMinSize < bar) style.GrabMinSize = bar;
+
+		// 行が太くなったぶんだけダイアログも広げないと中身が入らない。
+		// 画面をはみ出すぶんは DialogSize が詰める。
+		const float normal = kFontSizePx * scale + baseStyle_.ItemSpacing.y * scale;
+		if (normal > 0.0f) dialogGrow_ = touchMinPx_ / normal;
+		if (dialogGrow_ < 1.0f) dialogGrow_ = 1.0f;
+	}
 	return true;
+}
+
+// ダイアログの既定の大きさ。画面より大きくはしない。
+ImVec2 SettingsUi::DialogSize(float w, float h) const {
+	const ImGuiIO &io = ImGui::GetIO();
+	ImVec2 s(w * styleScale_ * dialogGrow_, h * styleScale_ * dialogGrow_);
+	if (s.x > io.DisplaySize.x) s.x = io.DisplaySize.x;
+	if (h <= 0.0f) {
+		s.y = 0.0f;  // 高さは中身任せ
+	} else if (s.y > io.DisplaySize.y) {
+		s.y = io.DisplaySize.y;
+	}
+	return s;
 }
 
 // ---------------------------------------------------------------------------
@@ -581,7 +702,12 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 		io.DisplaySize = ImVec2((float)outW, (float)outH);
 		io.DisplayFramebufferScale = ImVec2(1.0f, 1.0f);
 	}
-	const bool scaleChanged = ApplyScale(scale);
+	// 「指で操作する」。自動なら端末で決まるが、ブラウザではあとからタッチ
+	// 装置が見つかることがあるので毎フレーム見る（ApplyScale は変わった
+	// ときだけ作り直す）。
+	bool touch = (settings->touchUi == Settings::kTouchOn);
+	if (settings->touchUi == Settings::kTouchAuto) touch = Screen::TouchPreferred();
+	const bool scaleChanged = ApplyScale(scale, touch);
 
 	ImGui::NewFrame();
 
@@ -635,7 +761,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	// 放っておくと中身だけ大きくなって枠が付いてこない。
 	const ImGuiCond cond = scaleChanged ? ImGuiCond_Always : ImGuiCond_Appearing;
 	CenterNextWindow(cond);
-	ImGui::SetNextWindowSize(ImVec2(380 * scale, 464 * scale), cond);
+	ImGui::SetNextWindowSize(DialogSize(380, 464), cond);
 
 	// p_open に visible_ をそのまま渡す。× で閉じられたときは ImGui が
 	// false にして閉じてくれるし、F1 で false にした場合も同じ経路で閉じる。
@@ -665,7 +791,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 			}
 			ImGui::EndCombo();
 		}
-		ImGui::SameLine();
+		SameLineOrWrap(Msg("Button.Rescan"));
 		if (ImGui::Button(Msg("Button.Rescan"))) {
 			ScanSkins();
 			pendingSkin_ = settings->skinName;
@@ -676,7 +802,13 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 		// このコントロール自身の座標も変わるので、同じ場所を押しているだけで
 		// 値が行き来してしまう。確定してから少し待って適用する。
 		int zoom = settings->zoomPercent;
-		ImGui::SetNextItemWidth(80.0f * styleScale_);
+		// -/+ ボタンは高さと同じ幅の正方形。余白や字が大きくなるとその分だけ
+		// 場所を食うので、幅は決め打ちにせず実測で組み立てる。
+		{
+			const ImGuiStyle &st = ImGui::GetStyle();
+			ImGui::SetNextItemWidth(ImGui::CalcTextSize("0000").x + st.FramePadding.x * 2.0f +
+			                        (ImGui::GetFrameHeight() + st.ItemInnerSpacing.x) * 2.0f);
+		}
 		const bool edited = ImGui::InputInt(Msg("Settings.Zoom"), &zoom, 25, 100);
 		if (edited) {
 			if (zoom < Screen::kZoomMin) zoom = Screen::kZoomMin;
@@ -692,7 +824,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 			pendingZoom_ = settings->zoomPercent;
 			zoomApplyAtMs_ = SDL_GetTicks() + kZoomApplyDelayMs;
 		}
-		ImGui::SameLine();
+		SameLineOrWrap(Msg("Settings.ZoomSystem"));
 		if (ImGui::SmallButton(Msg("Settings.ZoomSystem"))) {
 			settings->zoomPercent = Screen::SystemZoomPercent();
 			changedFields_ |= Settings::kFieldZoom;
@@ -728,6 +860,39 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 					if (selected) ImGui::SetItemDefaultFocus();
 				}
 				ImGui::EndCombo();
+			}
+		}
+
+		// 指で操作する端末向けの余白。押せるところの高さを 6mm 確保する。
+		// 自動なら端末で決まる（Android は有効、PC は無効）ので、ふつうは
+		// 触らなくてよい。触れる画面の PC や、逆に Android にマウスを
+		// 繋いだときのために手で決められるようにしてある。
+		{
+			static const char *const kKeys[] = {
+				"Settings.TouchAuto", "Settings.TouchOn", "Settings.TouchOff",
+			};
+			int mode = settings->touchUi;
+			if (mode < 0 || mode > 2) mode = Settings::kTouchAuto;
+			if (ImGui::BeginCombo(Msg("Settings.Touch"), Msg(kKeys[mode]))) {
+				for (int i = 0; i < 3; i++) {
+					const bool selected = (i == mode);
+					if (ImGui::Selectable(Msg(kKeys[i]), selected)) {
+						settings->touchUi = i;
+						changedFields_ |= Settings::kFieldTouchUi;
+					}
+					if (selected) ImGui::SetItemDefaultFocus();
+				}
+				ImGui::EndCombo();
+			}
+			// いま効いているか。自動のときに端末をどう見ているかが分かる。
+			if (touchUi_) {
+				const float mmPerPx = 1.0f / Screen::PixelsPerMm();
+				TextNote(MsgF("Settings.TouchNow", MsgNum("%.1f", kTouchTargetMm),
+				              MsgNum("%d", (int)(touchMinPx_ + 0.5f)),
+				              MsgNum("%.1f", touchFontPx_ * mmPerPx))
+				             .c_str());
+			} else {
+				TextNote(Msg("Settings.TouchOffNow"));
 			}
 		}
 	}
@@ -768,7 +933,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 				settings->sampleRate = rate;
 				changedFields_ |= Settings::kFieldSampleRate;
 			}
-			ImGui::TextDisabled("%s", Msg("Settings.SampleRateNote"));
+			TextNote(Msg("Settings.SampleRateNote"));
 		}
 
 		int loops = settings->loops;
@@ -783,7 +948,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 			changedFields_ |= Settings::kFieldFadeout;
 			player->SetLoopConfig(settings->loops, settings->fadeout);
 		}
-		ImGui::TextDisabled("%s", Msg("Settings.LoopNote"));
+		TextNote(Msg("Settings.LoopNote"));
 
 		// マスター音量。メイン画面の音量バーとは別で、実際の音量は 2 つの和。
 		int vol = player->masterVolume();
@@ -793,11 +958,10 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 			changedFields_ |= Settings::kFieldVolume;
 		}
 		settings->masterVolume = player->masterVolume();
-		ImGui::TextDisabled(
-		    "%s", MsgF("Settings.VolumeNote", MsgNum("%+d", player->masterVolume()),
-		               MsgNum("%+d", player->mainVolume()),
-		               MsgNum("%+d", player->effectiveVolume()))
-		              .c_str());
+		TextNote(MsgF("Settings.VolumeNote", MsgNum("%+d", player->masterVolume()),
+		              MsgNum("%+d", player->mainVolume()),
+		              MsgNum("%+d", player->effectiveVolume()))
+		             .c_str());
 
 		// 画面を音に合わせて遅らせる量。イベントはサンプル位置で打刻して
 		// あるので、ずれる原因はオーディオ装置のバッファぶんだけ。ふつうは
@@ -820,12 +984,10 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 					player->SetDisplayLatency(false, MsToFrames(ms, player));
 				}
 			}
-			ImGui::TextDisabled(
-			    "%s",
-			    MsgF("Settings.LatencyNow",
-			         MsgNum("%+.1f", FramesToMs(player->displayLatencyFrames(), player)),
-			         MsgNum("%d", player->audioBufferFrames()))
-			        .c_str());
+			TextNote(MsgF("Settings.LatencyNow",
+			              MsgNum("%+.1f", FramesToMs(player->displayLatencyFrames(), player)),
+			              MsgNum("%d", player->audioBufferFrames()))
+			             .c_str());
 		}
 
 		if (pdxPathBuf_[0] == '\0' && !settings->pdxPath.empty()) {
@@ -901,13 +1063,8 @@ void SettingsUi::BuildColorsWindow(Settings *settings, DrawScreen *draw, Player 
 	if (!SyncModal(kColorsTitle, &showColors_)) return;
 
 	// 設定ウィンドウと同じ作法。開くたびに中央、画面からはみ出さない大きさ。
-	const ImGuiIO &io = ImGui::GetIO();
-	float w = 380.0f * styleScale_;
-	float h = 464.0f * styleScale_;
-	if (w > io.DisplaySize.x) w = io.DisplaySize.x;
-	if (h > io.DisplaySize.y) h = io.DisplaySize.y;
 	CenterNextWindow(ImGuiCond_Appearing);
-	ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_Appearing);
+	ImGui::SetNextWindowSize(DialogSize(380.0f, 464.0f), ImGuiCond_Appearing);
 
 	if (ImGui::BeginPopupModal(kColorsTitle, &showColors_,
 	                           ImGuiWindowFlags_NoCollapse |
@@ -1050,7 +1207,7 @@ void SettingsUi::BuildSkinSaveRow(Settings *settings, DrawScreen *draw) {
 	}
 
 	if (!saveError_.empty()) {
-		ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "%s", saveError_.c_str());
+		TextWrapColor(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), saveError_.c_str());
 		if (saveErrorFresh_) {
 			saveErrorFresh_ = false;
 			ImGui::SetScrollHereY(0.0f);
@@ -1079,7 +1236,7 @@ void SettingsUi::BuildOverwriteWindow(Settings *settings, DrawScreen *draw) {
 		return;
 	}
 
-	ImGui::Text("%s", MsgF("Colors.OverwriteMessage", overwriteName_).c_str());
+	ConfirmText(MsgF("Colors.OverwriteMessage", overwriteName_).c_str());
 	ImGui::TextUnformatted(Msg("Colors.OverwriteQuestion"));
 	ImGui::Separator();
 	if (ImGui::Button(Msg("Button.Overwrite"))) {
@@ -1116,7 +1273,7 @@ void SettingsUi::BuildQuitWindow() {
 		return;
 	}
 
-	ImGui::TextUnformatted(Msg("Dialog.QuitQuestion"));
+	ConfirmText(Msg("Dialog.QuitQuestion"));
 	ImGui::Separator();
 	// Enter でも終了できるようにする。ESC で開いて ESC で閉じられる一方、
 	// 「はい」がマウスでしか押せないと、キーボードだけでは終われなくなる。
@@ -1140,13 +1297,8 @@ void SettingsUi::BuildQuitWindow() {
 void SettingsUi::BuildFileSystemsWindow(Filer *filer) {
 	if (!SyncModal(kFileSystemsTitle, &showFileSystems_)) return;
 
-	const ImGuiIO &io = ImGui::GetIO();
-	float w = 460.0f * styleScale_;
-	float h = 360.0f * styleScale_;
-	if (w > io.DisplaySize.x) w = io.DisplaySize.x;
-	if (h > io.DisplaySize.y) h = io.DisplaySize.y;
 	CenterNextWindow(ImGuiCond_Appearing);
-	ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_Appearing);
+	ImGui::SetNextWindowSize(DialogSize(460.0f, 360.0f), ImGuiCond_Appearing);
 
 	if (!ImGui::BeginPopupModal(kFileSystemsTitle, &showFileSystems_,
 	                            ImGuiWindowFlags_NoCollapse |
@@ -1187,9 +1339,9 @@ void SettingsUi::BuildFileSystemsWindow(Filer *filer) {
 	}
 
 	if (fsError_.empty()) {
-		ImGui::TextDisabled("%s", Msg("FileSystems.FixedNote"));
+		TextNote(Msg("FileSystems.FixedNote"));
 	} else {
-		ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), "%s", fsError_.c_str());
+		TextError(fsError_.c_str());
 	}
 
 	const FileSystem *sel = (count > 0) ? vfs_->at(fsSelected_) : 0;
@@ -1309,11 +1461,8 @@ void SettingsUi::BuildAddFsWindow(Filer *filer) {
 		return;
 	}
 
-	const ImGuiIO &io = ImGui::GetIO();
-	float w = 460.0f * styleScale_;
-	if (w > io.DisplaySize.x) w = io.DisplaySize.x;
 	CenterNextWindow(ImGuiCond_Appearing);
-	ImGui::SetNextWindowSize(ImVec2(w, 0.0f), ImGuiCond_Appearing);
+	ImGui::SetNextWindowSize(DialogSize(460.0f, 0.0f), ImGuiCond_Appearing);
 	if (!ImGui::BeginPopupModal(kAddFsTitle, NULL,
 	                            ImGuiWindowFlags_NoCollapse |
 	                                ImGuiWindowFlags_NoSavedSettings |
@@ -1325,9 +1474,9 @@ void SettingsUi::BuildAddFsWindow(Filer *filer) {
 	ImGui::SetNextItemWidth(-FLT_MIN);
 	bool apply = ImGui::InputText("##addfspath", addFsPathBuf_, sizeof(addFsPathBuf_),
 	                              ImGuiInputTextFlags_EnterReturnsTrue);
-	ImGui::TextDisabled("%s", Msg("AddFs.Hint"));
+	TextNote(Msg("AddFs.Hint"));
 	if (!addFsError_.empty()) {
-		ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), "%s", addFsError_.c_str());
+		TextError(addFsError_.c_str());
 	}
 	ImGui::Separator();
 
@@ -1394,9 +1543,8 @@ void SettingsUi::BuildFsRemoveWindow(Filer *filer) {
 	const FileSystem *sel =
 	    (vfs_ != 0 && fsSelected_ >= 0 && fsSelected_ < vfs_->count()) ? vfs_->at(fsSelected_)
 	                                                                  : 0;
-	ImGui::Text("%s", MsgF("FileSystems.RemoveConfirm",
-	                       sel != 0 ? sel->label() : std::string())
-	                      .c_str());
+	ConfirmText(MsgF("FileSystems.RemoveConfirm", sel != 0 ? sel->label() : std::string())
+	                .c_str());
 	ImGui::Separator();
 	if (ImGui::Button(Msg("Button.Remove"))) {
 		// 動的に足したファイルシステムは実体も捨てるので、フォルダと
@@ -1473,13 +1621,8 @@ void SettingsUi::OpenBookmark(Settings *settings, int index) {
 void SettingsUi::BuildBookmarksWindow(Settings *settings, Filer *filer) {
 	if (!SyncModal(kBookmarksTitle, &showBookmarks_)) return;
 
-	const ImGuiIO &io = ImGui::GetIO();
-	float w = 460.0f * styleScale_;
-	float h = 360.0f * styleScale_;
-	if (w > io.DisplaySize.x) w = io.DisplaySize.x;
-	if (h > io.DisplaySize.y) h = io.DisplaySize.y;
 	CenterNextWindow(ImGuiCond_Appearing);
-	ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_Appearing);
+	ImGui::SetNextWindowSize(DialogSize(460.0f, 360.0f), ImGuiCond_Appearing);
 
 	if (!ImGui::BeginPopupModal(kBookmarksTitle, &showBookmarks_,
 	                            ImGuiWindowFlags_NoCollapse |
@@ -1523,9 +1666,9 @@ void SettingsUi::BuildBookmarksWindow(Settings *settings, Filer *filer) {
 	}
 
 	if (bmError_.empty()) {
-		ImGui::TextDisabled("%s", Msg("Bookmark.Hint"));
+		TextNote(Msg("Bookmark.Hint"));
 	} else {
-		ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), "%s", bmError_.c_str());
+		TextError(bmError_.c_str());
 	}
 
 	// [開く] は 1 行を占有する大きなボタン（仕様どおり）。
@@ -1616,10 +1759,10 @@ void SettingsUi::BuildBookmarkRemoveWindow(Settings *settings) {
 
 	std::vector<std::string> &list = settings->bookmarks;
 	const bool valid = (bmSelected_ >= 0 && bmSelected_ < (int)list.size());
-	ImGui::Text("%s", MsgF("Bookmark.RemoveConfirm",
-	                       (valid && vfs_ != 0) ? vfs_->DisplayPath(list[bmSelected_])
-	                                            : std::string())
-	                      .c_str());
+	ConfirmText(MsgF("Bookmark.RemoveConfirm",
+	                 (valid && vfs_ != 0) ? vfs_->DisplayPath(list[bmSelected_])
+	                                      : std::string())
+	                .c_str());
 	ImGui::Separator();
 	if (ImGui::Button(Msg("Button.Remove"))) {
 		if (valid) {
@@ -1669,7 +1812,7 @@ void SettingsUi::BuildBookmarkToggleWindow(Settings *settings, Filer *filer) {
 	const std::string shown = (vfs_ != 0) ? vfs_->DisplayPath(bmToggleRef_) : bmToggleRef_;
 
 	if (at >= 0) {
-		ImGui::Text("%s", MsgF("Bookmark.RemoveConfirm", shown).c_str());
+		ConfirmText(MsgF("Bookmark.RemoveConfirm", shown).c_str());
 		ImGui::Separator();
 		if (ImGui::Button(Msg("Button.Remove"))) {
 			list.erase(list.begin() + at);
@@ -1679,10 +1822,9 @@ void SettingsUi::BuildBookmarkToggleWindow(Settings *settings, Filer *filer) {
 		}
 	} else {
 		const bool full = ((int)list.size() >= Settings::kMaxBookmarks);
-		ImGui::Text("%s", MsgF("Bookmark.AddConfirm", shown).c_str());
+		ConfirmText(MsgF("Bookmark.AddConfirm", shown).c_str());
 		if (full) {
-			ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), "%s",
-			                   Msg("Bookmark.Full"));
+			TextError(Msg("Bookmark.Full"));
 		}
 		ImGui::Separator();
 		ImGui::BeginDisabled(full);
@@ -1824,13 +1966,8 @@ void SettingsUi::SetStartupWarnings(const std::vector<std::string> &lines) {
 void SettingsUi::BuildStartupWindow() {
 	if (!SyncModal(kStartupTitle, &showStartup_)) return;
 
-	const ImGuiIO &io = ImGui::GetIO();
-	float w = 520.0f * styleScale_;
-	float h = 280.0f * styleScale_;
-	if (w > io.DisplaySize.x) w = io.DisplaySize.x;
-	if (h > io.DisplaySize.y) h = io.DisplaySize.y;
 	CenterNextWindow(ImGuiCond_Appearing);
-	ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_Appearing);
+	ImGui::SetNextWindowSize(DialogSize(520.0f, 280.0f), ImGuiCond_Appearing);
 
 	if (!ImGui::BeginPopupModal(kStartupTitle, &showStartup_,
 	                            ImGuiWindowFlags_NoCollapse |
@@ -1883,13 +2020,8 @@ void SettingsUi::LoadHelpRows() {
 void SettingsUi::BuildHelpWindow() {
 	if (!SyncModal(kHelpTitle, &showHelp_)) return;
 
-	const ImGuiIO &io = ImGui::GetIO();
-	float w = 560.0f * styleScale_;
-	float h = 460.0f * styleScale_;
-	if (w > io.DisplaySize.x) w = io.DisplaySize.x;
-	if (h > io.DisplaySize.y) h = io.DisplaySize.y;
 	CenterNextWindow(ImGuiCond_Appearing);
-	ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_Appearing);
+	ImGui::SetNextWindowSize(DialogSize(560.0f, 460.0f), ImGuiCond_Appearing);
 
 	if (ImGui::BeginPopupModal(kHelpTitle, &showHelp_,
 	                           ImGuiWindowFlags_NoCollapse |
@@ -1967,13 +2099,8 @@ void SettingsUi::BuildFolderWindow(Settings *settings, Filer *filer) {
 	const char *title = folderTitle();
 	if (!SyncModal(title, &showFolder_)) return;
 
-	const ImGuiIO &io = ImGui::GetIO();
-	float w = 460.0f * styleScale_;
-	float h = 400.0f * styleScale_;
-	if (w > io.DisplaySize.x) w = io.DisplaySize.x;
-	if (h > io.DisplaySize.y) h = io.DisplaySize.y;
 	CenterNextWindow(ImGuiCond_Appearing);
-	ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_Appearing);
+	ImGui::SetNextWindowSize(DialogSize(460.0f, 400.0f), ImGuiCond_Appearing);
 
 	if (!ImGui::BeginPopupModal(title, &showFolder_,
 	                            ImGuiWindowFlags_NoCollapse |
@@ -2016,8 +2143,7 @@ void SettingsUi::BuildFolderWindow(Settings *settings, Filer *filer) {
 	{
 		const float inset = ImGui::GetStyle().FramePadding.x;
 		ImGui::Indent(inset);
-		ImGui::TextDisabled("%s", folderDir_.empty() ? Msg("Folder.FileSystem")
-		                                             : folderDir_.c_str());
+		TextNote(folderDir_.empty() ? Msg("Folder.FileSystem") : folderDir_.c_str());
 		ImGui::Unindent(inset);
 	}
 
@@ -2085,9 +2211,9 @@ void SettingsUi::BuildFolderWindow(Settings *settings, Filer *filer) {
 	}
 
 	if (folderError_.empty()) {
-		ImGui::TextDisabled("%s", Msg("Folder.Hint"));
+		TextNote(Msg("Folder.Hint"));
 	} else {
-		ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.45f, 1.0f), "%s", folderError_.c_str());
+		TextError(folderError_.c_str());
 	}
 	if (ImGui::Button(Msg("Button.Open"))) apply = true;
 	ImGui::SameLine();
@@ -2240,13 +2366,8 @@ void SettingsUi::BuildContextMenu(Settings *settings, DrawScreen *draw, Player *
 		// 設定ウィンドウと同じく、開くたびに画面の中央から出す。
 		// 大きさは画面からはみ出さないように詰める。スキンの横幅の下限は
 		// 480px なので、既定の 560px はそのままでは入らない。
-		const ImGuiIO &io = ImGui::GetIO();
-		float w = 560.0f * styleScale_;
-		float h = 420.0f * styleScale_;
-		if (w > io.DisplaySize.x) w = io.DisplaySize.x;
-		if (h > io.DisplaySize.y) h = io.DisplaySize.y;
 		CenterNextWindow(ImGuiCond_Appearing);
-		ImGui::SetNextWindowSize(ImVec2(w, h), ImGuiCond_Appearing);
+		ImGui::SetNextWindowSize(DialogSize(560.0f, 420.0f), ImGuiCond_Appearing);
 		if (ImGui::BeginPopupModal(kAboutTitle, &showAbout_,
 		                           ImGuiWindowFlags_NoCollapse |
 		                               ImGuiWindowFlags_NoSavedSettings)) {

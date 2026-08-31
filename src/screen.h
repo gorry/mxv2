@@ -34,6 +34,16 @@ public:
 	// 拡大率の初期値に使う。取れなければ 100。SDL_Init 後に呼ぶこと。
 	static int SystemZoomPercent();
 
+	// 画面 1mm あたりの実ピクセル数。押せるところの大きさを「指で押せる
+	// 何 mm」で決めるために使う。取れなければ、Android は mdpi (160dpi)、
+	// それ以外は Windows の 100% にあたる 96dpi を仮に使う。
+	// SDL_Init 後に呼ぶこと。
+	static float PixelsPerMm();
+
+	// この端末が指での操作を前提にしているか。設定の「自動」の既定になる。
+	// Web は端末で決まるので、SDL がタッチ装置を数えられるかで見る。
+	static bool TouchPreferred();
+
 	// 表示倍率の範囲。
 	static const int kZoomMin = 100;
 	static const int kZoomMax = 400;

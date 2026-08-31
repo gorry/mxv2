@@ -22,6 +22,7 @@ Settings::Settings()
       zoomPercent(0),
       legacyScale(0),
       scaleFilter("sharp"),
+      touchUi(kTouchAuto),
       fileListFontSize(0),
       folderFirst(false),
       sampleRate(48000),
@@ -47,6 +48,8 @@ bool Settings::Load(const std::string &path) {
 	zoomPercent = ini.GetInt("Screen", "Zoom", zoomPercent);
 	legacyScale = ini.GetInt("Screen", "Scale", 0);
 	scaleFilter = ini.GetString("Screen", "Filter", scaleFilter);
+	touchUi = ini.GetInt("Screen", "TouchUI", touchUi);
+	if (touchUi < kTouchAuto || touchUi > kTouchOff) touchUi = kTouchAuto;
 
 	fileListFontSize = ini.GetInt("Filer", "FontSize", fileListFontSize) ? 1 : 0;
 	folderFirst = ini.GetInt("Filer", "FolderFirst", folderFirst ? 1 : 0) != 0;
@@ -109,6 +112,7 @@ bool Settings::Save(const std::string &path) const {
 	ini.SetString("Screen", "Skin", skinName);
 	ini.SetInt("Screen", "Zoom", zoomPercent);
 	ini.SetString("Screen", "Filter", scaleFilter);
+	ini.SetInt("Screen", "TouchUI", touchUi);
 
 	ini.SetInt("Filer", "FontSize", fileListFontSize ? 1 : 0);
 	ini.SetInt("Filer", "FolderFirst", folderFirst ? 1 : 0);
@@ -175,6 +179,7 @@ bool Settings::SaveFields(const std::string &path, unsigned fields) const {
 	if (fields & kFieldSkin) out.skinName = skinName;
 	if (fields & kFieldZoom) out.zoomPercent = zoomPercent;
 	if (fields & kFieldFilter) out.scaleFilter = scaleFilter;
+	if (fields & kFieldTouchUi) out.touchUi = touchUi;
 	if (fields & kFieldFontSize) out.fileListFontSize = fileListFontSize;
 	if (fields & kFieldFolderFirst) out.folderFirst = folderFirst;
 	if (fields & kFieldLastDir) out.lastDir = lastDir;

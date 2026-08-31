@@ -45,6 +45,31 @@ int Screen::SystemZoomPercent() {
 #endif
 }
 
+float Screen::PixelsPerMm() {
+	float ddpi = 0.0f;
+	// 対角の dpi を使う。横と縦で違う値を返す環境（Android の DisplayMetrics は
+	// xdpi と ydpi が別）でも、指の大きさは向きに関係ないので対角でよい。
+	if (SDL_GetDisplayDPI(0, &ddpi, NULL, NULL) != 0 || ddpi <= 1.0f) {
+#ifdef __ANDROID__
+		ddpi = 160.0f;  // mdpi
+#else
+		ddpi = 96.0f;  // Windows の 100%
+#endif
+	}
+	return ddpi / 25.4f;
+}
+
+bool Screen::TouchPreferred() {
+#if defined(__ANDROID__) || defined(__IPHONEOS__)
+	return true;
+#elif defined(__EMSCRIPTEN__)
+	// ブラウザは同じものが PC でも携帯でも動く。タッチ装置があるかで決める。
+	return SDL_GetNumTouchDevices() > 0;
+#else
+	return false;
+#endif
+}
+
 bool Screen::Open(const std::string &title, int width, int height, int zoomPercent,
                   std::string *err) {
 	if (width <= 0 || height <= 0) {

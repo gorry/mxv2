@@ -250,8 +250,14 @@ public:
 	bool hasJapaneseFont() const { return hasJapaneseFont_; }
 
 private:
-	// 倍率が変わったら true（ダイアログの大きさも作り直すため）。
-	bool ApplyScale(float scale);
+	// 倍率か「指で操作する」が変わったら true（ダイアログの大きさも
+	// 作り直すため）。
+	bool ApplyScale(float scale, bool touch);
+
+	// ダイアログの既定の大きさ。渡すのは倍率 1 倍のときの大きさで、
+	// 表示倍率と「指で操作する」ぶんを掛けてから画面に収まるまで詰める。
+	// h に 0 を渡すと高さは中身任せ（AlwaysAutoResize と組で使う）。
+	ImVec2 DialogSize(float w, float h) const;
 	// 画面を作り直す。ステータス欄は変化があったときしか描かないので、
 	// 作り直したあとは Player に積み直しを頼む。
 	void Rebuild(DrawScreen *draw, Player *player);
@@ -267,6 +273,17 @@ private:
 	bool hasJapaneseFont_;
 	float styleScale_;
 	ImGuiStyle baseStyle_;
+
+	// 指で操作する端末向けの余白。押せるところの高さが
+	// kTouchTargetMm を下回らないように FramePadding.y と ItemSpacing.y を
+	// 広げる（ApplyScale）。字の大きさは変えない。
+	bool touchUi_;
+	// 押せるところの高さの下限（実ピクセル）。touchUi_ でなければ 0。
+	float touchMinPx_;
+	// そのときの字の大きさ（実ピクセル）。行の高さの kTouchFontRatio。
+	float touchFontPx_;
+	// 行が太くなったぶん、ダイアログも広げる倍率。ふつうは 1 倍。
+	float dialogGrow_;
 
 	// ImGui は実解像度で動かすので、SDL から届く論理座標のマウス位置を
 	// この倍率で直してからバックエンドへ渡す。Build で毎フレーム更新する。
