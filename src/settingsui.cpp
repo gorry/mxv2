@@ -19,6 +19,7 @@
 #include "ini.h"
 #include "message.h"
 #include "player.h"
+#include "safaccess.h"
 #include "screen.h"
 #include "settings.h"
 #include "skin.h"
@@ -286,8 +287,6 @@ SettingsUi::SettingsUi()
       hasJapaneseFont_(false),
       styleScale_(0.0f),
       inputScale_(1.0f),
-      inputOffsetX_(0.0f),
-      inputOffsetY_(0.0f),
       vfs_(0),
       pendingSampleRate_(0),
       pendingZoom_(0),
@@ -321,6 +320,7 @@ SettingsUi::SettingsUi()
       quitClose_(false),
       bmCloseToggle_(false),
       fsSelected_(0),
+      safPicking_(false),
       addFsOpen_(false),
       addFsShow_(false),
       addFsClose_(false),
@@ -362,8 +362,7 @@ bool SettingsUi::Init(Screen *screen, const AssetPaths &paths, std::string *err)
 	ScanSkins();
 
 	// 最初のイベントが来る前に倍率を知っておく。
-	screen->GetRenderScale(&inputScale_, 0);
-	screen->GetRenderOffset(&inputOffsetX_, &inputOffsetY_);
+	inputScale_ = screen->WindowToOutputScale();
 	if (inputScale_ <= 0.0f) inputScale_ = 1.0f;
 
 	IMGUI_CHECKVERSION();
@@ -437,21 +436,15 @@ void SettingsUi::Shutdown() {
 void SettingsUi::ProcessEvent(const SDL_Event &ev) {
 	if (!ready_) return;
 
-	// ImGui は実解像度で動かすが、SDL は論理座標でイベントを届ける。
-	// バックエンドは SDL_MOUSEMOTION の座標をそのまま io へ流すので、
-	// **渡す前に**倍率へ直す。ここで直さずに後から io.MousePos を上書きしても、
+	// ImGui は実ピクセルで動かす。SDL のマウスイベントは窓の座標で届くので、
+	// **渡す前に**実ピクセルへ直す（HiDPI で食い違う環境のための倍率で、
+	// ふつうは 1 倍）。ここで直さずに後から io.MousePos を上書きしても、
 	// ImGui::NewFrame() がキューを適用する際に上書きが打ち消され、
-	// 拡大前の位置のコントロールが 1 フレームだけ反応してしまう。
-	//
-	// **倍率だけでなく、レターボックスのぶんもずらす。** 窓の縦横比が
-	// キャンバスと違うとき（Android は窓が画面いっぱいなので必ず、Windows でも
-	// 窓を引き伸ばせば）、キャンバスは真ん中に寄って上下か左右に帯ができる。
-	// ImGui は窓の左上を原点に描くので、帯のぶんを足さないと押した場所と
-	// 反応する場所が食い違う。
-	if (ev.type == SDL_MOUSEMOTION) {
+	// ずれた位置のコントロールが 1 フレームだけ反応してしまう。
+	if (ev.type == SDL_MOUSEMOTION && inputScale_ != 1.0f) {
 		SDL_Event scaled = ev;
-		scaled.motion.x = (int)(ev.motion.x * inputScale_ + inputOffsetX_ + 0.5f);
-		scaled.motion.y = (int)(ev.motion.y * inputScale_ + inputOffsetY_ + 0.5f);
+		scaled.motion.x = (int)(ev.motion.x * inputScale_ + 0.5f);
+		scaled.motion.y = (int)(ev.motion.y * inputScale_ + 0.5f);
 		ImGui_ImplSDL2_ProcessEvent(&scaled);
 		return;
 	}
@@ -569,13 +562,14 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	ImGui_ImplSDLRenderer2_NewFrame();
 	ImGui_ImplSDL2_NewFrame();
 
-	// ImGui は実解像度で描く。SDL_RenderSetLogicalSize が入っているせいで
-	// マウス座標だけは論理座標に直って届くので、こちらで拡大率を掛け戻す。
+	// ImGui は実ピクセルで描く。字の大きさはキャンバスの拡大率に合わせ、
+	// マウス座標は「窓 -> 実ピクセル」の倍率で直す（別物なので注意。
+	// 前者は 2.25 倍でも、後者はふつう 1 倍）。
 	float scale = 1.0f;
 	screen->GetRenderScale(&scale, 0);
 	if (scale <= 0.0f) scale = 1.0f;
-	inputScale_ = scale;
-	screen->GetRenderOffset(&inputOffsetX_, &inputOffsetY_);
+	inputScale_ = screen->WindowToOutputScale();
+	if (inputScale_ <= 0.0f) inputScale_ = 1.0f;
 	{
 		ImGuiIO &io = ImGui::GetIO();
 		// 描く場所は窓の左上が原点（BeginNativeScale が論理サイズを外す）
@@ -618,6 +612,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 		showFolder_ = true;
 	}
 	BuildFolderWindow(settings, filer);
+	PollSafPicked(filer);
 	BuildFileSystemsWindow(filer);
 	BuildBookmarksWindow(settings, filer);
 	BuildBookmarkToggleWindow(settings, filer);
@@ -1218,14 +1213,24 @@ void SettingsUi::BuildFileSystemsWindow(Filer *filer) {
 	}
 	ImGui::EndDisabled();
 
-	// [追加] は今のところフォルダマウント (dir:) だけ。追加できる種類が
-	// 1 つしかないので、種類の選択は省いて場所を選ぶダイアログを直に出す
-	// （filesystem.md）。外部ファイルシステムを足すときは、ここに種類の
-	// 選択を挟むこと。
+	// [追加] で足せる種類はプラットフォームごとに 1 つしかないので、種類の
+	// 選択は省いて場所を選ぶ画面を直に出す（filesystem.md）。
+	//   Android … 端末のフォルダ (SAF)。選ぶ画面は OS が出し、結果は
+	//             あとから届くので PollSafPicked() が拾う。
+	//   その他  … フォルダマウント (dir:) の追加ダイアログ。
+	// 3 種類以上になったら、ここに種類の選択を挟むこと。
 	ImGui::SameLine();
 	if (ImGui::Button(Msg("Button.AddFs"))) {
 		fsError_.clear();
-		addFsOpen_ = true;
+		if (SafAvailable()) {
+			if (SafPickTree()) {
+				safPicking_ = true;
+			} else {
+				fsError_ = Msg("FileSystems.PickFailed");
+			}
+		} else {
+			addFsOpen_ = true;
+		}
 	}
 	if (ImGui::IsItemHovered()) {
 		ImGui::SetTooltip("%s", Msg("FileSystems.AddHint"));
@@ -1261,6 +1266,35 @@ void SettingsUi::SetBrowsedPath(const std::string &path) {
 // 場所は **OS ネイティブのパス**なので、打ち込みと OS の「フォルダを探す」
 // ダイアログで取る。ファイラーのフォルダ選択（VFS の中を辿る自前のもの）は
 // ここでは使わない。
+// 端末の「フォルダを選ぶ」画面 (SAF) の結果を拾う。あちらが出ている間
+// mxv2 はバックグラウンドへ回っているので、結果が届くのは戻ってきたあと。
+void SettingsUi::PollSafPicked(Filer *filer) {
+	if (!safPicking_) return;
+
+	std::string uri;
+	if (!SafPollPicked(&uri)) return;
+	safPicking_ = false;
+	if (uri.empty()) return;  // 取り消した
+	if (vfs_ == 0) return;
+
+	FileSystem *made = vfs_->CreateFromMountRef(std::string("saf:") + uri);
+	if (made == 0) {
+		fsError_ = Msg("AddFs.NotFound");
+		return;
+	}
+	if (!vfs_->Add(made)) {
+		fsError_ = MsgF("AddFs.Duplicate", made->mountRef());
+		delete made;
+		return;
+	}
+	// 選んでいた位置へ挿し込む（[追加] ダイアログと同じ）。
+	const int at = (fsSelected_ >= 0) ? fsSelected_ : vfs_->count();
+	vfs_->MountAt(at, made);
+	fsSelected_ = at;
+	changedFields_ |= Settings::kFieldFileSystems;
+	if (filer != 0) filer->Refresh();
+}
+
 void SettingsUi::BuildAddFsWindow(Filer *filer) {
 	if (addFsOpen_) {
 		addFsOpen_ = false;
@@ -2258,10 +2292,9 @@ void SettingsUi::HandleDeviceReset() {
 void SettingsUi::Render(Screen *screen) {
 	if (!ready_) return;
 	ImGui::Render();
-	// 論理サイズを外して、実解像度のまま描く。
-	screen->BeginNativeScale();
+	// 実解像度のまま描く（キャンバスの拡大は Screen::Draw が自分で行うので、
+	// レンダラに論理サイズは入っていない）。
 	ImGui_ImplSDLRenderer2_RenderDrawData(ImGui::GetDrawData(), screen->renderer());
-	screen->EndNativeScale();
 }
 
 }  // namespace mxv2

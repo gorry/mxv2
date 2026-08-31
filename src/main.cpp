@@ -1116,8 +1116,11 @@ int main(int argc, char **argv) {
 			// F1/F2 は開くだけなので通す必要はなく、閉じるのは上の ESC。
 			if (isKey && ui.wantCaptureKeyboard()) continue;
 
-			// マウス
-			switch (mouse.Handle(ev)) {
+			// マウス。イベントは窓の画素で届くので、キャンバスの論理座標へ
+			// 直してから配る（当たり判定はすべて論理座標）。
+			SDL_Event mev = ev;
+			screen.WindowEventToCanvas(&mev);
+			switch (mouse.Handle(mev)) {
 				case mxv2::kMouseRequestOpenCursor:
 					OpenCursor(ctx, &filer, &ui);
 					break;

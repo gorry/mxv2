@@ -270,10 +270,8 @@ private:
 
 	// ImGui は実解像度で動かすので、SDL から届く論理座標のマウス位置を
 	// この倍率で直してからバックエンドへ渡す。Build で毎フレーム更新する。
+	// マウス座標を「窓の座標」から「実ピクセル」へ直す倍率（ふつう 1 倍）。
 	float inputScale_;
-	// レターボックス（キャンバスが実出力より小さいときの余白）。実ピクセル。
-	float inputOffsetX_;
-	float inputOffsetY_;
 
 	// 表示倍率 (%) は「入力を確定してから少し待って」適用する。
 	// 操作中に適用するとウィンドウの大きさが変わり、それに合わせて
@@ -406,6 +404,8 @@ private:
 	// 打ち込みと **OS の「フォルダを探す」ダイアログ**で決める
 	// （ファイラーのフォルダ選択は ref を選ぶための別物）。
 	void BuildAddFsWindow(Filer *filer);
+	void PollSafPicked(Filer *filer);
+	bool safPicking_;  // SAF の選択画面を出していて、結果を待っている
 	bool addFsOpen_;   // 次のフレームで開く
 	bool addFsShow_;   // いま開いている（ESC の判断に使う）
 	bool addFsClose_;  // ESC で閉じてほしい

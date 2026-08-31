@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "message.h"
+#include "safaccess.h"
 
 namespace mxv2 {
 
@@ -13,6 +14,7 @@ namespace {
 const char kLocalId[] = "localfs";
 const char kDirId[] = "dir";
 const char kAssetsId[] = "assets";
+const char kSafId[] = "saf";
 const char kUserDirId[] = "userdir";
 
 bool IsSep(char c) {
@@ -449,7 +451,13 @@ FileSystem *Vfs::CreateFromMountRef(const std::string &ref) const {
 		if (rest.empty()) return 0;
 		return new DirFileSystem(rest);
 	}
-	// 外部ファイルシステム (saf: / web: / smb: …) はここへ足す。
+	if (CompareNoCase(scheme, kSafId) == 0) {
+		// 端末のフォルダ (SAF)。Android 以外では作れない。権限が切れて
+		// いるときも 0 なので、呼んだ側が「見つかりません」として捨てる。
+		if (rest.empty()) return 0;
+		return CreateSafFileSystem(rest);
+	}
+	// 外部ファイルシステム (web: / smb: …) はここへ足す。
 	return 0;
 }
 

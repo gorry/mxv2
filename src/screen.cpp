@@ -76,8 +76,14 @@ bool Screen::Open(const std::string &title, int width, int height, int zoomPerce
 		return false;
 	}
 
-	// ウィンドウを伸ばしてもアスペクト比を保つ
-	SDL_RenderSetLogicalSize(renderer_, width_, height_);
+	// **SDL_RenderSetLogicalSize は使わない。**
+	// あれを掛けると SDL がマウスイベントの座標を論理座標へ直してくれるが、
+	// その変換は「いま論理サイズが入っているか」を見て行われる。mxv2 は
+	// 文字と設定 UI を実解像度で描くために毎フレーム論理サイズを外して
+	// 戻しており、**Android はタッチが Java の UI スレッドから飛んでくる**
+	// ので、外している隙に届いたイベントだけ変換されずに素の窓の座標で
+	// 入ってくる（同じ場所を叩いても効いたり効かなかったりする）。
+	// 拡大もマウス座標の変換も自分で行う（CanvasRect / WindowToCanvas）。
 	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");  // ドット絵なので最近傍
 
 	texture_ = SDL_CreateTexture(renderer_, SDL_PIXELFORMAT_ARGB8888,
@@ -208,26 +214,20 @@ void Screen::Draw() {
 	SDL_UpdateTexture(texture_, NULL, &pixels_[0], width_ * (int)sizeof(uint32_t));
 	SDL_RenderClear(renderer_);
 
+	const SDL_Rect dst = CanvasRect();
+
 	if (scaleMode_ == kScaleSharp && EnsurePreTexture()) {
-		// 1 段目: 最近傍で整数倍へ。論理サイズは外しておく
-		// (中間テクスチャいっぱいに描きたいので)。
-		BeginNativeScale();
+		// 1 段目: 最近傍で整数倍へ（中間テクスチャいっぱいに描く）。
 		SDL_SetRenderTarget(renderer_, preTexture_);
 		SDL_RenderCopy(renderer_, texture_, NULL, NULL);
 		SDL_SetRenderTarget(renderer_, NULL);
-		EndNativeScale();
 
 		// 2 段目: バイリニアで目的の大きさへ。
-		SDL_Rect dst;
-		dst.x = 0;
-		dst.y = 0;
-		dst.w = width_;
-		dst.h = height_;
 		SDL_RenderCopy(renderer_, preTexture_, NULL, &dst);
 		return;
 	}
 
-	SDL_RenderCopy(renderer_, texture_, NULL, NULL);
+	SDL_RenderCopy(renderer_, texture_, NULL, &dst);
 }
 
 void Screen::Present() {
@@ -280,7 +280,6 @@ bool Screen::Resize(int width, int height, std::string *err) {
 	width_ = width;
 	height_ = height;
 	pixels_.assign((size_t)width_ * height_, 0xff000000u);
-	SDL_RenderSetLogicalSize(renderer_, width_, height_);
 	SetScaleMode(scaleMode_);
 	if (window_ != 0) SDL_SetWindowSize(window_, width_ * zoom_ / 100, height_ * zoom_ / 100);
 	return true;
@@ -340,14 +339,66 @@ void Screen::GetRenderScale(float *sx, float *sy) const {
 	if (sy != 0) *sy = s;
 }
 
-void Screen::BeginNativeScale() {
-	if (renderer_ == 0) return;
-	SDL_RenderSetLogicalSize(renderer_, 0, 0);
+SDL_Rect Screen::CanvasRect() const {
+	SDL_Rect r;
+	r.x = 0;
+	r.y = 0;
+	r.w = width_;
+	r.h = height_;
+	if (renderer_ == 0 || width_ <= 0 || height_ <= 0) return r;
+
+	float s = 1.0f, ox = 0.0f, oy = 0.0f;
+	GetRenderScale(&s, 0);
+	GetRenderOffset(&ox, &oy);
+	r.x = (int)(ox + 0.5f);
+	r.y = (int)(oy + 0.5f);
+	r.w = (int)(width_ * s + 0.5f);
+	r.h = (int)(height_ * s + 0.5f);
+	return r;
 }
 
-void Screen::EndNativeScale() {
-	if (renderer_ == 0) return;
-	SDL_RenderSetLogicalSize(renderer_, width_, height_);
+float Screen::WindowToOutputScale() const {
+	if (window_ == 0) return 1.0f;
+	int ww = 0, wh = 0;
+	SDL_GetWindowSize(window_, &ww, &wh);
+	if (ww <= 0) return 1.0f;
+	int ow = 0, oh = 0;
+	GetOutputSize(&ow, &oh);
+	if (ow <= 0) return 1.0f;
+	return (float)ow / (float)ww;
+}
+
+void Screen::WindowToOutput(int wx, int wy, int *ox, int *oy) const {
+	const float d = WindowToOutputScale();
+	if (ox != 0) *ox = (int)(wx * d + 0.5f);
+	if (oy != 0) *oy = (int)(wy * d + 0.5f);
+}
+
+void Screen::WindowToCanvas(int wx, int wy, int *cx, int *cy) const {
+	int px = wx, py = wy;
+	WindowToOutput(wx, wy, &px, &py);
+
+	float s = 1.0f, offX = 0.0f, offY = 0.0f;
+	GetRenderScale(&s, 0);
+	GetRenderOffset(&offX, &offY);
+	if (s <= 0.0f) s = 1.0f;
+	if (cx != 0) *cx = (int)((px - offX) / s);
+	if (cy != 0) *cy = (int)((py - offY) / s);
+}
+
+void Screen::WindowEventToCanvas(SDL_Event *ev) const {
+	if (ev == 0) return;
+	switch (ev->type) {
+		case SDL_MOUSEMOTION:
+			WindowToCanvas(ev->motion.x, ev->motion.y, &ev->motion.x, &ev->motion.y);
+			break;
+		case SDL_MOUSEBUTTONDOWN:
+		case SDL_MOUSEBUTTONUP:
+			WindowToCanvas(ev->button.x, ev->button.y, &ev->button.x, &ev->button.y);
+			break;
+		default:
+			break;
+	}
 }
 
 void Screen::GetWindowRect(int *x, int *y, int *w, int *h) const {

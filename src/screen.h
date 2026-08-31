@@ -104,10 +104,21 @@ public:
 	// 文字を出力解像度で描くために使う (textlayer.cpp)。
 	void GetRenderScale(float *sx, float *sy) const;
 
-	// 論理サイズを一時的に外して、実解像度で描けるようにする。
-	// Dear ImGui のように等倍で描きたいものに使う。必ず対で呼ぶ。
-	void BeginNativeScale();
-	void EndNativeScale();
+	// キャンバスを実出力のどこへ貼るか（実ピクセル）。窓の縦横比が
+	// キャンバスと違うと、余った側が帯になって中央に寄る。
+	SDL_Rect CanvasRect() const;
+
+	// 窓の座標（SDL のマウスイベントが持っている座標）を実ピクセルへ。
+	// HiDPI で「窓の大きさ」と「実出力の大きさ」が違う環境のための倍率で、
+	// ふつうは 1 倍。Dear ImGui は実ピクセルで動かしているのでこちらを使う。
+	float WindowToOutputScale() const;
+	void WindowToOutput(int wx, int wy, int *ox, int *oy) const;
+
+	// 窓の座標をキャンバスの論理座標へ。帯のぶんを引いて倍率で割る。
+	// **当たり判定は全部この座標系**なので、マウスのイベントは
+	// WindowEventToCanvas() を通してから配ること。
+	void WindowToCanvas(int wx, int wy, int *cx, int *cy) const;
+	void WindowEventToCanvas(SDL_Event *ev) const;
 
 	// ウィンドウ位置と大きさ。設定の保存・復元に使う。
 	void GetWindowRect(int *x, int *y, int *w, int *h) const;

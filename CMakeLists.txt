@@ -167,6 +167,7 @@ set(MXV2_SOURCES
 	src/message.cpp
 	src/mouse.cpp
 	src/player.cpp
+	src/safaccess.cpp
 	src/screen.cpp
 	src/settings.cpp
 	src/settingsui.cpp
@@ -193,6 +194,7 @@ set(MXV2_SOURCES
 	src/message.h
 	src/mouse.h
 	src/mxdrvptr.h
+	src/safaccess.h
 	src/player.h
 	src/screen.h
 	src/settings.h
@@ -258,6 +260,9 @@ add_executable(mxv2_chunktest
 	src/text.cpp
 	src/mdxsong.cpp
 	src/vfs.cpp
+	# vfs.cpp が saf: のマウントを作れるようにするため。Android 以外では
+	# 「作れない」と返すだけの空の実装になる（SDL も JNI も要らない）。
+	src/safaccess.cpp
 )
 target_include_directories(mxv2_chunktest PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 target_link_libraries(mxv2_chunktest PRIVATE portable_mdx)

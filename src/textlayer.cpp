@@ -205,12 +205,8 @@ void TextLayer::Render(Screen *screen) {
 		dirty_ = false;
 	}
 
-	// 論理座標いっぱいに貼る。テクスチャは既に出力解像度なので等倍で載る。
-	SDL_Rect dst;
-	dst.x = 0;
-	dst.y = 0;
-	dst.w = screen->width();
-	dst.h = screen->height();
+	// キャンバスと同じ場所へ貼る。テクスチャは既に出力解像度なので等倍で載る。
+	const SDL_Rect dst = screen->CanvasRect();
 	SDL_RenderCopy(screen->renderer(), texture_, NULL, &dst);
 }
 
