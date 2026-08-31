@@ -12,6 +12,15 @@
 
 namespace mxv2 {
 
+namespace {
+
+// 画面の dpi として信じてよい範囲。大画面のテレビ (50 前後) から
+// 高精細の携帯 (600 前後) まで入る幅を採ってある。
+const float kDpiMin = 40.0f;
+const float kDpiMax = 1000.0f;
+
+}  // namespace
+
 Screen::Screen()
     : window_(0),
       renderer_(0),
@@ -46,33 +55,33 @@ int Screen::SystemZoomPercent() {
 }
 
 float Screen::PixelsPerMm() {
-	// SDL は 3 つ返す。ddpi は「対角」だが、**Android では画面の実寸ではなく
-	// 密度の区分 (160 / 320 / 480 …) を丸めた値**なので 1 割ほどずれる。
-	// hdpi / vdpi のほうが実寸から出た値だが、でたらめを返す端末があるので、
-	// ddpi とかけ離れていたら信じないことにする。
+	// SDL は 3 つ返す。**使うのは hdpi / vdpi**（画面の実寸から出た値）で、
+	// ddpi は当てにしない。Android の ddpi は「密度の区分」で、
+	//   ・実寸とずれる（区分 320 に対して実寸 250dpi の 12" タブレットがあった）
+	//   ・**ユーザーが「画面サイズ」の設定で変えられる**（実寸 270dpi に対して
+	//     189 を返す 8" タブレットがあった）
+	// ので、mm の物差しにはできない。
 	// 指の大きさは向きに関係ないので、横と縦は平均でよい。
+	//
+	// ただし xdpi / ydpi にでたらめを入れている端末もあるので、
+	// **ありえない値かどうかだけ**は見る。判断はこの 2 つ:
+	//   ・40〜1000 dpi に収まっているか（大画面のテレビから高精細の携帯まで）
+	//   ・横と縦がかけ離れていないか（画素はふつう正方形）
+	// 外れていたら ddpi へ落とし、それも駄目なら決め打ちにする。
 	float ddpi = 0.0f, hdpi = 0.0f, vdpi = 0.0f;
-	float dpi = 0.0f;
 	if (SDL_GetDisplayDPI(0, &ddpi, &hdpi, &vdpi) == 0) {
 		const float phys = (hdpi + vdpi) * 0.5f;
-		const bool sane = (phys > 1.0f && ddpi > 1.0f && phys > ddpi * 0.6f &&
-		                   phys < ddpi * 1.7f);
-		if (sane) {
-			dpi = phys;
-		} else if (ddpi > 1.0f) {
-			dpi = ddpi;
-		} else if (phys > 1.0f) {
-			dpi = phys;
+		if (phys >= kDpiMin && phys <= kDpiMax &&
+		    (hdpi - vdpi) < phys * 0.5f && (vdpi - hdpi) < phys * 0.5f) {
+			return phys / 25.4f;
 		}
+		if (ddpi >= kDpiMin && ddpi <= kDpiMax) return ddpi / 25.4f;
 	}
-	if (dpi <= 1.0f) {
 #ifdef __ANDROID__
-		dpi = 160.0f;  // mdpi
+	return 160.0f / 25.4f;  // mdpi
 #else
-		dpi = 96.0f;  // Windows の 100%
+	return 96.0f / 25.4f;  // Windows の 100%
 #endif
-	}
-	return dpi / 25.4f;
 }
 
 bool Screen::TouchPreferred() {
