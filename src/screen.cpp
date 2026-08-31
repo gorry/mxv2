@@ -46,17 +46,33 @@ int Screen::SystemZoomPercent() {
 }
 
 float Screen::PixelsPerMm() {
-	float ddpi = 0.0f;
-	// 対角の dpi を使う。横と縦で違う値を返す環境（Android の DisplayMetrics は
-	// xdpi と ydpi が別）でも、指の大きさは向きに関係ないので対角でよい。
-	if (SDL_GetDisplayDPI(0, &ddpi, NULL, NULL) != 0 || ddpi <= 1.0f) {
+	// SDL は 3 つ返す。ddpi は「対角」だが、**Android では画面の実寸ではなく
+	// 密度の区分 (160 / 320 / 480 …) を丸めた値**なので 1 割ほどずれる。
+	// hdpi / vdpi のほうが実寸から出た値だが、でたらめを返す端末があるので、
+	// ddpi とかけ離れていたら信じないことにする。
+	// 指の大きさは向きに関係ないので、横と縦は平均でよい。
+	float ddpi = 0.0f, hdpi = 0.0f, vdpi = 0.0f;
+	float dpi = 0.0f;
+	if (SDL_GetDisplayDPI(0, &ddpi, &hdpi, &vdpi) == 0) {
+		const float phys = (hdpi + vdpi) * 0.5f;
+		const bool sane = (phys > 1.0f && ddpi > 1.0f && phys > ddpi * 0.6f &&
+		                   phys < ddpi * 1.7f);
+		if (sane) {
+			dpi = phys;
+		} else if (ddpi > 1.0f) {
+			dpi = ddpi;
+		} else if (phys > 1.0f) {
+			dpi = phys;
+		}
+	}
+	if (dpi <= 1.0f) {
 #ifdef __ANDROID__
-		ddpi = 160.0f;  // mdpi
+		dpi = 160.0f;  // mdpi
 #else
-		ddpi = 96.0f;  // Windows の 100%
+		dpi = 96.0f;  // Windows の 100%
 #endif
 	}
-	return ddpi / 25.4f;
+	return dpi / 25.4f;
 }
 
 bool Screen::TouchPreferred() {

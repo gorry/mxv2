@@ -128,14 +128,19 @@ tasks.register('prepareMxv2Assets', Sync) {
 	mxv2AssetSpec(it)
 }
 
-tasks.register('generateMxv2AssetIndex', Copy) {
+// 索引は **prepareMxv2Assets が並べ終えた木**をそのまま数えて作る。
+// 以前はここでも同じ顔ぶれを別の場所へ Copy して数えていたが、Copy は
+// **消えたファイルを destination から消さない**ので、素材を 1 つ減らすと
+// 索引にだけ残り続けた（apk には無いので起動時に
+// 「cannot read from apk: ...」が出る）。あちらは Sync なので、それを
+// 数えるかぎり古い顔ぶれは残らない。
+tasks.register('generateMxv2AssetIndex') {
 	description = '展開する顔ぶれの索引 (assetindex.txt) を作る'
-	// 索引そのものは doLast で書くが、入力の変化を Gradle に見せるために
-	// 同じ顔ぶれを一度ここへ通す（作られた複製は使わない）。
-	into layout.buildDirectory.dir('intermediates/mxv2-assetindex-input')
-	mxv2AssetSpec(it)
+	dependsOn 'prepareMxv2Assets'
+	inputs.dir mxv2AssetsDir
+	outputs.dir mxv2AssetIndexDir
 	doLast {
-		def root = destinationDir
+		def root = file(mxv2AssetsDir)
 		def lines = new StringBuilder()
 		lines.append('# mxv2 asset index (crc32 size path)\n')
 		def files = []
