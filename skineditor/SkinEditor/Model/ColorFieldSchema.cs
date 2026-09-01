@@ -1,0 +1,75 @@
+// mxv2 スキンエディタ - colors.ini の GUI 生成用スキーマ（src/colors.h 参照）。
+// Bright の範囲は colors.h の注記のとおり:
+//   文字・背景の濃さ (alpha) は 0..100 / 素材へのゲインは 100 が素通しで 0..200
+
+namespace SkinEditor.Model;
+
+public enum ColorFieldKind { Color, Int }
+
+public sealed record ColorFieldDef(
+    string Label, ColorFieldKind Kind,
+    Func<ColorsValues, RgbColor>? GetColor, Action<ColorsValues, RgbColor>? SetColor,
+    Func<ColorsValues, int>? GetInt, Action<ColorsValues, int>? SetInt,
+    int IntMin = 0, int IntMax = 100)
+{
+    public static ColorFieldDef Color(string label, Func<ColorsValues, RgbColor> get, Action<ColorsValues, RgbColor> set) =>
+        new(label, ColorFieldKind.Color, get, set, null, null);
+
+    public static ColorFieldDef Int(string label, Func<ColorsValues, int> get, Action<ColorsValues, int> set,
+        int min = 0, int max = 100) =>
+        new(label, ColorFieldKind.Int, null, null, get, set, min, max);
+}
+
+public sealed record ColorSectionDef(string Title, IReadOnlyList<ColorFieldDef> Fields);
+
+public static class ColorFieldSchema
+{
+    public static IReadOnlyList<ColorSectionDef> BuildSections() => new List<ColorSectionDef>
+    {
+        new("背景 (Back)", new List<ColorFieldDef>
+        {
+            ColorFieldDef.Int("背景ビットマップを使う (0/1)", c => c.back.bitmap, (c, v) => c.back.bitmap = v, 0, 1),
+            ColorFieldDef.Int("ビットマップの濃さ", c => c.back.bitmapBright, (c, v) => c.back.bitmapBright = v, 0, 100),
+            ColorFieldDef.Color("色", c => c.back.color, (c, v) => c.back.color = v),
+            ColorFieldDef.Int("色の濃さ", c => c.back.colorBright, (c, v) => c.back.colorBright = v, 0, 100),
+        }),
+        new("鍵盤 (KB)", new List<ColorFieldDef>
+        {
+            ColorFieldDef.Int("黒鍵側の下地の明るさ", c => c.kb.blackBright, (c, v) => c.kb.blackBright = v, 0, 200),
+            ColorFieldDef.Int("白鍵側の下地の明るさ", c => c.kb.whiteBright, (c, v) => c.kb.whiteBright = v, 0, 200),
+            ColorFieldDef.Int("押している鍵の明るさ", c => c.kb.bright, (c, v) => c.kb.bright = v, 0, 200),
+        }),
+        new("ステータス (Status)", new List<ColorFieldDef>
+        {
+            ColorFieldDef.Color("文字色", c => c.status.color, (c, v) => c.status.color = v),
+            ColorFieldDef.Int("文字色の濃さ", c => c.status.colorBright, (c, v) => c.status.colorBright = v),
+            ColorFieldDef.Color("背景色", c => c.status.backColor, (c, v) => c.status.backColor = v),
+            ColorFieldDef.Int("背景色の濃さ", c => c.status.backColorBright, (c, v) => c.status.backColorBright = v),
+        }),
+        new("曲名 (MDXTitle)", new List<ColorFieldDef>
+        {
+            ColorFieldDef.Color("文字色", c => c.mdxTitle.color, (c, v) => c.mdxTitle.color = v),
+            ColorFieldDef.Int("文字色の濃さ", c => c.mdxTitle.colorBright, (c, v) => c.mdxTitle.colorBright = v),
+            ColorFieldDef.Color("背景色", c => c.mdxTitle.backColor, (c, v) => c.mdxTitle.backColor = v),
+            ColorFieldDef.Int("背景色の濃さ", c => c.mdxTitle.backColorBright, (c, v) => c.mdxTitle.backColorBright = v),
+        }),
+        new("ファイラー (Filer)", new List<ColorFieldDef>
+        {
+            ColorFieldDef.Color("カーソル (背景へのゲイン)", c => c.filer.cursorColor, (c, v) => c.filer.cursorColor = v),
+            ColorFieldDef.Int("カーソルの効き具合", c => c.filer.cursorColorBright, (c, v) => c.filer.cursorColorBright = v),
+            ColorFieldDef.Color("文字色", c => c.filer.color, (c, v) => c.filer.color = v),
+            ColorFieldDef.Int("文字色の濃さ", c => c.filer.colorBright, (c, v) => c.filer.colorBright = v),
+            ColorFieldDef.Color("フォルダの文字色", c => c.filer.folderColor, (c, v) => c.filer.folderColor = v),
+            ColorFieldDef.Color("ドライブの文字色", c => c.filer.driveColor, (c, v) => c.filer.driveColor = v),
+            ColorFieldDef.Color("ファイルシステムの文字色", c => c.filer.fileSystemColor, (c, v) => c.filer.fileSystemColor = v),
+            ColorFieldDef.Color("背景色", c => c.filer.backColor, (c, v) => c.filer.backColor = v),
+            ColorFieldDef.Int("背景色の濃さ", c => c.filer.backColorBright, (c, v) => c.filer.backColorBright = v),
+        }),
+        new("操作ボタン (PlayKey)", new List<ColorFieldDef>
+        {
+            ColorFieldDef.Color("文字色", c => c.playKey.color, (c, v) => c.playKey.color = v),
+            ColorFieldDef.Int("文字色の濃さ", c => c.playKey.colorBright, (c, v) => c.playKey.colorBright = v),
+            ColorFieldDef.Int("ボタンの明るさ", c => c.playKey.keyBright, (c, v) => c.playKey.keyBright = v, 0, 200),
+        }),
+    };
+}

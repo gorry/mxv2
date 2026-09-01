@@ -13,3 +13,11 @@ pic/
 .gradle/
 .cxx/
 local.properties
+
+# skineditor/ がビルド後にここへコピーする実行ファイル一式
+# (skineditor/SkinEditor/SkinEditor.csproj の CopySkinEditorToMxv2Root)
+/SkinEditor.exe
+/SkinEditor.dll
+/SkinEditor.pdb
+/SkinEditor.deps.json
+/SkinEditor.runtimeconfig.json

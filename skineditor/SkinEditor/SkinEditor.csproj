@@ -1,0 +1,36 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- 既定 (SystemAware) だと Control.DeviceDpi が実際の画面 DPI を返さず、
+         AutoScaleMode.Dpi が効かなかった（実測済み）。PerMonitorV2 にすると
+         DeviceDpi が正しい値を返すようになる。 -->
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- NoteOffsetRow は LabeledValueRow に一般化して置き換えたので、
+         削除前の安全確認として nouse/ へ退避してある。ビルド対象からは外す。 -->
+    <Compile Remove="nouse\**\*.cs" />
+  </ItemGroup>
+
+  <!-- ビルドのたびに、実際に使う場所（mxv2 本体の CMakeLists.txt がある
+       フォルダ）へ実行ファイル一式をコピーする。ここに置いておけば、
+       exe を直接起動したときに assets/ の隣として認識される
+       (DevAssetRoot.Detect が AppContext.BaseDirectory も見るため)。 -->
+  <PropertyGroup>
+    <Mxv2RootDir>$(MSBuildProjectDirectory)\..\..\</Mxv2RootDir>
+  </PropertyGroup>
+
+  <Target Name="CopySkinEditorToMxv2Root" AfterTargets="Build">
+    <ItemGroup>
+      <SkinEditorBinaries Include="$(TargetDir)*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(SkinEditorBinaries)" DestinationFolder="$(Mxv2RootDir)" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

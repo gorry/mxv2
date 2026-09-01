@@ -1,0 +1,282 @@
+// mxv2 スキンエディタ - layout.ini の読み書き（mxv2 本体 src/skin.cpp の
+// Skin::ApplyLayout / Skin::Load の中身を 1:1 で移植したもの）。
+//
+// ApplyLayout は「キーが書いてあれば上書き、無ければ今の値のまま」なので、
+// SkinLayout を土台（Base の一番遠いところ）から順に重ねていけば、
+// mxv2 本体とまったく同じ実効値になる。WriteAll はその逆で、今の実効値を
+// 全キーぶん書き出す（「参照→無参照」の実効値コピーで使う）。
+
+namespace SkinEditor.Model;
+
+public static class SkinLayoutIo
+{
+    public static string ReadBaseRef(IniDocument ini) => ini.GetString("Skin", "Base", "");
+
+    // ---- 読み込み（土台から順に呼ぶ） ----------------------------------
+    public static void ApplyLayout(IniDocument ini, SkinLayout t)
+    {
+        t.screenW = ini.GetInt("Screen", "Width", t.screenW);
+        t.screenH = ini.GetInt("Screen", "Height", t.screenH);
+        t.backBitmap = ini.GetString("Screen", "ImgBack", t.backBitmap);
+
+        GetXy(ini, "Keyboard", "Pos", ref t.kbX, ref t.kbY);
+        GetIntList(ini, "Keyboard", "XOffset", t.kbXOffset, 13);
+        t.kbYOffset = ini.GetInt("Keyboard", "YOffset", t.kbYOffset);
+        GetIntList(ini, "Keyboard", "ChannelY", t.chYOffset, 9);
+        t.keyOffset = ini.GetInt("Keyboard", "KeyOffset", t.keyOffset);
+        t.kb0Bitmap = ini.GetString("Keyboard", "ImgKeyboard0", t.kb0Bitmap);
+        t.kb1Bitmap = ini.GetString("Keyboard", "ImgKeyboard1", t.kb1Bitmap);
+        t.kb2Bitmap = ini.GetString("Keyboard", "ImgKeyboard2", t.kb2Bitmap);
+
+        t.fontW = ini.GetInt("Font5x7", "Width", t.fontW);
+        t.fontH = ini.GetInt("Font5x7", "Height", t.fontH);
+        t.font5x7Bitmap = ini.GetString("Font5x7", "ImgFont5x7", t.font5x7Bitmap);
+
+        GetXy(ini, "Status", "Pos", ref t.statusX, ref t.statusY);
+        t.statusBackW = ini.GetInt("Status", "BackWidth", t.statusBackW);
+        t.statusBackH = ini.GetInt("Status", "BackHeight", t.statusBackH);
+        GetIntList(ini, "Status", "PcmX", t.pcmXOffset, 8);
+        GetIntList(ini, "Status", "PcmY", t.pcmYOffset, 8);
+
+        t.levelMeterPalOfs = ini.GetInt("LevelMeter", "PaletteOffset", t.levelMeterPalOfs);
+        t.levelMeterWidthCells = ini.GetInt("LevelMeter", "Cells", t.levelMeterWidthCells);
+        t.levelMeterBitmap = ini.GetString("LevelMeter", "ImgLevelMeter", t.levelMeterBitmap);
+
+        {
+            var r = new Xywh(t.bannerX, t.bannerY, t.bannerW, t.bannerH);
+            GetXywh(ini, "Banner", "Rect", ref r);
+            t.bannerX = r.X; t.bannerY = r.Y; t.bannerW = r.W; t.bannerH = r.H;
+        }
+        t.bannerBitmap = ini.GetString("Banner", "ImgBanner", t.bannerBitmap);
+        {
+            var r = new Xywh(t.titleX, t.titleY, t.titleW, t.titleH);
+            GetXywh(ini, "Title", "Rect", ref r);
+            t.titleX = r.X; t.titleY = r.Y; t.titleW = r.W; t.titleH = r.H;
+        }
+        {
+            var r = new Xywh(t.fileListX, t.fileListY, t.fileListW, t.fileListH);
+            GetXywh(ini, "FileList", "Rect", ref r);
+            t.fileListX = r.X; t.fileListY = r.Y; t.fileListW = r.W; t.fileListH = r.H;
+        }
+        GetFontSizePair(ini, "FileList", "Rows", t.fileListRows);
+        GetFontSizePair(ini, "FileList", "ItemHeight", t.fileListItemH);
+        GetFontSizePair(ini, "FileList", "BaseNameX", t.fileListBaseNameX);
+        GetFontSizePair(ini, "FileList", "BaseNameWidth", t.fileListBaseNameW);
+        GetFontSizePair(ini, "FileList", "TitleX", t.fileListTitleX);
+        GetFontSizePair(ini, "FileList", "TitleWidth", t.fileListTitleW);
+
+        {
+            var r = new Xywh(t.scrollX, t.scrollY, t.scrollW, t.scrollH);
+            GetXywh(ini, "ScrollBar", "Rect", ref r);
+            t.scrollX = r.X; t.scrollY = r.Y; t.scrollW = r.W; t.scrollH = r.H;
+        }
+        GetXywh(ini, "ScrollBar", "SrcThumb", ref t.scrollSrcThumb);
+        GetXywh(ini, "ScrollBar", "SrcUpArrowPress", ref t.scrollSrcUpArrowPress);
+        GetXywh(ini, "ScrollBar", "SrcDownArrowPress", ref t.scrollSrcDownArrowPress);
+        GetXywh(ini, "ScrollBar", "SrcUpArrow", ref t.scrollSrcUpArrow);
+        GetXywh(ini, "ScrollBar", "SrcBar", ref t.scrollSrcBar);
+        GetXywh(ini, "ScrollBar", "SrcDownArrow", ref t.scrollSrcDownArrow);
+        GetIntList(ini, "ScrollBar", "PosUpArrow", t.scrollPosUpArrow, 2);
+        GetIntList(ini, "ScrollBar", "PosBar", t.scrollPosBar, 2);
+        GetIntList(ini, "ScrollBar", "PosDownArrow", t.scrollPosDownArrow, 2);
+        t.scrollBarBitmap = ini.GetString("ScrollBar", "ImgScrollBar", t.scrollBarBitmap);
+
+        {
+            var r = new Xywh(t.progX, t.progY, t.progW, t.progH);
+            GetXywh(ini, "ProgressBar", "Rect", ref r);
+            t.progX = r.X; t.progY = r.Y; t.progW = r.W; t.progH = r.H;
+        }
+        t.progTimeXOfs = ini.GetInt("ProgressBar", "TimeX", t.progTimeXOfs);
+        t.progTimeYOfs = ini.GetInt("ProgressBar", "TimeY", t.progTimeYOfs);
+        t.progressBarBitmap = ini.GetString("ProgressBar", "ImgProgressBar", t.progressBarBitmap);
+
+        {
+            var r = new Xywh(t.volX, t.volY, t.volW, t.volH);
+            GetXywh(ini, "VolumeBar", "Rect", ref r);
+            t.volX = r.X; t.volY = r.Y; t.volW = r.W; t.volH = r.H;
+        }
+        t.volTimeXOfs = ini.GetInt("VolumeBar", "TimeX", t.volTimeXOfs);
+        t.volTimeYOfs = ini.GetInt("VolumeBar", "TimeY", t.volTimeYOfs);
+        t.volNobW = ini.GetInt("VolumeBar", "NobWidth", t.volNobW);
+        {
+            var nob = t.volRect[0];
+            GetXywh(ini, "VolumeBar", "NobSrc", ref nob);
+            t.volRect[0] = nob;
+            var slide = t.volRect[1];
+            GetXywh(ini, "VolumeBar", "SlideSrc", ref slide);
+            t.volRect[1] = slide;
+        }
+        t.volBarBitmap = ini.GetString("VolumeBar", "ImgVolumeBar", t.volBarBitmap);
+
+        GetXy(ini, "PlayKey", "Pos", ref t.playKeyX, ref t.playKeyY);
+        t.numPlayKeys = Math.Clamp(ini.GetInt("PlayKey", "Count", t.numPlayKeys), 0, 9);
+        for (int i = 0; i < 9; i++)
+        {
+            var r = t.playKeyRect[i];
+            GetXywh(ini, "PlayKey", IndexedKey("Src", i), ref r);
+            t.playKeyRect[i] = r;
+            GetIntList(ini, "PlayKey", IndexedKey("Pos", i), t.playKeyPos[i], 2);
+        }
+        t.palPlayKeyKey = ini.GetInt("PlayKey", "PalKey", t.palPlayKeyKey);
+        t.palPlayLed = ini.GetInt("PlayKey", "PalPlayLed", t.palPlayLed);
+        t.palPauseLed = ini.GetInt("PlayKey", "PalPauseLed", t.palPauseLed);
+        t.palContLed = ini.GetInt("PlayKey", "PalContLed", t.palContLed);
+        t.palRepeatLed = ini.GetInt("PlayKey", "PalRepeatLed", t.palRepeatLed);
+        t.palDark = ini.GetInt("PlayKey", "PalDark", t.palDark);
+        t.palRed = ini.GetInt("PlayKey", "PalRed", t.palRed);
+        t.palGreen = ini.GetInt("PlayKey", "PalGreen", t.palGreen);
+        t.playKeyBitmap = ini.GetString("PlayKey", "ImgPlayKey", t.playKeyBitmap);
+    }
+
+    // ---- 書き出し（実効値をすべて明示キーとして書く） --------------------
+    public static void WriteAll(SkinLayout t, IniDocument ini)
+    {
+        ini.SetInt("Screen", "Width", t.screenW);
+        ini.SetInt("Screen", "Height", t.screenH);
+        ini.SetString("Screen", "ImgBack", t.backBitmap);
+
+        ini.SetString("Keyboard", "Pos", $"{t.kbX},{t.kbY}");
+        ini.SetString("Keyboard", "XOffset", Join(t.kbXOffset));
+        ini.SetInt("Keyboard", "YOffset", t.kbYOffset);
+        ini.SetString("Keyboard", "ChannelY", Join(t.chYOffset));
+        ini.SetInt("Keyboard", "KeyOffset", t.keyOffset);
+        ini.SetString("Keyboard", "ImgKeyboard0", t.kb0Bitmap);
+        ini.SetString("Keyboard", "ImgKeyboard1", t.kb1Bitmap);
+        ini.SetString("Keyboard", "ImgKeyboard2", t.kb2Bitmap);
+
+        ini.SetInt("Font5x7", "Width", t.fontW);
+        ini.SetInt("Font5x7", "Height", t.fontH);
+        ini.SetString("Font5x7", "ImgFont5x7", t.font5x7Bitmap);
+
+        ini.SetString("Status", "Pos", $"{t.statusX},{t.statusY}");
+        ini.SetInt("Status", "BackWidth", t.statusBackW);
+        ini.SetInt("Status", "BackHeight", t.statusBackH);
+        ini.SetString("Status", "PcmX", Join(t.pcmXOffset));
+        ini.SetString("Status", "PcmY", Join(t.pcmYOffset));
+
+        ini.SetInt("LevelMeter", "PaletteOffset", t.levelMeterPalOfs);
+        ini.SetInt("LevelMeter", "Cells", t.levelMeterWidthCells);
+        ini.SetString("LevelMeter", "ImgLevelMeter", t.levelMeterBitmap);
+
+        ini.SetString("Banner", "Rect", $"{t.bannerX},{t.bannerY},{t.bannerW},{t.bannerH}");
+        ini.SetString("Banner", "ImgBanner", t.bannerBitmap);
+
+        ini.SetString("Title", "Rect", $"{t.titleX},{t.titleY},{t.titleW},{t.titleH}");
+
+        ini.SetString("FileList", "Rect", $"{t.fileListX},{t.fileListY},{t.fileListW},{t.fileListH}");
+        ini.SetString("FileList", "Rows", Join(t.fileListRows));
+        ini.SetString("FileList", "ItemHeight", Join(t.fileListItemH));
+        ini.SetString("FileList", "BaseNameX", Join(t.fileListBaseNameX));
+        ini.SetString("FileList", "BaseNameWidth", Join(t.fileListBaseNameW));
+        ini.SetString("FileList", "TitleX", Join(t.fileListTitleX));
+        ini.SetString("FileList", "TitleWidth", Join(t.fileListTitleW));
+
+        ini.SetString("ScrollBar", "Rect", $"{t.scrollX},{t.scrollY},{t.scrollW},{t.scrollH}");
+        ini.SetString("ScrollBar", "SrcThumb", t.scrollSrcThumb.ToString());
+        ini.SetString("ScrollBar", "SrcUpArrowPress", t.scrollSrcUpArrowPress.ToString());
+        ini.SetString("ScrollBar", "SrcDownArrowPress", t.scrollSrcDownArrowPress.ToString());
+        ini.SetString("ScrollBar", "SrcUpArrow", t.scrollSrcUpArrow.ToString());
+        ini.SetString("ScrollBar", "SrcBar", t.scrollSrcBar.ToString());
+        ini.SetString("ScrollBar", "SrcDownArrow", t.scrollSrcDownArrow.ToString());
+        ini.SetString("ScrollBar", "PosUpArrow", Join(t.scrollPosUpArrow));
+        ini.SetString("ScrollBar", "PosBar", Join(t.scrollPosBar));
+        ini.SetString("ScrollBar", "PosDownArrow", Join(t.scrollPosDownArrow));
+        ini.SetString("ScrollBar", "ImgScrollBar", t.scrollBarBitmap);
+
+        ini.SetString("ProgressBar", "Rect", $"{t.progX},{t.progY},{t.progW},{t.progH}");
+        ini.SetInt("ProgressBar", "TimeX", t.progTimeXOfs);
+        ini.SetInt("ProgressBar", "TimeY", t.progTimeYOfs);
+        ini.SetString("ProgressBar", "ImgProgressBar", t.progressBarBitmap);
+
+        ini.SetString("VolumeBar", "Rect", $"{t.volX},{t.volY},{t.volW},{t.volH}");
+        ini.SetInt("VolumeBar", "TimeX", t.volTimeXOfs);
+        ini.SetInt("VolumeBar", "TimeY", t.volTimeYOfs);
+        ini.SetInt("VolumeBar", "NobWidth", t.volNobW);
+        ini.SetString("VolumeBar", "NobSrc", t.volRect[0].ToString());
+        ini.SetString("VolumeBar", "SlideSrc", t.volRect[1].ToString());
+        ini.SetString("VolumeBar", "ImgVolumeBar", t.volBarBitmap);
+
+        ini.SetString("PlayKey", "Pos", $"{t.playKeyX},{t.playKeyY}");
+        ini.SetInt("PlayKey", "Count", t.numPlayKeys);
+        for (int i = 0; i < 9; i++)
+        {
+            ini.SetString("PlayKey", IndexedKey("Src", i), t.playKeyRect[i].ToString());
+            ini.SetString("PlayKey", IndexedKey("Pos", i), Join(t.playKeyPos[i]));
+        }
+        ini.SetInt("PlayKey", "PalKey", t.palPlayKeyKey);
+        ini.SetInt("PlayKey", "PalPlayLed", t.palPlayLed);
+        ini.SetInt("PlayKey", "PalPauseLed", t.palPauseLed);
+        ini.SetInt("PlayKey", "PalContLed", t.palContLed);
+        ini.SetInt("PlayKey", "PalRepeatLed", t.palRepeatLed);
+        ini.SetInt("PlayKey", "PalDark", t.palDark);
+        ini.SetInt("PlayKey", "PalRed", t.palRed);
+        ini.SetInt("PlayKey", "PalGreen", t.palGreen);
+        ini.SetString("PlayKey", "ImgPlayKey", t.playKeyBitmap);
+    }
+
+    // ---- src/skin.cpp のローカルヘルパー群の移植 -----------------------
+    public static int GetIntList(IniDocument ini, string section, string key, int[] outArr, int count)
+    {
+        string s = ini.GetString(section, key, "");
+        if (s.Length == 0) return 0;
+        int n = 0, pos = 0;
+        while (pos <= s.Length && n < count)
+        {
+            int comma = s.IndexOf(',', pos);
+            string item = comma < 0 ? s[pos..] : s[pos..comma];
+            if (item.Length > 0) outArr[n++] = AtoI(item);
+            if (comma < 0) break;
+            pos = comma + 1;
+        }
+        return n;
+    }
+
+    private static void GetFontSizePair(IniDocument ini, string section, string key, int[] outPair)
+    {
+        int[] v = { outPair[0], outPair[1] };
+        int n = GetIntList(ini, section, key, v, 2);
+        if (n == 0) return;
+        outPair[0] = v[0];
+        outPair[1] = n >= 2 ? v[1] : v[0];
+    }
+
+    public static void GetXywh(IniDocument ini, string section, string key, ref Xywh outVal)
+    {
+        int[] v = { outVal.X, outVal.Y, outVal.W, outVal.H };
+        GetIntList(ini, section, key, v, 4);
+        outVal = new Xywh(v[0], v[1], v[2], v[3]);
+    }
+
+    private static void GetXy(IniDocument ini, string section, string key, ref int x, ref int y)
+    {
+        int[] v = { x, y };
+        GetIntList(ini, section, key, v, 2);
+        x = v[0]; y = v[1];
+    }
+
+    private static string IndexedKey(string prefix, int i) => $"{prefix}{i}";
+
+    public static string Join(IReadOnlyList<int> v) => string.Join(",", v);
+
+    public static int AtoI(string s)
+    {
+        int i = 0, n = s.Length;
+        while (i < n && (s[i] == ' ' || (s[i] >= 0x09 && s[i] <= 0x0d))) i++;
+        int sign = 1;
+        if (i < n && (s[i] == '+' || s[i] == '-'))
+        {
+            if (s[i] == '-') sign = -1;
+            i++;
+        }
+        long val = 0;
+        bool any = false;
+        while (i < n && s[i] >= '0' && s[i] <= '9')
+        {
+            any = true;
+            val = val * 10 + (s[i] - '0');
+            if (val > int.MaxValue) val = int.MaxValue;
+            i++;
+        }
+        return any ? (int)(sign * val) : 0;
+    }
+}
