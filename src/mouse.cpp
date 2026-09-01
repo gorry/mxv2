@@ -39,6 +39,9 @@ MouseInput::MouseInput(DrawScreen *draw, Filer *filer, Player *player)
       dragOriginTopPx_(0),
       pendingCursor_(-1),
       dragMoved_(false),
+      seekDragging_(false),
+      seekWasPaused_(false),
+      seekDragMs_(0),
       lastMoveY_(0),
       lastMoveMs_(0),
       dragVelocity_(0.0f),
@@ -176,10 +179,16 @@ MouseRequest MouseInput::OnButtonDown(int x, int y, int clicks) {
 		const int hit = draw_->HitCheckProgressBar(x, y);
 		if (hit >= 0) {
 			captured_ = kCapturedProgressBar;
-			const uint32_t total = player_->playTimeMs();
-			if (total != 0) {
-				player_->SeekMs((uint32_t)((uint64_t)total * hit /
-				                           draw_->progressBarWidth()));
+			// 総演奏時間が分かっていなければバーの位置に意味がないので、
+			// 掴んだだけで何もしない。
+			if (player_->playTimeMs() != 0) {
+				// 掴んだ時点で演奏を止める。シークは重いので指には追従
+				// させず、離すまではバーと PLAY TIME の表示だけを動かす。
+				// もともと一時停止していたなら、離したあともそのまま。
+				seekWasPaused_ = player_->paused();
+				player_->Pause();
+				seekDragging_ = true;
+				UpdateSeekDrag(x);
 			}
 			return kMouseRequestNone;
 		}
@@ -267,7 +276,8 @@ void MouseInput::OnMotion(int x, int y) {
 			break;
 
 		case kCapturedProgressBar:
-			// 旧 mxv と同じくドラッグ追従はしない (シークが重いため)。
+			// 表示だけを指に追従させる。実際に飛ぶのは離したとき。
+			UpdateSeekDrag(x);
 			break;
 
 		default:
@@ -276,11 +286,29 @@ void MouseInput::OnMotion(int x, int y) {
 }
 
 MouseRequest MouseInput::OnButtonUp(int x, int y) {
+	// 離した位置も拾っておく。動かさずに離したときは MOUSEMOTION が
+	// 届いていないことがある。
+	if (seekDragging_) UpdateSeekDrag(x);
+
 	const int captured = captured_;
 	const int hit = capturedHit_;
 	const int pending = pendingCursor_;
 	const bool moved = dragMoved_;
+	const bool seeking = seekDragging_;
+	const bool wasPaused = seekWasPaused_;
+	const uint32_t seekMs = seekDragMs_;
 	ReleaseAll();
+
+	// シークバーは離した位置へ飛ぶ。SeekMs は飛ぶ前の一時停止を引き継ぐので、
+	// 掴んだ時点で止めたぶんはここで戻す（もともと一時停止していたなら
+	// そのまま止まっている）。
+	if (captured == kCapturedProgressBar) {
+		if (seeking) {
+			player_->SeekMs(seekMs);
+			if (!wasPaused) player_->Resume();
+		}
+		return kMouseRequestNone;
+	}
 
 	// ファイラーは、ドラッグせずに離したときだけカーソルを合わせる。
 	if (captured == kCapturedFileList) {
@@ -473,7 +501,21 @@ void MouseInput::ReleaseAll() {
 	pressMask_ = 0;
 	pendingCursor_ = -1;
 	dragMoved_ = false;
+	seekDragging_ = false;
 	draw_->SetScrollBarFlags(0);
+}
+
+// ---------------------------------------------------------------------------
+
+void MouseInput::UpdateSeekDrag(int x) {
+	const uint32_t total = player_->playTimeMs();
+	const int width = draw_->progressBarWidth();
+	if (total == 0 || width <= 0) {
+		seekDragMs_ = 0;
+		return;
+	}
+	seekDragMs_ =
+	    (uint32_t)((uint64_t)total * draw_->ProgressPosFromX(x) / width);
 }
 
 }  // namespace mxv2

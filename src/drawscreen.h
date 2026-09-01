@@ -142,6 +142,8 @@ public:
 	int HitCheckFileList(int x, int y) const;
 	// バー内の x 位置 (0..kProgressBarWidth)。当たらなければ -1。
 	int HitCheckProgressBar(int x, int y) const;
+	// x をバー内の位置へ写す (範囲外でも端に丸める)。ドラッグ中に使う。
+	int ProgressPosFromX(int x) const;
 	// バナー。ここを押すとコンテキストメニューを出す（右クリックできない
 	// 環境やスマートフォン向け）。
 	bool HitCheckBanner(int x, int y) const;

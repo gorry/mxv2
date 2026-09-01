@@ -1583,7 +1583,11 @@ int main(int argc, char **argv) {
 
 		const uint64_t frame = player.visualFrame();
 		visualizer.Consume(&player.dispQueue(), frame);
-		visualizer.UpdateChrome(player, chromeRefresh, autoNext, autoRepeat,
+		// シークバーを掴んでいる間は、まだ飛んでいない「指の位置」を
+		// 演奏位置として見せる。飛ぶのは離したとき。
+		const uint32_t chromeNowMs =
+		    mouse.seekDragging() ? mouse.seekDragMs() : player.nowTimeMs();
+		visualizer.UpdateChrome(player, chromeNowMs, chromeRefresh, autoNext, autoRepeat,
 		                        mouse.playKeyPressMask());
 		draw.PutFileList(filer, fileListRefresh);
 		draw.PutScrollBar(filer.topPx(), filer.maxTopPx());

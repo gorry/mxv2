@@ -111,6 +111,7 @@ public:
 	bool audioSuspended() const { return audioSuspended_; }
 
 	// 演奏位置を ms 単位で移動する。旧 mxv の MX_PlayAt_A。
+	// 一時停止中に呼んだときは、飛んだ先でも一時停止のまま止まっている。
 	bool SeekMs(uint32_t ms);
 
 	// 画面を作り直したあと、全ステータスを積み直させる。

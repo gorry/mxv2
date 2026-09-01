@@ -25,11 +25,14 @@ public:
 	void Consume(DispQueue *queue, uint64_t visualFrame);
 
 	// 進捗バー・操作ボタン・音量バーの更新。
+	//   nowTimeMs  = 進捗バーと PLAY TIME に出す演奏位置。ふだんは
+	//                Player::nowTimeMs() だが、シークバーをドラッグ中は
+	//                指の位置を渡す（まだそこへ飛んでいない）。
 	//   autoNext   = CONT LED (演奏終了で次の曲へ)
 	//   autoRepeat = REPEAT LED
 	//   pressMask  = マウスで押されている操作ボタンのビット (MouseInput から)
-	void UpdateChrome(const Player &player, bool refresh, bool autoNext, bool autoRepeat,
-	                  uint32_t pressMask);
+	void UpdateChrome(const Player &player, uint32_t nowTimeMs, bool refresh, bool autoNext,
+	                  bool autoRepeat, uint32_t pressMask);
 
 	// 描いてある鍵盤とレベルメーターを消す。
 	// **演奏位置が飛んだとき（曲の切り替え・シーク）と止めたときに呼ぶ。**

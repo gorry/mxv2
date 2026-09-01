@@ -401,6 +401,9 @@ bool Player::SeekMs(uint32_t ms) {
 	if (!opened_ || !playing_) return false;
 	if (playTimeMs_ != 0 && ms > playTimeMs_) ms = playTimeMs_;
 
+	// 一時停止したまま飛んだときは、飛んだ先でも止まったままにする。
+	const bool wasPaused = paused_;
+
 	SDL_PauseAudioDevice(audioDevice_, 1);
 	StopDecodeThread();
 
@@ -424,6 +427,9 @@ bool Player::SeekMs(uint32_t ms) {
 	playTerminate_.store(false, std::memory_order_relaxed);
 	fadeoutStarted_ = false;
 	paused_ = false;  // MXDRV_PlayAt は演奏を掛け直すので一時停止は解ける
+	// 掛け直しで解けたぶんを戻す。デコードを始める前に掛けること
+	// （あとからだと、飛んだ先の音が一瞬だけ鳴ってしまう）。
+	if (wasPaused) Pause();
 
 	StartDecodeThread();
 	ResumeAudioDevice();

@@ -47,6 +47,13 @@ public:
 	// 操作ボタンの押下表示ビット。DrawScreen::PutPlayKey の status へ足す。
 	uint32_t playKeyPressMask() const { return pressMask_; }
 
+	// シークバーを掴んでいる間は true。この間の演奏位置の表示（進捗バーと
+	// PLAY TIME）は、実際の演奏位置ではなく seekDragMs() を使う。
+	// 実際にシークするのは離したときで、それまで演奏は止めてある。
+	// 掴む前が一時停止なら、離したあとも一時停止のまま。
+	bool seekDragging() const { return seekDragging_; }
+	uint32_t seekDragMs() const { return seekDragMs_; }
+
 	// 旧 mxv のオートリピート。20ms タイマで「10 回待って以降 2 回ごと」
 	// だったので、200ms 待って以降 40ms ごとにする。
 	static const uint32_t kRepeatDelayMs = 200;
@@ -88,6 +95,9 @@ private:
 	void PressScrollBar(int hit);
 	void ReleaseAll();
 
+	// シークバーを掴んでいる間、マウスの x から seekDragMs_ を作り直す。
+	void UpdateSeekDrag(int x);
+
 	// 慣性スクロール。velocity は Filer::topPx() の毎秒変化量。
 	void StartFling(float velocity);
 	void UpdateFling(uint32_t nowMs);
@@ -113,6 +123,13 @@ private:
 	int dragOriginTopPx_;  // 掴んだ時の Filer::topPx()
 	int pendingCursor_;    // 離したときに合わせる項目。-1 なら合わせない
 	bool dragMoved_;       // ドラッグ扱いになったか
+
+	// シークバーのドラッグ。シーク (MXDRV_PlayAt) は曲の頭から空回しする
+	// 重い処理なので、指に追従して掛けるわけにはいかない。掴んでいる間は
+	// 演奏を止めて表示だけを動かし、離したときに一度だけシークする。
+	bool seekDragging_;
+	bool seekWasPaused_;   // 掴む前が一時停止だったか（離したあとに戻す）
+	uint32_t seekDragMs_;  // 指の位置が指す演奏位置
 
 	// 指の速度。直近の動きを平滑化したもの (論理 px / 秒、画面座標)。
 	int lastMoveY_;

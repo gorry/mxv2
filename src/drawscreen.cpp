@@ -1069,6 +1069,12 @@ int DrawScreen::HitCheckProgressBar(int x, int y) const {
 	return Max(0, Min(skin_->progW, x - skin_->progX));
 }
 
+// バーの外へ指が出ても端に丸める。上の HitCheckProgressBar は「当たったか」を
+// 見るので y も見るが、掴んだあとは x だけで決める。
+int DrawScreen::ProgressPosFromX(int x) const {
+	return Max(0, Min(skin_->progW, x - skin_->progX));
+}
+
 bool DrawScreen::HitCheckBanner(int x, int y) const {
 	if (x < skin_->bannerX || x >= skin_->bannerX + skin_->bannerW) return false;
 	if (y < skin_->bannerY || y >= skin_->bannerY + skin_->bannerH) return false;
