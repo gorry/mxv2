@@ -38,7 +38,7 @@ public:
 	bool Init(Screen *screen, const std::vector<std::string> &fontDirs, std::string *err);
 	void Shutdown();
 
-	// フォントが読めたか。false なら呼び出し側が 5x7 の ASCII へ退避する。
+	// フォントが読めたか。false なら呼び出し側がミニフォントの ASCII へ退避する。
 	bool available() const;
 
 	// ウィンドウの大きさが変わっていたら作り直す。作り直したら true を返す

@@ -19,9 +19,27 @@ namespace {
 int Min(int a, int b) { return a < b ? a : b; }
 int Max(int a, int b) { return a > b ? a : b; }
 
-// 5x7 での退避描画に流す最大文字数。はみ出した分はブリッタ側でクリップされる
-// ので、画面幅を越えられる長さがあれば十分。
+// ミニフォントでの退避描画に流す最大文字数。はみ出した分はブリッタ側で
+// クリップされるので、画面幅を越えられる長さがあれば十分。
 const size_t kMaxAsciiChars = 128;
+
+// ミニフォントの素材は ASCII 0x20〜0x6F を 16 列 x 5 行に並べたグリフ表。
+// **1 文字の大きさは素材の大きさ ÷ この並びで決まる**ので、素材を大きく
+// 作れば大きい字になる（旧 mxv の 5x7 に縛られない）。画面に置くときの
+// 送り幅と行の高さは別で、スキンの [MiniFont] Width / Height が決める。
+const int kMiniFontFirstChar = 0x20;
+const int kMiniFontLastChar = 0x6f;
+const int kMiniFontCols = 16;
+const int kMiniFontRows = 5;
+
+// グリフ表の中でその文字が置かれている場所。範囲外の文字は端へ丸める。
+void MiniGlyphSrc(int ch, int glyphW, int glyphH, int *sx, int *sy) {
+	if (ch < kMiniFontFirstChar) ch = kMiniFontFirstChar;
+	if (ch > kMiniFontLastChar) ch = kMiniFontLastChar;
+	ch -= kMiniFontFirstChar;
+	*sx = (ch % kMiniFontCols) * glyphW;
+	*sy = (ch / kMiniFontCols) * glyphH;
+}
 
 // マスクしているチャンネルの鍵盤に乗せる灰色と、その濃さ (0..100)。
 // 押している鍵の色がうっすら透けるくらいにしてある。
@@ -42,7 +60,7 @@ bool InRect(int x, int y, const int pos[2], const Xywh &src) {
 	return x >= pos[0] && x < pos[0] + src.w && y >= pos[1] && y < pos[1] + src.h;
 }
 
-// 5x7 フォントで描ける形（ASCII 大文字）に落とす。文字描画が使えない
+// ミニフォントで描ける形（ASCII 大文字）に落とす。文字描画が使えない
 // プラットフォーム向けの退避用。
 std::string ToAscii(const std::string &utf8, size_t maxLen) {
 	std::string out;
@@ -72,6 +90,8 @@ DrawScreen::DrawScreen()
       channelMask_(0),
       scrollBarFlags_(0),
       scrollBarThumb_(0),
+      miniGlyphW_(0),
+      miniGlyphH_(0),
       playKeyStatusLast_(kPlayKeyStatusNever),
       progressBarLenLast_(-1),
       progressNowSecLast_(-1),
@@ -124,7 +144,7 @@ bool DrawScreen::LoadAssets(std::string *err) {
 		{ &skin_->kb0Bitmap, &kb0_ },
 		{ &skin_->kb1Bitmap, &kb1 },
 		{ &skin_->kb2Bitmap, &kb2 },
-		{ &skin_->font5x7Bitmap, &font_ },
+		{ &skin_->miniFontBitmap, &miniFont_ },
 		{ &skin_->levelMeterBitmap, &levelMeter_ },
 		{ &skin_->bannerBitmap, &banner_ },
 		{ &skin_->playKeyBitmap, &playKey_ },
@@ -136,6 +156,11 @@ bool DrawScreen::LoadAssets(std::string *err) {
 		// スキンのフォルダ -> 土台のフォルダ の順に探す。
 		if (!LoadBmpFile(skin_->FindFile(*items[i].name), items[i].dst, err)) return false;
 	}
+
+	// ミニフォントの 1 文字の大きさは素材から決まる（スキンが持つのは
+	// 画面に置くときの送り幅と行の高さだけ）。
+	miniGlyphW_ = miniFont_.width() / kMiniFontCols;
+	miniGlyphH_ = miniFont_.height() / kMiniFontRows;
 
 	// 鍵ビットマップの切り出し。奇数番の音は kb2 (黒鍵) から取る。
 	// パレット 0x11 を 1 (影)、0x12+n を 2 (点灯色) へ寄せる。
@@ -356,31 +381,27 @@ void DrawScreen::OverlayChannelMask(Screen *out) const {
 }
 
 // ---------------------------------------------------------------------------
-// 文字描画 (5x7 フォント)
+// 文字描画 (ミニフォント)
 // ---------------------------------------------------------------------------
 
-void DrawScreen::Print(int x, int y, const char *msg, const Rgb &color, int alpha) {
-	font_.SetPalette(1, color.r, color.g, color.b);
+void DrawScreen::PrintMini(int x, int y, const char *msg, const Rgb &color, int alpha) {
+	miniFont_.SetPalette(1, color.r, color.g, color.b);
 	for (const char *p = msg; *p != '\0'; p++) {
-		int c = (unsigned char)*p;
-		if (c < 0x20) c = 0x20;
-		if (c > 0x6f) c = 0x6f;
-		c -= 0x20;
-		BmpCopyTransparent(&screen_, x, y, 5, 7, &font_, (c & 0x0f) * 5, (c >> 4) * 7, alpha);
-		x += skin_->fontW;
+		int sx = 0, sy = 0;
+		MiniGlyphSrc((unsigned char)*p, miniGlyphW_, miniGlyphH_, &sx, &sy);
+		BmpCopyTransparent(&screen_, x, y, miniGlyphW_, miniGlyphH_, &miniFont_, sx, sy, alpha);
+		x += skin_->miniFontW;
 	}
 }
 
-void DrawScreen::PrintCompose(int x, int y, const char *msg, const Rgb &color, int alpha) {
-	font_.SetPalette(1, color.r, color.g, color.b);
+void DrawScreen::PrintMiniCompose(int x, int y, const char *msg, const Rgb &color, int alpha) {
+	miniFont_.SetPalette(1, color.r, color.g, color.b);
 	for (const char *p = msg; *p != '\0'; p++) {
-		int c = (unsigned char)*p;
-		if (c < 0x20) c = 0x20;
-		if (c > 0x6f) c = 0x6f;
-		c -= 0x20;
-		BmpCopyComposite(&screen_, x, y, 5, 7, &font_, (c & 0x0f) * 5, (c >> 4) * 7, &back_, x,
+		int sx = 0, sy = 0;
+		MiniGlyphSrc((unsigned char)*p, miniGlyphW_, miniGlyphH_, &sx, &sy);
+		BmpCopyComposite(&screen_, x, y, miniGlyphW_, miniGlyphH_, &miniFont_, sx, sy, &back_, x,
 		                 y, alpha);
-		x += skin_->fontW;
+		x += skin_->miniFontW;
 	}
 }
 
@@ -401,7 +422,7 @@ void DrawScreen::StatusItemPos(StatusItem item, int row, int *x, int *y) const {
 void DrawScreen::PutStatusText(StatusItem item, int row, const char *text) {
 	int x = 0, y = 0;
 	StatusItemPos(item, row, &x, &y);
-	PrintCompose(x, y, text, colors_.status.color, colors_.status.colorBright);
+	PrintMiniCompose(x, y, text, colors_.status.color, colors_.status.colorBright);
 }
 
 // ---------------------------------------------------------------------------
@@ -658,10 +679,10 @@ void DrawScreen::PutMDXTitle(const std::string &titleUtf8) {
 		return;
 	}
 
-	// フォントが読めなかったときの非常用。5x7 は本来ビジュアライザ用なので、
-	// ここへ落ちている時点で assets の同梱フォントが失われている。
-	Print(skin_->titleX + 4, skin_->titleY + 3, ToAscii(titleUtf8, kMaxAsciiChars).c_str(),
-	      colors_.mdxTitle.color, colors_.mdxTitle.colorBright);
+	// フォントが読めなかったときの非常用。ミニフォントは本来ステータス欄などの
+	// 数字用なので、ここへ落ちている時点で assets の同梱フォントが失われている。
+	PrintMini(skin_->titleX + 4, skin_->titleY + 3, ToAscii(titleUtf8, kMaxAsciiChars).c_str(),
+	          colors_.mdxTitle.color, colors_.mdxTitle.colorBright);
 }
 
 // ---------------------------------------------------------------------------
@@ -771,16 +792,17 @@ void DrawScreen::PutFileList(const Filer &filer, bool refresh) {
 				                     colors_.filer.colorBright, y, h);
 			}
 		} else {
-			// フォントが読めなかったときの非常用（5x7 は本来ビジュアライザ用）。
-			// こちらは縦に切れないので、丸ごと入る行だけ描く。
+			// フォントが読めなかったときの非常用（ミニフォントは本来
+			// ステータス欄などの数字用）。こちらは縦に切れないので、
+			// 丸ごと入る行だけ描く。
 			if (h >= itemH) {
-				Print(x + skin_->fileListBaseNameX[fs], rowY + 1,
-				      ToAscii(shown.baseName, kMaxAsciiChars).c_str(), color,
-				      colors_.filer.colorBright);
+				PrintMini(x + skin_->fileListBaseNameX[fs], rowY + 1,
+				          ToAscii(shown.baseName, kMaxAsciiChars).c_str(), color,
+				          colors_.filer.colorBright);
 				if (!shown.title.empty()) {
-					Print(x + skin_->fileListTitleX[fs], rowY + 1,
-					      ToAscii(shown.title, kMaxAsciiChars).c_str(), color,
-					      colors_.filer.colorBright);
+					PrintMini(x + skin_->fileListTitleX[fs], rowY + 1,
+					          ToAscii(shown.title, kMaxAsciiChars).c_str(), color,
+					          colors_.filer.colorBright);
 				}
 			}
 		}
@@ -925,8 +947,8 @@ void DrawScreen::PutProgressBar(uint32_t nowTimeMs, uint32_t playTimeMs, bool re
 		char s[128];
 		snprintf(s, sizeof(s), "PLAY TIME: %02d:%02d / %02d:%02d", t / 60, t % 60, t2 / 60,
 		         t2 % 60);
-		PrintCompose(skin_->progX + skin_->progTimeXOfs, skin_->progY + skin_->progTimeYOfs, s, colors_.playKey.color,
-		             colors_.playKey.colorBright);
+		PrintMiniCompose(skin_->progX + skin_->progTimeXOfs, skin_->progY + skin_->progTimeYOfs, s,
+		                 colors_.playKey.color, colors_.playKey.colorBright);
 	}
 }
 
@@ -969,8 +991,8 @@ void DrawScreen::PutTotalVolBar(int volume, bool refresh) {
 	// 桁数は固定にする。短い文字列を書くと前の表示の末尾が残る。
 	char s[64];
 	snprintf(s, sizeof(s), "%c%03d", (volume >= 0) ? '+' : '-', abs(volume));
-	PrintCompose(skin_->volX + skin_->volTimeXOfs, skin_->volY + skin_->volTimeYOfs, s, colors_.playKey.color,
-	             colors_.playKey.colorBright);
+	PrintMiniCompose(skin_->volX + skin_->volTimeXOfs, skin_->volY + skin_->volTimeYOfs, s,
+	                 colors_.playKey.color, colors_.playKey.colorBright);
 }
 
 // ---------------------------------------------------------------------------

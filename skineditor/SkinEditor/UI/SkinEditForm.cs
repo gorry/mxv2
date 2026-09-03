@@ -12,8 +12,8 @@ public sealed class SkinEditForm : Form
     {
         ["画面"] = new[] { BitmapRole.Back },
         ["鍵盤"] = new[] { BitmapRole.Kb0, BitmapRole.Kb1, BitmapRole.Kb2 },
-        // 「レベルメータ」「5x7 フォント」タブは廃止して「ステータス」へ統合した。
-        ["ステータス"] = new[] { BitmapRole.LevelMeter, BitmapRole.Font5x7 },
+        // 「レベルメータ」「ミニフォント」タブは廃止して「ステータス」へ統合した。
+        ["ステータス"] = new[] { BitmapRole.LevelMeter, BitmapRole.MiniFont },
         ["バナー"] = new[] { BitmapRole.Banner },
         ["操作ボタン"] = new[] { BitmapRole.PlayKey },
         ["プログレスバー"] = new[] { BitmapRole.ProgressBar },

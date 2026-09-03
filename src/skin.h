@@ -82,8 +82,11 @@ struct Skin {
 	int chYOffset[9];  // 各チャンネル行の y
 	int keyOffset;     // 鍵の描画原点の補正
 
-	// ---- 5x7 フォント（ビジュアライザ用） ------------------------------
-	int fontW, fontH;
+	// ---- ミニフォント（ステータス欄などのビットマップ文字） --------------
+	// 画面に置くときの送り幅と行の高さ（字間・行間を含む）。
+	// 素材の中の 1 文字の大きさは素材の大きさから決まるので、ここには無い
+	// （drawscreen.cpp の kMiniFont* を見ること）。
+	int miniFontW, miniFontH;
 
 	// ---- ステータス ---------------------------------------------------
 	int statusX, statusY;
@@ -164,7 +167,7 @@ struct Skin {
 	std::string kb0Bitmap;          // 鍵盤の下地
 	std::string kb1Bitmap;          // 白鍵側の鍵
 	std::string kb2Bitmap;          // 黒鍵側の鍵
-	std::string font5x7Bitmap;      // ビジュアライザ用の 5x7 フォント
+	std::string miniFontBitmap;     // ミニフォント（ビットマップ文字）
 	std::string levelMeterBitmap;   // レベルメータ
 	std::string bannerBitmap;       // バナー
 	std::string playKeyBitmap;      // 操作ボタン

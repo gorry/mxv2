@@ -28,9 +28,9 @@ public static class SkinLayoutIo
         t.kb1Bitmap = ini.GetString("Keyboard", "ImgKeyboard1", t.kb1Bitmap);
         t.kb2Bitmap = ini.GetString("Keyboard", "ImgKeyboard2", t.kb2Bitmap);
 
-        t.fontW = ini.GetInt("Font5x7", "Width", t.fontW);
-        t.fontH = ini.GetInt("Font5x7", "Height", t.fontH);
-        t.font5x7Bitmap = ini.GetString("Font5x7", "ImgFont5x7", t.font5x7Bitmap);
+        t.miniFontW = ini.GetInt("MiniFont", "Width", t.miniFontW);
+        t.miniFontH = ini.GetInt("MiniFont", "Height", t.miniFontH);
+        t.miniFontBitmap = ini.GetString("MiniFont", "ImgMiniFont", t.miniFontBitmap);
 
         GetXy(ini, "Status", "Pos", ref t.statusX, ref t.statusY);
         t.statusBackW = ini.GetInt("Status", "BackWidth", t.statusBackW);
@@ -147,9 +147,9 @@ public static class SkinLayoutIo
         ini.SetString("Keyboard", "ImgKeyboard1", t.kb1Bitmap);
         ini.SetString("Keyboard", "ImgKeyboard2", t.kb2Bitmap);
 
-        ini.SetInt("Font5x7", "Width", t.fontW);
-        ini.SetInt("Font5x7", "Height", t.fontH);
-        ini.SetString("Font5x7", "ImgFont5x7", t.font5x7Bitmap);
+        ini.SetInt("MiniFont", "Width", t.miniFontW);
+        ini.SetInt("MiniFont", "Height", t.miniFontH);
+        ini.SetString("MiniFont", "ImgMiniFont", t.miniFontBitmap);
 
         ini.SetString("Status", "Pos", $"{t.statusX},{t.statusY}");
         ini.SetInt("Status", "BackWidth", t.statusBackW);

@@ -25,10 +25,11 @@ public static class LayoutFieldSchema
             new("LevelMeter", "PaletteOffset", "パレット開始番号", FieldKind.Int, e => $"{e.levelMeterPalOfs}"),
             new("LevelMeter", "Cells", "セル数", FieldKind.Int, e => $"{e.levelMeterWidthCells}"),
             new("LevelMeter", "SrcX", "素材内: 左端の切り捨て", FieldKind.Int, e => $"{e.levelMeterSrcX}"),
-            // 「5x7 フォント」タブも廃止してここへ統合した。指示どおり
-            // 「セル数」と「位置」の間に置く。
-            new("Font5x7", "Width", "5x7フォント セル幅", FieldKind.Int, e => $"{e.fontW}"),
-            new("Font5x7", "Height", "5x7フォント セル高さ", FieldKind.Int, e => $"{e.fontH}"),
+            // 「ミニフォント」タブも廃止してここへ統合した。指示どおり
+            // 「セル数」と「位置」の間に置く。1 文字の大きさは素材そのもので
+            // 決まるので、ここにあるのは画面に置くときの送りだけ。
+            new("MiniFont", "Width", "ミニフォント 送り幅", FieldKind.Int, e => $"{e.miniFontW}"),
+            new("MiniFont", "Height", "ミニフォント 行の高さ", FieldKind.Int, e => $"{e.miniFontH}"),
             new("Status", "Pos", "位置 (x,y)", FieldKind.IntList, e => $"{e.statusX},{e.statusY}"),
             new("Status", "BackWidth", "背景幅", FieldKind.Int, e => $"{e.statusBackW}"),
             new("Status", "BackHeight", "背景高さ", FieldKind.Int, e => $"{e.statusBackH}"),

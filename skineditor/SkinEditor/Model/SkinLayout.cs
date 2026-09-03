@@ -17,8 +17,8 @@ public sealed class SkinLayout
     public int[] chYOffset = { 0, 38, 76, 114, 152, 190, 228, 266, 304 };
     public int keyOffset = 3;
 
-    // ---- 5x7 フォント --------------------------------------------------
-    public int fontW = 6, fontH = 8;
+    // ---- ミニフォント --------------------------------------------------
+    public int miniFontW = 6, miniFontH = 8;
 
     // ---- ステータス ---------------------------------------------------
     public int statusX = 344, statusY = 4;
@@ -93,7 +93,7 @@ public sealed class SkinLayout
     public string kb0Bitmap = "kb0.bmp";
     public string kb1Bitmap = "kb1.bmp";
     public string kb2Bitmap = "kb2.bmp";
-    public string font5x7Bitmap = "font5x7.bmp";
+    public string miniFontBitmap = "minifont.bmp";
     public string levelMeterBitmap = "levelmeter.bmp";
     public string bannerBitmap = "banner.bmp";
     public string playKeyBitmap = "playkey.bmp";

@@ -6,7 +6,7 @@ public enum BitmapRole
     Kb0,
     Kb1,
     Kb2,
-    Font5x7,
+    MiniFont,
     LevelMeter,
     Banner,
     PlayKey,
@@ -25,7 +25,7 @@ public static class BitmapRoleInfo
         BitmapRole.Kb0 => "kb0.bmp",
         BitmapRole.Kb1 => "kb1.bmp",
         BitmapRole.Kb2 => "kb2.bmp",
-        BitmapRole.Font5x7 => "font5x7.bmp",
+        BitmapRole.MiniFont => "minifont.bmp",
         BitmapRole.LevelMeter => "levelmeter.bmp",
         BitmapRole.Banner => "banner.bmp",
         BitmapRole.PlayKey => "playkey.bmp",
@@ -41,7 +41,7 @@ public static class BitmapRoleInfo
         BitmapRole.Kb0 => "鍵盤の下地",
         BitmapRole.Kb1 => "鍵盤（白鍵側）",
         BitmapRole.Kb2 => "鍵盤（黒鍵側）",
-        BitmapRole.Font5x7 => "5x7フォント",
+        BitmapRole.MiniFont => "ミニフォント",
         BitmapRole.LevelMeter => "レベルメータ",
         BitmapRole.Banner => "バナー",
         BitmapRole.PlayKey => "操作ボタン",
@@ -51,10 +51,10 @@ public static class BitmapRoleInfo
         _ => role.ToString(),
     };
 
-    // src/bitmap.h の注記のとおり、鍵盤・操作ボタン・レベルメータ・5x7フォントは
+    // src/bitmap.h の注記のとおり、鍵盤・操作ボタン・レベルメータ・ミニフォントは
     // パレット番号（layout.ini の PalKey 等）で発色させるので、パレット配置に
     // 意味がある。back/banner/scrollbar/progressbar/volbar はそこまでの依存が無い。
     public static bool IsPaletteDependent(BitmapRole role) => role is
         BitmapRole.Kb0 or BitmapRole.Kb1 or BitmapRole.Kb2 or
-        BitmapRole.PlayKey or BitmapRole.LevelMeter or BitmapRole.Font5x7;
+        BitmapRole.PlayKey or BitmapRole.LevelMeter or BitmapRole.MiniFont;
 }

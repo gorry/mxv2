@@ -7,7 +7,7 @@
 // 旧 mxv からの変更点:
 //   - BITMAPINFO を Bitmap (bitmap.h) に置き換えた。メモリレイアウトは同じ。
 //   - 素材は .rc のリソースではなくスキンのフォルダの *.bmp から読む。
-//   - 曲名は GDI の DrawText ではなく 5x7 フォントで描く（Phase 4 で差し替え）。
+//   - 曲名は GDI の DrawText ではなくミニフォントで描く（Phase 4 で差し替え）。
 //   - 無効矩形リスト (RectInvalidate) は不要になったので持たない。
 //     SDL では毎フレーム全面を転送するほうが速い。
 
@@ -46,7 +46,7 @@ public:
 	const Bitmap &screen() const { return screen_; }
 
 	// ファイラーと曲名の文字は、キャンバスではなく出力解像度のレイヤーへ描く。
-	// 設定しない場合は 5x7 フォントの ASCII 表示へ退避する。
+	// 設定しない場合はミニフォントの ASCII 表示へ退避する。
 	void SetTextLayer(TextLayer *layer) { textLayer_ = layer; }
 
 	// 24bpp オフスクリーンを Screen の ARGB8888 バッファへ転送する。
@@ -211,9 +211,9 @@ private:
 	void CutKeyboardBitmap(Bitmap *out, const Bitmap &src, int xsrc, int cutWidth,
 	                       int pal1, int pal2);
 
-	// 5x7 フォントでの文字列描画。
-	void Print(int x, int y, const char *msg, const Rgb &color, int alpha);
-	void PrintCompose(int x, int y, const char *msg, const Rgb &color, int alpha);
+	// ミニフォント（素材のビットマップ文字）での文字列描画。
+	void PrintMini(int x, int y, const char *msg, const Rgb &color, int alpha);
+	void PrintMiniCompose(int x, int y, const char *msg, const Rgb &color, int alpha);
 
 	// ステータス欄の項目 1 つの左上（row 段目）。位置はスキン持ち。
 	void StatusItemPos(StatusItem item, int row, int *x, int *y) const;
@@ -234,7 +234,7 @@ private:
 
 	Bitmap kb0_;              // 鍵盤の下地
 	Bitmap keyboard_[12];     // 各音の鍵
-	Bitmap font_;             // 5x7 フォント
+	Bitmap miniFont_;         // ミニフォント（ビットマップ文字のグリフ表）
 	Bitmap levelMeter_;       // レベルメータ
 	Bitmap banner_;           // バナー
 	Bitmap playKey_;          // 操作ボタン
@@ -262,6 +262,11 @@ private:
 
 	Rgb kbPalette_[12];
 	Rgb palLevelMeter_[128];
+
+	// ミニフォントの 1 文字の大きさ。素材の大きさ ÷ グリフ表の並び
+	// （drawscreen.cpp の kMiniFontCols / kMiniFontRows）で決まるので、
+	// 5x7 のような特定の大きさには縛られない。
+	int miniGlyphW_, miniGlyphH_;
 
 	std::string mdxTitle_;
 

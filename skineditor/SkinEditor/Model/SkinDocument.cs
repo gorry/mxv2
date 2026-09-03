@@ -276,7 +276,7 @@ public sealed class SkinDocument
         Directory.CreateDirectory(OwnDir);
         var names = new[]
         {
-            eff.backBitmap, eff.kb0Bitmap, eff.kb1Bitmap, eff.kb2Bitmap, eff.font5x7Bitmap,
+            eff.backBitmap, eff.kb0Bitmap, eff.kb1Bitmap, eff.kb2Bitmap, eff.miniFontBitmap,
             eff.levelMeterBitmap, eff.bannerBitmap, eff.playKeyBitmap, eff.progressBarBitmap,
             eff.volBarBitmap, eff.scrollBarBitmap, "font.ttf",
         };
@@ -355,7 +355,7 @@ public sealed class SkinDocument
                 break;
             }
             default:
-                // Back / Kb0-2 / Font5x7 / LevelMeter は明示の Src 矩形を持たないため対象外。
+                // Back / Kb0-2 / MiniFont / LevelMeter は明示の Src 矩形を持たないため対象外。
                 break;
         }
     }

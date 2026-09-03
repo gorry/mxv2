@@ -109,8 +109,8 @@ Skin::Skin() {
 	}
 	keyOffset = 3;
 
-	fontW = 6;
-	fontH = 8;
+	miniFontW = 6;
+	miniFontH = 8;
 
 	statusX = 344;
 	statusY = 4;
@@ -271,7 +271,7 @@ Skin::Skin() {
 	kb0Bitmap = "kb0.bmp";
 	kb1Bitmap = "kb1.bmp";
 	kb2Bitmap = "kb2.bmp";
-	font5x7Bitmap = "font5x7.bmp";
+	miniFontBitmap = "minifont.bmp";
 	levelMeterBitmap = "levelmeter.bmp";
 	bannerBitmap = "banner.bmp";
 	playKeyBitmap = "playkey.bmp";
@@ -343,9 +343,9 @@ void Skin::ApplyLayout(const std::string &skinDir) {
 	kb1Bitmap = ini.GetString("Keyboard", "ImgKeyboard1", kb1Bitmap);
 	kb2Bitmap = ini.GetString("Keyboard", "ImgKeyboard2", kb2Bitmap);
 
-	fontW = ini.GetInt("Font5x7", "Width", fontW);
-	fontH = ini.GetInt("Font5x7", "Height", fontH);
-	font5x7Bitmap = ini.GetString("Font5x7", "ImgFont5x7", font5x7Bitmap);
+	miniFontW = ini.GetInt("MiniFont", "Width", miniFontW);
+	miniFontH = ini.GetInt("MiniFont", "Height", miniFontH);
+	miniFontBitmap = ini.GetString("MiniFont", "ImgMiniFont", miniFontBitmap);
 
 	GetXy(ini, "Status", "Pos", &statusX, &statusY);
 	statusBackW = ini.GetInt("Status", "BackWidth", statusBackW);

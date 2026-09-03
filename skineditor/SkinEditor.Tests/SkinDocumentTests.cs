@@ -18,6 +18,8 @@ public class SkinDocumentTests
         Assert.Equal(480, doc.Effective.screenH);
         Assert.Equal(new[] { 11, 8 }, doc.Effective.fileListRows);
         Assert.Equal(8, doc.Effective.numPlayKeys);
+        Assert.Equal("minifont.bmp", doc.Effective.miniFontBitmap);
+        Assert.Equal(6, doc.Effective.miniFontW);
         Assert.Equal("", doc.BaseRef);
     }
 
