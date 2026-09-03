@@ -14,6 +14,15 @@ namespace mxv2 {
 const char kColorsFile[] = "colors.ini";
 const char kLegacyColorsFile[] = "theme.mxv";
 
+// StatusItem の並び。
+const char *const kStatusItemKeys[kNumStatusItems] = {
+	"PosVolume",     "PosLevelMeter", "PosPanpot",    "PosDetune",
+	"PosVoice",      "PosQ",          "PosPtr",       "PosLFOPitch",
+	"PosLFOPitch1",  "PosLFOPitch2",  "PosLFOPitch3", "PosLFOPitch4",
+	"PosLFOVolume",  "PosLFOVolume1", "PosLFOVolume2", "PosLFOVolume3",
+	"PosPcmVolume",  "PosPcmPtr",
+};
+
 namespace {
 
 // "0,3,6,9" のような並びを読む。足りない分は既定値のまま残す。
@@ -115,9 +124,37 @@ Skin::Skin() {
 			pcmYOffset[i] = kY[i];
 		}
 	}
+	{
+		// 旧 mxv/draw.cpp の各 Screen_Put* にあった CX_D / CY_D。
+		static const int kPos[kNumStatusItems][2] = {
+			{ 2, 0 },    // Volume
+			{ 26, 0 },   // LevelMeter
+			{ 122, 0 },  // Panpot
+			{ 2, 9 },    // Detune
+			{ 40, 9 },   // Voice
+			{ 66, 9 },   // Q
+			{ 92, 9 },   // Ptr
+			{ 2, 18 },   // LFOPitch
+			{ 40, 18 },  // LFOPitch1
+			{ 46, 18 },  // LFOPitch2
+			{ 72, 18 },  // LFOPitch3
+			{ 104, 18 }, // LFOPitch4
+			{ 2, 27 },   // LFOVolume
+			{ 40, 27 },  // LFOVolume1
+			{ 46, 27 },  // LFOVolume2
+			{ 72, 27 },  // LFOVolume3
+			{ 2, 0 },    // PcmVolume（PcmX/PcmY からの相対）
+			{ 24, 0 },   // PcmPtr
+		};
+		for (int i = 0; i < kNumStatusItems; i++) {
+			statusPos[i][0] = kPos[i][0];
+			statusPos[i][1] = kPos[i][1];
+		}
+	}
 
 	levelMeterPalOfs = 32;
 	levelMeterWidthCells = 64;
+	levelMeterSrcX = 32;
 
 	bannerX = 476;
 	bannerY = 4;
@@ -315,9 +352,13 @@ void Skin::ApplyLayout(const std::string &skinDir) {
 	statusBackH = ini.GetInt("Status", "BackHeight", statusBackH);
 	GetIntList(ini, "Status", "PcmX", pcmXOffset, 8);
 	GetIntList(ini, "Status", "PcmY", pcmYOffset, 8);
+	for (int i = 0; i < kNumStatusItems; i++) {
+		GetIntList(ini, "Status", kStatusItemKeys[i], statusPos[i], 2);
+	}
 
 	levelMeterPalOfs = ini.GetInt("LevelMeter", "PaletteOffset", levelMeterPalOfs);
 	levelMeterWidthCells = ini.GetInt("LevelMeter", "Cells", levelMeterWidthCells);
+	levelMeterSrcX = ini.GetInt("LevelMeter", "SrcX", levelMeterSrcX);
 	levelMeterBitmap = ini.GetString("LevelMeter", "ImgLevelMeter", levelMeterBitmap);
 
 	{

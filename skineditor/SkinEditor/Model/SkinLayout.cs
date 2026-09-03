@@ -25,10 +25,13 @@ public sealed class SkinLayout
     public int statusBackW = 128, statusBackH = 35;
     public int[] pcmXOffset = { 0, 0, 0, 0, 68, 68, 68, 68 };
     public int[] pcmYOffset = { 0, 9, 18, 27, 0, 9, 18, 27 };
+    // 項目ごとの位置（StatusItem の並びで [x, y]）。
+    public int[][] statusPos = StatusItems.DefaultPos();
 
     // ---- レベルメータ ---------------------------------------------------
     public int levelMeterPalOfs = 32;
     public int levelMeterWidthCells = 64;
+    public int levelMeterSrcX = 32;  // 素材の左端を何画素捨てるか
 
     // ---- バナー ---------------------------------------------------------
     public int bannerX = 476, bannerY = 4, bannerW = 160, bannerH = 54;
@@ -110,6 +113,7 @@ public sealed class SkinLayout
         c.chYOffset = (int[])chYOffset.Clone();
         c.pcmXOffset = (int[])pcmXOffset.Clone();
         c.pcmYOffset = (int[])pcmYOffset.Clone();
+        c.statusPos = statusPos.Select(p => (int[])p.Clone()).ToArray();
         c.fileListRows = (int[])fileListRows.Clone();
         c.fileListItemH = (int[])fileListItemH.Clone();
         c.fileListBaseNameX = (int[])fileListBaseNameX.Clone();

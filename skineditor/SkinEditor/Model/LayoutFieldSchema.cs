@@ -17,6 +17,34 @@ public static class LayoutFieldSchema
 {
     public static IReadOnlyList<FieldSectionDef> BuildSections()
     {
+        var status = new List<FieldDef>
+        {
+            // レベルメータの素材行（BitmapRowsByTab）の次に来るよう、
+            // レベルメータの設定をこのタブの先頭に置く
+            // （「レベルメータ」タブは廃止してここへ統合した）。
+            new("LevelMeter", "PaletteOffset", "パレット開始番号", FieldKind.Int, e => $"{e.levelMeterPalOfs}"),
+            new("LevelMeter", "Cells", "セル数", FieldKind.Int, e => $"{e.levelMeterWidthCells}"),
+            new("LevelMeter", "SrcX", "素材内: 左端の切り捨て", FieldKind.Int, e => $"{e.levelMeterSrcX}"),
+            // 「5x7 フォント」タブも廃止してここへ統合した。指示どおり
+            // 「セル数」と「位置」の間に置く。
+            new("Font5x7", "Width", "5x7フォント セル幅", FieldKind.Int, e => $"{e.fontW}"),
+            new("Font5x7", "Height", "5x7フォント セル高さ", FieldKind.Int, e => $"{e.fontH}"),
+            new("Status", "Pos", "位置 (x,y)", FieldKind.IntList, e => $"{e.statusX},{e.statusY}"),
+            new("Status", "BackWidth", "背景幅", FieldKind.Int, e => $"{e.statusBackW}"),
+            new("Status", "BackHeight", "背景高さ", FieldKind.Int, e => $"{e.statusBackH}"),
+            // PcmX/PcmY (各8個) はここには含めない。「PCM 1ch」～「PCM 8ch」の
+            // (x,y) 2値編集として SkinEditForm 側で専用に描画する
+            // （PcmChannelRow。8個のスピンボタン列にはしない、というユーザー指示）。
+        };
+        // 1 段の中での各項目の位置。FM の 16 項目は [Status] Pos からの相対、
+        // PCM の 2 項目は PcmX/PcmY のスロットからの相対（StatusItems 参照）。
+        for (int i = 0; i < StatusItems.Count; i++)
+        {
+            int idx = i;
+            status.Add(new FieldDef("Status", StatusItems.Keys[idx], $"配置: {StatusItems.Labels[idx]} (x,y)",
+                FieldKind.IntList, e => SkinLayoutIo.Join(e.statusPos[idx])));
+        }
+
         var list = new List<FieldSectionDef>
         {
             new("画面", new List<FieldDef>
@@ -39,24 +67,7 @@ public static class LayoutFieldSchema
                 // というユーザー指示）。
                 new("Keyboard", "KeyOffset", "鍵の描画原点補正", FieldKind.Int, e => $"{e.keyOffset}"),
             }),
-            new("ステータス", new List<FieldDef>
-            {
-                // レベルメータの素材行（BitmapRowsByTab）の次に来るよう、
-                // レベルメータの設定をこのタブの先頭に置く
-                // （「レベルメータ」タブは廃止してここへ統合した）。
-                new("LevelMeter", "PaletteOffset", "パレット開始番号", FieldKind.Int, e => $"{e.levelMeterPalOfs}"),
-                new("LevelMeter", "Cells", "セル数", FieldKind.Int, e => $"{e.levelMeterWidthCells}"),
-                // 「5x7 フォント」タブも廃止してここへ統合した。指示どおり
-                // 「セル数」と「位置」の間に置く。
-                new("Font5x7", "Width", "5x7フォント セル幅", FieldKind.Int, e => $"{e.fontW}"),
-                new("Font5x7", "Height", "5x7フォント セル高さ", FieldKind.Int, e => $"{e.fontH}"),
-                new("Status", "Pos", "位置 (x,y)", FieldKind.IntList, e => $"{e.statusX},{e.statusY}"),
-                new("Status", "BackWidth", "背景幅", FieldKind.Int, e => $"{e.statusBackW}"),
-                new("Status", "BackHeight", "背景高さ", FieldKind.Int, e => $"{e.statusBackH}"),
-                // PcmX/PcmY (各8個) はここには含めない。「PCM 1ch」～「PCM 8ch」の
-                // (x,y) 2値編集として SkinEditForm 側で専用に描画する
-                // （PcmChannelRow。8個のスピンボタン列にはしない、というユーザー指示）。
-            }),
+            new("ステータス", status),
             new("バナー", new List<FieldDef>
             {
                 new("Banner", "Rect", "矩形 (x,y,w,h)", FieldKind.Xywh,

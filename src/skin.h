@@ -35,6 +35,36 @@ struct Xywh {
 	int x, y, w, h;
 };
 
+// ステータス欄に並ぶ項目。1 段（1 チャンネル）の中でどこに出すかを
+// layout.ini の [Status] Pos<名前> で指定する（左上からの相対で、
+// [Status] Pos と [Keyboard] ChannelY が足される）。
+// FM の 16 項目は 8 段ぶんそのまま繰り返され、PCM の 2 項目は
+// [Status] PcmX / PcmY の 8 スロットぶん繰り返される。
+enum StatusItem {
+	kStatusVolume = 0,
+	kStatusLevelMeter,
+	kStatusPanpot,
+	kStatusDetune,
+	kStatusVoice,
+	kStatusQ,
+	kStatusPtr,
+	kStatusLFOPitch,
+	kStatusLFOPitch1,
+	kStatusLFOPitch2,
+	kStatusLFOPitch3,
+	kStatusLFOPitch4,
+	kStatusLFOVolume,
+	kStatusLFOVolume1,
+	kStatusLFOVolume2,
+	kStatusLFOVolume3,
+	kStatusPcmVolume,
+	kStatusPcmPtr,
+	kNumStatusItems
+};
+
+// layout.ini でのキー名（"PosVolume" など）。並びは StatusItem と同じ。
+extern const char *const kStatusItemKeys[kNumStatusItems];
+
 // 配色ファイルの名前。旧 mxv の <テーマ名>.mxv をそのまま持ってきていたのを
 // 2026-08-21 に layout.ini と揃えた。**書くのは新しい名前だけ**で、
 // 旧い名前は読むためだけに残してある。
@@ -59,10 +89,17 @@ struct Skin {
 	int statusX, statusY;
 	int statusBackW, statusBackH;
 	int pcmXOffset[8], pcmYOffset[8];  // PCM 8ch のステータス欄の並び
+	// 項目ごとの位置。StatusItem の並びで [x, y]。旧 mxv は draw.cpp の
+	// 関数ごとに #define CX_D / CY_D で埋め込んでいたもの。
+	int statusPos[kNumStatusItems][2];
 
 	// ---- レベルメータ -------------------------------------------------
 	int levelMeterPalOfs;      // levelmeter.bmp のパレット開始番号
 	int levelMeterWidthCells;  // セル数
+	// 素材の左端を何画素捨てるか。levelmeter.bmp は 1 段ぶんの幅で
+	// 作ってあり、音量表示と重なる左端を切ってから描く。描く幅は
+	// 「素材の幅 - この値」。
+	int levelMeterSrcX;
 
 	// ---- バナー -------------------------------------------------------
 	int bannerX, bannerY, bannerW, bannerH;

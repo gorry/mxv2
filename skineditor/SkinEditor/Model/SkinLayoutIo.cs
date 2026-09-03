@@ -37,9 +37,12 @@ public static class SkinLayoutIo
         t.statusBackH = ini.GetInt("Status", "BackHeight", t.statusBackH);
         GetIntList(ini, "Status", "PcmX", t.pcmXOffset, 8);
         GetIntList(ini, "Status", "PcmY", t.pcmYOffset, 8);
+        for (int i = 0; i < StatusItems.Count; i++)
+            GetIntList(ini, "Status", StatusItems.Keys[i], t.statusPos[i], 2);
 
         t.levelMeterPalOfs = ini.GetInt("LevelMeter", "PaletteOffset", t.levelMeterPalOfs);
         t.levelMeterWidthCells = ini.GetInt("LevelMeter", "Cells", t.levelMeterWidthCells);
+        t.levelMeterSrcX = ini.GetInt("LevelMeter", "SrcX", t.levelMeterSrcX);
         t.levelMeterBitmap = ini.GetString("LevelMeter", "ImgLevelMeter", t.levelMeterBitmap);
 
         {
@@ -153,9 +156,12 @@ public static class SkinLayoutIo
         ini.SetInt("Status", "BackHeight", t.statusBackH);
         ini.SetString("Status", "PcmX", Join(t.pcmXOffset));
         ini.SetString("Status", "PcmY", Join(t.pcmYOffset));
+        for (int i = 0; i < StatusItems.Count; i++)
+            ini.SetString("Status", StatusItems.Keys[i], Join(t.statusPos[i]));
 
         ini.SetInt("LevelMeter", "PaletteOffset", t.levelMeterPalOfs);
         ini.SetInt("LevelMeter", "Cells", t.levelMeterWidthCells);
+        ini.SetInt("LevelMeter", "SrcX", t.levelMeterSrcX);
         ini.SetString("LevelMeter", "ImgLevelMeter", t.levelMeterBitmap);
 
         ini.SetString("Banner", "Rect", $"{t.bannerX},{t.bannerY},{t.bannerW},{t.bannerH}");

@@ -21,6 +21,27 @@ public class SkinDocumentTests
         Assert.Equal("", doc.BaseRef);
     }
 
+    // ステータス欄の項目ごとの位置は 2026-09-03 に drawscreen.cpp から
+    // [Status] Pos<名前> へ出したもの。Default の値は旧 mxv の draw.cpp
+    // （CX_D / CY_D）そのままで、既定値とも一致する。
+    [Fact]
+    public void Default_HasStatusItemPositionsFromLayoutIni()
+    {
+        var root = TestPaths.FindDevRoot();
+        var doc = SkinDocument.Open(root, "Default");
+
+        Assert.Equal(new[] { 2, 0 }, doc.Effective.statusPos[(int)StatusItem.Volume]);
+        Assert.Equal(new[] { 26, 0 }, doc.Effective.statusPos[(int)StatusItem.LevelMeter]);
+        Assert.Equal(new[] { 122, 0 }, doc.Effective.statusPos[(int)StatusItem.Panpot]);
+        Assert.Equal(new[] { 104, 18 }, doc.Effective.statusPos[(int)StatusItem.LFOPitch4]);
+        Assert.Equal(new[] { 24, 0 }, doc.Effective.statusPos[(int)StatusItem.PcmPtr]);
+        Assert.Equal(32, doc.Effective.levelMeterSrcX);
+
+        // 全項目が layout.ini に明示してあること（本体の既定値と二重管理に
+        // なっていても、書き忘れた項目があれば気付けるように）。
+        foreach (var key in StatusItems.Keys) Assert.True(doc.IsLayoutOwn("Status", key), key);
+    }
+
     [Fact]
     public void DefaultMidnight_InheritsLayoutFromDefault_ButHasOwnColors()
     {

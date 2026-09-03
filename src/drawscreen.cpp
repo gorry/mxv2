@@ -384,8 +384,23 @@ void DrawScreen::PrintCompose(int x, int y, const char *msg, const Rgb &color, i
 	}
 }
 
-void DrawScreen::PutStatusText(int x, int y, int cells, const char *text) {
-	(void)cells;
+// ステータス欄の項目 1 つの左上。FM の項目は段 (row) の y をそのまま使い、
+// PCM の 2 項目だけは PCM 行 (chYOffset[8]) の中の 8 スロットから選ぶ。
+void DrawScreen::StatusItemPos(StatusItem item, int row, int *x, int *y) const {
+	const int *pos = skin_->statusPos[item];
+	if (item == kStatusPcmVolume || item == kStatusPcmPtr) {
+		const int i = row - 8;
+		*x = skin_->statusX + skin_->pcmXOffset[i] + pos[0];
+		*y = skin_->statusY + skin_->chYOffset[8] + skin_->pcmYOffset[i] + pos[1];
+		return;
+	}
+	*x = skin_->statusX + pos[0];
+	*y = skin_->statusY + skin_->chYOffset[row] + pos[1];
+}
+
+void DrawScreen::PutStatusText(StatusItem item, int row, const char *text) {
+	int x = 0, y = 0;
+	StatusItemPos(item, row, &x, &y);
 	PrintCompose(x, y, text, colors_.status.color, colors_.status.colorBright);
 }
 
@@ -436,7 +451,7 @@ void DrawScreen::PutVolume(int volume, int row) {
 	} else {
 		snprintf(s, sizeof(s), "V%-3d", volume);
 	}
-	PutStatusText(2 + skin_->statusX, skin_->chYOffset[row] + 0 + skin_->statusY, 4, s);
+	PutStatusText(kStatusVolume, row, s);
 }
 
 void DrawScreen::PutPanpot(int panpot, int row) {
@@ -444,7 +459,7 @@ void DrawScreen::PutPanpot(int panpot, int row) {
 	char s[2];
 	s[0] = "-LRC"[panpot & 3];
 	s[1] = '\0';
-	PutStatusText(122 + skin_->statusX, skin_->chYOffset[row] + 0 + skin_->statusY, 1, s);
+	PutStatusText(kStatusPanpot, row, s);
 }
 
 void DrawScreen::PutDetune(int detune, int row) {
@@ -452,28 +467,28 @@ void DrawScreen::PutDetune(int detune, int row) {
 	char s[64];
 	const int v = (int16_t)detune;
 	snprintf(s, sizeof(s), "D%c%04d", (v >= 0) ? '+' : '-', abs(v) % 10000);
-	PutStatusText(2 + skin_->statusX, skin_->chYOffset[row] + 9 + skin_->statusY, 6, s);
+	PutStatusText(kStatusDetune, row, s);
 }
 
 void DrawScreen::PutVoice(int voice, int row) {
 	if (row < 0 || row >= 9) return;
 	char s[64];
 	snprintf(s, sizeof(s), "@%03d", voice % 1000);
-	PutStatusText(40 + skin_->statusX, skin_->chYOffset[row] + 9 + skin_->statusY, 4, s);
+	PutStatusText(kStatusVoice, row, s);
 }
 
 void DrawScreen::PutQ(int q, int row) {
 	if (row < 0 || row >= 9) return;
 	char s[64];
 	snprintf(s, sizeof(s), "Q%03d", q % 1000);
-	PutStatusText(66 + skin_->statusX, skin_->chYOffset[row] + 9 + skin_->statusY, 4, s);
+	PutStatusText(kStatusQ, row, s);
 }
 
 void DrawScreen::PutPtr(int ptr, int row) {
 	if (row < 0 || row >= 9) return;
 	char s[64];
 	snprintf(s, sizeof(s), "$%05X", (unsigned)ptr & 0xfffff);
-	PutStatusText(92 + skin_->statusX, skin_->chYOffset[row] + 9 + skin_->statusY, 6, s);
+	PutStatusText(kStatusPtr, row, s);
 }
 
 void DrawScreen::PutLFOPitch(int v, int row) {
@@ -481,7 +496,7 @@ void DrawScreen::PutLFOPitch(int v, int row) {
 	char s[64];
 	const int t = (int16_t)v;
 	snprintf(s, sizeof(s), "P%c%04d", (t >= 0) ? '+' : '-', abs(t) % 10000);
-	PutStatusText(2 + skin_->statusX, skin_->chYOffset[row] + 18 + skin_->statusY, 6, s);
+	PutStatusText(kStatusLFOPitch, row, s);
 }
 
 void DrawScreen::PutLFOPitch1(int v, int row) {
@@ -489,28 +504,28 @@ void DrawScreen::PutLFOPitch1(int v, int row) {
 	char s[2];
 	s[0] = (char)(0x65 + v);
 	s[1] = '\0';
-	PutStatusText(40 + skin_->statusX, skin_->chYOffset[row] + 18 + skin_->statusY, 1, s);
+	PutStatusText(kStatusLFOPitch1, row, s);
 }
 
 void DrawScreen::PutLFOPitch2(int v, int row) {
 	if (row < 0 || row >= 9) return;
 	char s[64];
 	snprintf(s, sizeof(s), "%04d", (uint16_t)v % 10000);
-	PutStatusText(46 + skin_->statusX, skin_->chYOffset[row] + 18 + skin_->statusY, 4, s);
+	PutStatusText(kStatusLFOPitch2, row, s);
 }
 
 void DrawScreen::PutLFOPitch3(int v, int row) {
 	if (row < 0 || row >= 9) return;
 	char s[64];
 	snprintf(s, sizeof(s), "%c%04d", (v >= 0) ? '+' : '-', abs(v) % 10000);
-	PutStatusText(72 + skin_->statusX, skin_->chYOffset[row] + 18 + skin_->statusY, 5, s);
+	PutStatusText(kStatusLFOPitch3, row, s);
 }
 
 void DrawScreen::PutLFOPitch4(int v, int row) {
 	if (row < 0 || row >= 9) return;
 	char s[64];
 	snprintf(s, sizeof(s), "D%03d", (uint16_t)v % 1000);
-	PutStatusText(104 + skin_->statusX, skin_->chYOffset[row] + 18 + skin_->statusY, 4, s);
+	PutStatusText(kStatusLFOPitch4, row, s);
 }
 
 void DrawScreen::PutLFOVolume(int v, int row) {
@@ -518,7 +533,7 @@ void DrawScreen::PutLFOVolume(int v, int row) {
 	char s[64];
 	const int t = (int16_t)v;
 	snprintf(s, sizeof(s), "A%c%04d", (t >= 0) ? '+' : '-', abs(t) % 10000);
-	PutStatusText(2 + skin_->statusX, skin_->chYOffset[row] + 27 + skin_->statusY, 6, s);
+	PutStatusText(kStatusLFOVolume, row, s);
 }
 
 void DrawScreen::PutLFOVolume1(int v, int row) {
@@ -526,21 +541,21 @@ void DrawScreen::PutLFOVolume1(int v, int row) {
 	char s[2];
 	s[0] = (char)(0x65 + v);
 	s[1] = '\0';
-	PutStatusText(40 + skin_->statusX, skin_->chYOffset[row] + 27 + skin_->statusY, 1, s);
+	PutStatusText(kStatusLFOVolume1, row, s);
 }
 
 void DrawScreen::PutLFOVolume2(int v, int row) {
 	if (row < 0 || row >= 9) return;
 	char s[64];
 	snprintf(s, sizeof(s), "%04d", (uint16_t)v % 10000);
-	PutStatusText(46 + skin_->statusX, skin_->chYOffset[row] + 27 + skin_->statusY, 4, s);
+	PutStatusText(kStatusLFOVolume2, row, s);
 }
 
 void DrawScreen::PutLFOVolume3(int v, int row) {
 	if (row < 0 || row >= 9) return;
 	char s[64];
 	snprintf(s, sizeof(s), "%c%04d", (v >= 0) ? '+' : '-', abs(v) % 10000);
-	PutStatusText(72 + skin_->statusX, skin_->chYOffset[row] + 27 + skin_->statusY, 5, s);
+	PutStatusText(kStatusLFOVolume3, row, s);
 }
 
 void DrawScreen::PutLevelMeter(const char *levelMeterInfo, int row) {
@@ -552,11 +567,13 @@ void DrawScreen::PutLevelMeter(const char *levelMeterInfo, int row) {
 		    levelMeterInfo[i] ? palLevelMeter_[i] : palLevelMeter_[i + skin_->levelMeterWidthCells];
 	}
 
-	const int skip = 24 + 6 + 2;
+	// 素材は 1 段ぶんの幅で作ってあり、音量表示と重なる左端 (SrcX) を
+	// 切ってから描く。
+	const int skip = skin_->levelMeterSrcX;
 	const int w = levelMeter_.width() - skip;
 	const int h = levelMeter_.height();
-	const int x = 26 + skin_->statusX;
-	const int y = skin_->chYOffset[row] + 0 + skin_->statusY;
+	int x = 0, y = 0;
+	StatusItemPos(kStatusLevelMeter, row, &x, &y);
 	BmpCopyComposite(&screen_, x, y, w, h, &levelMeter_, skip, 0, &back_, x, y,
 	                 colors_.status.colorBright);
 }
@@ -566,25 +583,21 @@ void DrawScreen::PutLevelMeter(const char *levelMeterInfo, int row) {
 // ---------------------------------------------------------------------------
 
 void DrawScreen::PutPCMVolume(int volume, int row) {
-	const int i = row - 8;
-	if (i < 0 || i >= 8) return;
+	if (row < 8 || row >= 16) return;
 	char s[64];
 	if (volume >= 128) {
 		snprintf(s, sizeof(s), "V%03d", 127 - (volume & 127));
 	} else {
 		snprintf(s, sizeof(s), "V%-3d", volume);
 	}
-	PutStatusText(skin_->pcmXOffset[i] + 2 + skin_->statusX,
-	              skin_->pcmYOffset[i] + skin_->chYOffset[8] + 0 + skin_->statusY, 4, s);
+	PutStatusText(kStatusPcmVolume, row, s);
 }
 
 void DrawScreen::PutPCMPtr(int ptr, int row) {
-	const int i = row - 8;
-	if (i < 0 || i >= 8) return;
+	if (row < 8 || row >= 16) return;
 	char s[64];
 	snprintf(s, sizeof(s), "$%05X", (unsigned)ptr & 0xfffff);
-	PutStatusText(skin_->pcmXOffset[i] + 24 + skin_->statusX,
-	              skin_->pcmYOffset[i] + skin_->chYOffset[8] + 0 + skin_->statusY, 6, s);
+	PutStatusText(kStatusPcmPtr, row, s);
 }
 
 // 演奏を始める前のステータス欄。項目と並びを 1 か所で決めたいので、

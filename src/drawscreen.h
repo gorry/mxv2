@@ -215,8 +215,11 @@ private:
 	void Print(int x, int y, const char *msg, const Rgb &color, int alpha);
 	void PrintCompose(int x, int y, const char *msg, const Rgb &color, int alpha);
 
-	// ステータス欄の共通処理: 背景を戻してから文字を合成する。
-	void PutStatusText(int x, int y, int cells, const char *text);
+	// ステータス欄の項目 1 つの左上（row 段目）。位置はスキン持ち。
+	void StatusItemPos(StatusItem item, int row, int *x, int *y) const;
+
+	// ステータス欄の共通処理: 項目の位置に文字を合成する。
+	void PutStatusText(StatusItem item, int row, const char *text);
 
 	// スクロールバーの一部分を画面へ合成する（ファイラーと重なる列を
 	// 避けて描くために分割して呼ぶ）。
