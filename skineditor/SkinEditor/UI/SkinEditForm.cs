@@ -105,7 +105,9 @@ public sealed class SkinEditForm : Form
         Controls.Add(toolbar);
 
         int panel1Width = Dpi.S(this, 640);
-        int rowWidth = Dpi.S(this, 620);
+        // 620 だと「(x,y,w,h)」サフィックスの右端が切れる項目があった
+        // （バナー等の矩形項目。2026-09-04、ユーザー報告）ので広げてある。
+        int rowWidth = Dpi.S(this, 670);
         // 各タブの中身（rowWidth の行、FlowLayoutPanel.AutoScroll=true）が
         // 縦に収まりきらないと、その FlowLayoutPanel は縦スクロールバーの
         // ぶんだけ実効の横幅が削られる。既定の Panel2 幅がこれより少し狭く、
@@ -158,26 +160,114 @@ public sealed class SkinEditForm : Form
                 Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown,
                 WrapContents = false, AutoScroll = true,
             };
-            // 素材のインポート行 1 つぶんを追加する。indented は、他のインデント
-            // 行（PCM グループなど）と同じ幅・左マージンに揃えるかどうか。
-            void AddBitmapRow(BitmapRole role, bool shortLabel, bool indented)
+            // サブタブの中の行は、入れ子の TabControl 自身の枠と縦スクロール
+            // バーのぶんだけ、タブ直下（flow）の行より少し狭くしないと
+            // 横スクロールが出てしまう（実測して踏んだ）。インデント行と
+            // 同じ 566px を流用する。
+            int RowWidthFor(FlowLayoutPanel target) => ReferenceEquals(target, flow) ? rowWidth : Dpi.S(this, 566);
+
+            // 素材のインポート行 1 つぶんを、渡された flow へ追加する。indented は
+            // 他のインデント行（PCM グループなど）と同じ幅・左マージンに揃えるか。
+            void AddBitmapRow(FlowLayoutPanel target, BitmapRole role, bool shortLabel, bool indented)
             {
-                var row = new BitmapRoleRow(doc, role, _preview, shortLabel: shortLabel) { Width = rowWidth };
+                var row = new BitmapRoleRow(doc, role, _preview, shortLabel: shortLabel) { Width = RowWidthFor(target) };
                 if (indented)
                 {
                     row.Width = Dpi.S(this, 566);
                     row.Margin = new Padding(Dpi.S(this, 24), 0, 0, Dpi.S(this, 4));
                 }
                 _bitmapRows.Add(row);
-                flow.Controls.Add(row);
+                target.Controls.Add(row);
+            }
+
+            // 1 項目ぶん（LeadingBitmaps → 入力欄 → TrailingBitmaps）を、渡された
+            // flow へ描画する。サブタブ（下記）とタブ直下の両方から呼べるように
+            // target を引数にしてある。
+            void RenderField(FlowLayoutPanel target, FieldDef field, bool indented)
+            {
+                // この項目の直前に素材行がある、というだけの位置情報
+                // （FieldDef.LeadingBitmaps。2026-09-04、ユーザー指示）。
+                if (field.LeadingBitmaps != null)
+                {
+                    foreach (var role in field.LeadingBitmaps) AddBitmapRow(target, role, field.BitmapShortLabel, indented);
+                }
+
+                var ctrl = new FieldEditControl(doc, field) { Width = RowWidthFor(target) };
+                if (indented)
+                {
+                    // グループの一員だと分かるよう、他のインデント行（PCM や
+                    // 1オクターブの鍵のX など）と同じ幅・左マージンに揃える。
+                    ctrl.Width = Dpi.S(this, 566);
+                    ctrl.Margin = new Padding(Dpi.S(this, 24), 0, 0, Dpi.S(this, 4));
+                }
+                _layoutControls.Add(ctrl);
+                target.Controls.Add(ctrl);
+
+                // この項目の直後に素材行がある、というだけの位置情報
+                // （FieldDef.TrailingBitmaps）。「鍵盤」の「位置」のように、
+                // 項目の入力欄自体は前へ出したいが、素材行は元の並び順の
+                // ままにしたい（＝この項目の直後）ときに使う
+                // （2026-09-04、ユーザー指示）。
+                if (field.TrailingBitmaps != null)
+                {
+                    foreach (var role in field.TrailingBitmaps) AddBitmapRow(target, role, field.BitmapShortLabel, indented);
+                }
+            }
+
+            // FieldDef.SubTab が変わったところで、入れ子の TabControl に
+            // ページを作る（「ステータス」タブの「レベルメータ」「配置」
+            // 「ピッチLFO」「音量LFO」「PCM」。
+            // 2026-09-04、ユーザー指示）。同じ SubTab の項目は同じページへ
+            // まとめる。呼び出し側（下の PCM グループ）からも使うので、
+            // ループの外に出してある。
+            TabControl? subTabs = null;
+            var subTabFlows = new Dictionary<string, FlowLayoutPanel>();
+            FlowLayoutPanel GetSubTabFlow(string subTabTitle)
+            {
+                if (subTabFlows.TryGetValue(subTabTitle, out var existingFlow)) return existingFlow;
+                if (subTabs == null)
+                {
+                    subTabs = new TabControl
+                    {
+                        Width = rowWidth,
+                        // 一番項目数が多い「PCM」サブタブ（PCM音量/PCMポインタ
+                        // + PCMの位置 + チャンネル行8つ = 11行、約408の高さ）が
+                        // スクロールせずに収まる高さ（2026-09-04、ユーザー指示）。
+                        Height = Dpi.S(this, 480),
+                        Margin = new Padding(0, 0, 0, Dpi.S(this, 4)),
+                        // タブ名を縮めたので今は 1 行に収まっているが、
+                        // 増えたり長くなったりしたときのために外側のタブと
+                        // 同じく複数行で全部見せる指定は残しておく。
+                        Multiline = true,
+                    };
+                    flow.Controls.Add(subTabs);
+                }
+                var newFlow = new FlowLayoutPanel
+                {
+                    Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown,
+                    WrapContents = false, AutoScroll = true,
+                };
+                var subPage = new TabPage(subTabTitle);
+                subPage.Controls.Add(newFlow);
+                subTabs.TabPages.Add(subPage);
+                subTabFlows[subTabTitle] = newFlow;
+                return newFlow;
             }
 
             // FieldDef.Group が変わったところに太字の見出しを挟み、その項目を
-            // インデントする（レベルメータ・配置など。タブを割るほどではない
-            // まとまりを示す。2026-09-03、ユーザー指示）。
+            // インデントする（タブを割るほどではないまとまりを示す。
+            // 2026-09-03、ユーザー指示）。
             string lastGroup = "";
             foreach (var field in section.Fields)
             {
+                if (!string.IsNullOrEmpty(field.SubTab))
+                {
+                    // サブタブのページ自体がまとまりを表すので、その中では
+                    // 太字見出し・インデントは使わない。
+                    RenderField(GetSubTabFlow(field.SubTab), field, indented: false);
+                    continue;
+                }
+
                 if (field.Group != lastGroup)
                 {
                     lastGroup = field.Group;
@@ -192,37 +282,7 @@ public sealed class SkinEditForm : Form
                     }
                 }
 
-                bool indented = !string.IsNullOrEmpty(field.Group);
-
-                // この項目の直前に素材行がある、というだけの位置情報
-                // （FieldDef.LeadingBitmaps。2026-09-04、ユーザー指示）。
-                if (field.LeadingBitmaps != null)
-                {
-                    foreach (var role in field.LeadingBitmaps) AddBitmapRow(role, field.BitmapShortLabel, indented);
-                }
-
-                {
-                    var ctrl = new FieldEditControl(doc, field) { Width = rowWidth };
-                    if (indented)
-                    {
-                        // グループの一員だと分かるよう、他のインデント行（PCM や
-                        // 1オクターブの鍵のX など）と同じ幅・左マージンに揃える。
-                        ctrl.Width = Dpi.S(this, 566);
-                        ctrl.Margin = new Padding(Dpi.S(this, 24), 0, 0, Dpi.S(this, 4));
-                    }
-                    _layoutControls.Add(ctrl);
-                    flow.Controls.Add(ctrl);
-                }
-
-                // この項目の直後に素材行がある、というだけの位置情報
-                // （FieldDef.TrailingBitmaps）。「鍵盤」の「位置」のように、
-                // 項目の入力欄自体は前へ出したいが、素材行は元の並び順の
-                // ままにしたい（＝この項目の直後）ときに使う
-                // （2026-09-04、ユーザー指示）。
-                if (field.TrailingBitmaps != null)
-                {
-                    foreach (var role in field.TrailingBitmaps) AddBitmapRow(role, field.BitmapShortLabel, indented);
-                }
+                RenderField(flow, field, indented: !string.IsNullOrEmpty(field.Group));
 
                 // 「1オクターブの鍵のX」(XOffset, 13個) は「位置 (x,y)」の
                 // 直後、この位置に音名ラベル付きの 4 行として挿入する
@@ -389,15 +449,20 @@ public sealed class SkinEditForm : Form
                 // （CheckBox.Text は Enabled=false で自動的に灰色になり、
                 // 他の行と見た目が揃わなかった）。
                 //
-                // 「PCM の位置」は「配置」グループのサブグループにした
-                // （2026-09-04、ユーザー指示）ので、他の「配置」項目と同じ
-                // インデント（Width=566・左マージン24）に揃える。8 行の
-                // チャンネル行はさらに 1 段深い（PcmChannelRow 側で 48px）。
+                // 「PCM の位置」は「PCM」を含む項目なので「PCM」サブタブへ
+                // 置く（2026-09-04、ユーザー指示）。サブタブ名は
+                // LayoutFieldSchema.cs の StatusItems ループの subTab と
+                // 一致させること（タブ名を短縮したときにこの文字列だけ
+                // 直し忘れると、同じ名前のはずのタブが 2 つ出てしまう）。
+                // サブページの中では他の項目（PCM 音量・PCM ポインタ）と
+                // 同じくインデント無し、8 行のチャンネル行はその 1 段下
+                // （PcmChannelRow 側で 24px）。
+                var pcmFlow = GetSubTabFlow("PCM");
                 var pcmCheckRow = new Panel
                 {
-                    Width = Dpi.S(this, 566),
+                    Width = RowWidthFor(pcmFlow),
                     Height = Dpi.S(this, 24),
-                    Margin = new Padding(Dpi.S(this, 24), 0, 0, Dpi.S(this, 4)),
+                    Margin = new Padding(0, 0, 0, Dpi.S(this, 4)),
                 };
                 _pcmCheck = new CheckBox
                 {
@@ -428,13 +493,16 @@ public sealed class SkinEditForm : Form
                 };
                 pcmCheckRow.Controls.Add(pcmCheckLabel);
                 pcmCheckRow.Controls.Add(_pcmCheck);
-                flow.Controls.Add(pcmCheckRow);
+                pcmFlow.Controls.Add(pcmCheckRow);
 
                 for (int i = 0; i < 8; i++)
                 {
-                    var row = new PcmChannelRow(doc, i) { Width = Dpi.S(this, 542) };
+                    // PcmChannelRow は自分の左マージンで 24px インデントを
+                    // 持つので、幅はサブタブの基準幅よりそのぶん狭くする
+                    // （右端をそろえる）。
+                    var row = new PcmChannelRow(doc, i) { Width = RowWidthFor(pcmFlow) - Dpi.S(this, 24) };
                     _pcmRows.Add(row);
-                    flow.Controls.Add(row);
+                    pcmFlow.Controls.Add(row);
                 }
             }
 

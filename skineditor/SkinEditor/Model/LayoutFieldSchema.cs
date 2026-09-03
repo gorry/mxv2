@@ -33,10 +33,17 @@ public enum FieldKind { Int, IntList, Xywh, Str }
 // それをやめてここへ一本化した）。BitmapShortLabel は「素材: 役割名
 // (ファイル名)」ではなく「素材 (ファイル名)」と短く出す指定
 // （見出しなどで役割名が既に分かっているとき用）。
+//
+// SubTab は Group とは別物。Group は同じフラットな並びの中で太字見出し＋
+// インデントに留めるのに対し、SubTab は**入れ子の TabControl**でページを
+// 分ける（2026-09-04、ユーザー指示。「ステータス」タブの「レベルメータ」
+// 「配置」「ピッチLFO」「音量LFO」「PCM」に使った）。
+// SubTab が変わったところで新しい TabPage を作る（同じ SubTab の項目が
+// 離れて出てきたら、既存のページへ合流する）。
 public sealed record FieldDef(string Section, string Key, string Label, FieldKind Kind,
     Func<SkinLayout, string> Format, bool ReadOnly = false, string Suffix = "", string Group = "",
     IReadOnlyList<BitmapRole>? LeadingBitmaps = null, IReadOnlyList<BitmapRole>? TrailingBitmaps = null,
-    bool BitmapShortLabel = false);
+    bool BitmapShortLabel = false, string SubTab = "");
 
 public sealed record FieldSectionDef(string Title, IReadOnlyList<FieldDef> Fields);
 
@@ -51,15 +58,22 @@ public static class LayoutFieldSchema
             new("Status", "Pos", "位置", FieldKind.IntList, e => $"{e.statusX},{e.statusY}", Suffix: "(x,y)"),
             new("Status", "BackWidth", "背景幅", FieldKind.Int, e => $"{e.statusBackW}"),
             new("Status", "BackHeight", "背景高さ", FieldKind.Int, e => $"{e.statusBackH}"),
-            // 「レベルメータ」タブは廃止してここへ統合した。素材行は
-            // このすぐ下の項目の直前（＝「レベルメータ」見出しの直後）に
+            // 「レベルメータ」タブは廃止してここへ統合し、2026-09-04 に
+            // 「ステータス」タブ内のサブタブへ変えた（ユーザー指示）。素材行は
+            // このすぐ下の項目の直前（＝このサブページの先頭）に
             // たまたま置いてある、というだけ。
+            // StatusItems の「レベルメータ」項目（元は下のループで「配置」
+            // サブタブへ入るはずだった分、idx==LevelMeter は下でスキップ）は、
+            // このサブタブの中では「位置」という名で置く（2026-09-04、
+            // ユーザー指示）。
+            new("Status", "PosLevelMeter", "位置", FieldKind.IntList, e => SkinLayoutIo.Join(e.statusPos[(int)StatusItem.LevelMeter]),
+                Suffix: "(x,y)", SubTab: "レベルメータ", LeadingBitmaps: new[] { BitmapRole.LevelMeter }, BitmapShortLabel: true),
             new("LevelMeter", "PaletteOffset", "パレット開始番号", FieldKind.Int, e => $"{e.levelMeterPalOfs}",
-                Group: "レベルメータ", LeadingBitmaps: new[] { BitmapRole.LevelMeter }, BitmapShortLabel: true),
+                SubTab: "レベルメータ"),
             new("LevelMeter", "Cells", "セル数", FieldKind.Int, e => $"{e.levelMeterWidthCells}",
-                Group: "レベルメータ"),
+                SubTab: "レベルメータ"),
             new("LevelMeter", "SrcX", "素材内: 左端の切り捨て", FieldKind.Int, e => $"{e.levelMeterSrcX}",
-                Group: "レベルメータ"),
+                SubTab: "レベルメータ"),
             // ミニフォントは 2026-09-03 に独立したタブへ戻した（ユーザー指示）。
             // PcmX/PcmY (各8個) はここには含めない。「PCM 1ch」～「PCM 8ch」の
             // (x,y) 2値編集として SkinEditForm 側で専用に描画する
@@ -67,13 +81,29 @@ public static class LayoutFieldSchema
         };
         // 1 段の中での各項目の位置。FM の 16 項目は [Status] Pos からの相対、
         // PCM の 2 項目は PcmX/PcmY のスロットからの相対（StatusItems 参照）。
+        // 「配置」は「配置」「ピッチLFO」「音量LFO」
+        // 「PCM」の 4 つのサブタブに分けてある（2026-09-04、
+        // ユーザー指示）。StatusItems の並び（音量～ポインタ / ピッチLFO系 /
+        // 音量LFO系 / PCM系）がそのまま境目になっている。
         for (int i = 0; i < StatusItems.Count; i++)
         {
+            // 「レベルメータ」だけは「配置」ではなく「レベルメータ」サブタブへ
+            // （「位置」という名で）上で個別に置いてあるので、ここでは
+            // スキップする（2026-09-04、ユーザー指示）。
+            if (i == (int)StatusItem.LevelMeter) continue;
+
             int idx = i;
-            // 「配置」グループの見出しで分かるので、項目名に「配置: 」は
+            string subTab = idx switch
+            {
+                <= 6 => "配置",                 // 音量～ポインタ（レベルメータを除く）
+                <= 11 => "ピッチLFO",           // ピッチLFO・ピッチLFO 1～4
+                <= 15 => "音量LFO",             // 音量LFO・音量LFO 1～3
+                _ => "PCM",                     // PCM 音量・PCM ポインタ
+            };
+            // 「配置」系サブタブの見出しで分かるので、項目名に「配置: 」は
             // 付けない（2026-09-04、ユーザー指示）。
             status.Add(new FieldDef("Status", StatusItems.Keys[idx], StatusItems.Labels[idx],
-                FieldKind.IntList, e => SkinLayoutIo.Join(e.statusPos[idx]), Suffix: "(x,y)", Group: "配置"));
+                FieldKind.IntList, e => SkinLayoutIo.Join(e.statusPos[idx]), Suffix: "(x,y)", SubTab: subTab));
         }
 
         var list = new List<FieldSectionDef>

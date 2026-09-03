@@ -31,11 +31,11 @@ public sealed class PcmChannelRow : Panel
         // 親は FlowLayoutPanel（TopDown）なので自分自身には Dock を設定しない
         // （FieldEditControl と同じ理由）。枠は使わず、左マージンで
         // 「PCM の位置」チェックボックスの下にぶら下がっていることを示す
-        // （インデント）。「PCM の位置」自体が「配置」グループのサブグループに
-        // なった（2026-09-04、ユーザー指示）ので、インデントも 1 段深い
-        // 48px（24px x2）にしてある。
+        // （インデント）。「PCM の位置」は 2026-09-04 に「配置（PCM）」
+        // サブタブの中へ移った（ユーザー指示）ので、そのサブページの中での
+        // 相対的なインデント（24px）で足りる。
         Height = Dpi.S(this, 34);
-        Margin = new Padding(Dpi.S(this, 48), 0, 0, Dpi.S(this, 4));
+        Margin = new Padding(Dpi.S(this, 24), 0, 0, Dpi.S(this, 4));
 
         // 折り返し対策で、他の行と同じ折り返さないラベルを使う
         // （詳細は SingleLineLabel のコメント）。
