@@ -4,7 +4,9 @@
 // 先頭のチェックボックスは「自スキンにファイルがあるか」を表す。
 // OFF→ON: Base 側から見えているファイルをそのまま自スキンへコピーする
 // （中身は変わらない。「インポート…」はそのあとで差し替えるのに使う）。
-// ON→OFF: 自スキンのファイルを削除して継承に戻す。
+// ON→OFF: 自スキンのファイルは削除せず、自スキンフォルダの "_nouse"
+// サブフォルダへ退避してから継承に戻す（ユーザー指示。誤って外しても
+// 元の素材が消えないように）。
 // 「インポート…」はチェック状態によらず常に使え、実行すると自動的に
 // 自スキン扱い（チェック ON）になる。
 
@@ -112,7 +114,7 @@ public sealed class BitmapRoleRow : Panel
         }
         else
         {
-            if (File.Exists(ownPath)) File.Delete(ownPath);
+            if (File.Exists(ownPath)) NouseFolder.Evacuate(_doc.OwnDir, ownPath);
         }
         _preview.InvalidateBitmaps();
         RefreshStatus();

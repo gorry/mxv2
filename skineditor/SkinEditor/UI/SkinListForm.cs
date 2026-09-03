@@ -120,7 +120,9 @@ public sealed class SkinListForm : Form
 
         try
         {
-            var doc = SkinDocument.CreateNew(_root, dlg.SkinName, dlg.BaseSkinName);
+            var doc = dlg.CopyFromBase && dlg.BaseSkinName != null
+                ? SkinDocument.CreateNewAsCopy(_root, dlg.SkinName, dlg.BaseSkinName)
+                : SkinDocument.CreateNew(_root, dlg.SkinName, dlg.BaseSkinName);
             using var form = new SkinEditForm(doc);
             form.ShowDialog(this);
             Reload();

@@ -67,6 +67,18 @@ public sealed class SkinDocument
         return doc;
     }
 
+    // 既存スキンを「コピーして新規スキンにする」（参照ではなく独立した実体を
+    // 作る）。実効値を own へ丸ごと複製し素材ファイルもコピーする必要が
+    // あるため、SwitchBaseOff() をそのまま使う。SwitchBaseOff() は
+    // skineditor.md の指示どおりその場で保存するので、参照作成（CreateNew）
+    // と違いこちらは作成した瞬間にディスクへ書かれる。
+    public static SkinDocument CreateNewAsCopy(DevAssetRoot root, string name, string baseSkinName)
+    {
+        var doc = CreateNew(root, name, baseSkinName);
+        doc.SwitchBaseOff();
+        return doc;
+    }
+
     // ---- Base 鎖の解決 ---------------------------------------------------
     private void ResolveBaseChain()
     {
@@ -268,16 +280,25 @@ public sealed class SkinDocument
             eff.levelMeterBitmap, eff.bannerBitmap, eff.playKeyBitmap, eff.progressBarBitmap,
             eff.volBarBitmap, eff.scrollBarBitmap, "font.ttf",
         };
-        var searchDirs = new List<string> { OwnDir };
-        searchDirs.AddRange(_baseDirs);
 
         foreach (var name in names.Distinct())
         {
+            var srcDir = _baseDirs.FirstOrDefault(d => File.Exists(Path.Combine(d, name)));
+            if (srcDir == null) continue;  // 参照先チェーンのどこにも無ければ何もしない
+            var srcPath = Path.Combine(srcDir, name);
             var destPath = Path.Combine(OwnDir, name);
-            if (File.Exists(destPath)) continue;
-            var srcDir = searchDirs.FirstOrDefault(d => File.Exists(Path.Combine(d, name)));
-            if (srcDir == null) continue;
-            File.Copy(Path.Combine(srcDir, name), destPath, overwrite: false);
+
+            if (File.Exists(destPath))
+            {
+                // 自スキンに同名のファイルがすでにある。中身が参照先と同じなら
+                // コピーする意味が無いので退避もしない（ユーザー指示）。違う
+                // 場合は、参照中に実際使われていたのは参照先のファイルなので、
+                // 自スキン側の古いファイルを "_nouse" へ退避してから参照先を
+                // 複製する。
+                if (NouseFolder.FilesEqual(destPath, srcPath)) continue;
+                NouseFolder.Evacuate(OwnDir, destPath);
+            }
+            File.Copy(srcPath, destPath, overwrite: false);
         }
     }
 
