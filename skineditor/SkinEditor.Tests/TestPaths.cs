@@ -22,4 +22,10 @@ public static class TestPaths
         }
         throw new DirectoryNotFoundException("mxv2 の開発用フォルダ（CMakeLists.txt + assets/）が見つかりませんでした。");
     }
+
+    // 比較用の参照画像（mxv2 本体のスクリーンショット）の置き場所。
+    // "testdata" にすると .gitignore の testdata/ に食われて追跡されないので、
+    // 別の名前にしてある。
+    public static string RefImageDir =>
+        Path.Combine(FindDevRoot().DevRootDir, "skineditor", "SkinEditor.Tests", "refimage");
 }

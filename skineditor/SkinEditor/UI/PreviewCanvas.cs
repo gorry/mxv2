@@ -1,9 +1,17 @@
-// mxv2 スキンエディタ - 本体の画面を模した簡易プレビュー。
+// mxv2 スキンエディタ - 本体の描画をそのまま使ったプレビュー。
 //
-// 位置・大きさは layout.ini の実効値どおりに描くが、パレット番号での
-// 発色（鍵盤の押下・操作ボタンの LED・レベルメータ）はここでは再現しない
-// （近似表示。位置とサイズの確認が主目的で、C++ 側の合成式は完全移植しない）。
+// 2026-09-03 に、GDI+ で「それらしく」描いていた近似表示をやめ、
+// mxv2 本体 src/drawscreen.cpp の移植 (Model/Render/) が描いた
+// 24bpp のキャンバスを貼るだけの作りにした。パレット番号での発色
+// （鍵盤・操作ボタンの LED・レベルメータ）も、背景への乗算合成
+// （配色の Bright 系）も本体と同じ結果になる。
+//
+// 文字（ファイラーと曲名）だけは本体と同じく別レイヤー扱いで、
+// キャンバスを拡大したうえに出力解像度で描く（PreviewTextLayer）。
+// ラスタライザが違うので画素は一致しないが、大きさは合わせてある。
+//
 // クリックで対応するセクションを選ばせ、主要な矩形はドラッグで移動できる。
+// **当たり判定は描画とは切り離し**、layout の値から作った矩形で持つ。
 
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -14,7 +22,12 @@ namespace SkinEditor.UI;
 public sealed class PreviewCanvas : Panel
 {
     private readonly SkinDocument _doc;
-    private readonly BitmapCache _bitmaps = new();
+    private readonly PreviewRenderer _renderer;
+    private readonly PreviewTextLayer _textLayer = new();
+    private readonly PreviewState _state = new();
+    private bool _dirty = true;
+    private Bitmap? _canvas;
+
     private float _scale = 1f;
     private PointF _origin;
 
@@ -31,35 +44,58 @@ public sealed class PreviewCanvas : Panel
     private DragRegion? _dragging;
     private PointF _dragStartSkin;
     private PointF _dragOriginSkin;
+    private readonly Dictionary<string, PointF> _lastOrigin = new();
 
     // ダミー再生状態（PreviewStateBar から書き換えられる）
-    public bool StatePlay = true, StateCont = true, StatePause, StateRepeat;
-    public int StateVolume;         // -100..100
-    public double StateProgress = 0.4;  // 0..1
-
-    private static readonly string[] DummyFiles =
+    public bool StatePlay
     {
-        "SAMPLE01.MDX  Sample Song A",
-        "SAMPLE02.MDX  Sample Song B",
-        "FOLDER1",
-        "SAMPLE03.MDX  Sample Song C",
-    };
+        get => _state.Play;
+        set { _state.Play = value; _dirty = true; }
+    }
+    public bool StateCont
+    {
+        get => _state.Cont;
+        set { _state.Cont = value; _dirty = true; }
+    }
+    public bool StatePause
+    {
+        get => _state.Pause;
+        set { _state.Pause = value; _dirty = true; }
+    }
+    public bool StateRepeat
+    {
+        get => _state.Repeat;
+        set { _state.Repeat = value; _dirty = true; }
+    }
+    public int StateVolume
+    {
+        get => _state.Volume;
+        set { _state.Volume = value; _dirty = true; }
+    }
+    public double StateProgress
+    {
+        get => _state.Progress;
+        set { _state.Progress = value; _dirty = true; }
+    }
 
     public PreviewCanvas(SkinDocument doc)
     {
         _doc = doc;
+        _renderer = new PreviewRenderer(doc);
         DoubleBuffered = true;
         BackColor = Color.FromArgb(64, 64, 64);
-        doc.Changed += () => Invalidate();
+        doc.Changed += () => { _dirty = true; Invalidate(); };
         MouseDown += OnMouseDown;
         MouseMove += OnMouseMove;
         MouseUp += (_, _) => _dragging = null;
         Resize += (_, _) => Invalidate();
     }
 
+    // 素材ファイルが差し替わったとき（BitmapRoleRow のインポート）。
     public void InvalidateBitmaps()
     {
-        _bitmaps.Invalidate();
+        _renderer.InvalidateAssets();
+        _dirty = true;
         Invalidate();
     }
 
@@ -77,176 +113,71 @@ public sealed class PreviewCanvas : Panel
         _scale = Math.Max(0.05f, Math.Min((Width - 16f) / sw, (Height - 16f) / sh));
         _origin = new PointF((Width - sw * _scale) / 2f, (Height - sh * _scale) / 2f);
 
+        if (_dirty || _canvas == null)
+        {
+            _canvas = _renderer.Render(_state);
+            _textLayer.SetFontFile(_renderer.FindFontFile());
+            _dirty = false;
+        }
+
+        // キャンバスは最近傍で拡大（画素の位置を確かめる用途なので、
+        // 本体の既定 sharp-bilinear ではなく最近傍のままにしてある）。
+        if (_canvas != null)
+        {
+            g.DrawImage(_canvas, new RectangleF(_origin.X, _origin.Y, sw * _scale, sh * _scale),
+                new RectangleF(-0.5f, -0.5f, _canvas.Width, _canvas.Height), GraphicsUnit.Pixel);
+        }
+
+        // 文字は拡大後の解像度で重ねる（本体 TextLayer と同じ 2 段構え）。
+        _textLayer.Render(g, _renderer.TextDraws, _origin.X, _origin.Y, _scale);
+
         var save = g.Save();
         g.TranslateTransform(_origin.X, _origin.Y);
         g.ScaleTransform(_scale, _scale);
-
-        g.FillRectangle(Brushes.Black, 0, 0, sw, sh);
-        DrawBack(g, eff);
-        DrawKeyboard(g, eff);
-        DrawBanner(g, eff);
-        DrawStatus(g, eff);
-        DrawTitle(g, eff);
-        DrawFileList(g, eff);
-        DrawScrollBar(g, eff);
-        DrawProgressBar(g, eff);
-        DrawVolumeBar(g, eff);
-        DrawPlayKey(g, eff);
+        BuildRegions(eff);
         DrawOverflowWarnings(g, eff, sw, sh);
-
         g.Restore(save);
     }
 
-    // ---- 各部品の描画 ----------------------------------------------------
-    private void DrawBack(Graphics g, SkinLayout eff)
+    // ---- 当たり判定の矩形（描画とは独立。layout の値だけで決まる） ----------
+    private void BuildRegions(SkinLayout eff)
     {
-        var bmp = _bitmaps.Get(_doc, BitmapRole.Back);
-        if (bmp != null) g.DrawImage(bmp, new Rectangle(0, 0, eff.screenW, eff.screenH));
-    }
-
-    private void DrawKeyboard(Graphics g, SkinLayout eff)
-    {
-        var bmp = _bitmaps.Get(_doc, BitmapRole.Kb0);
-        var rect = new Rectangle(eff.kbX, eff.kbY, bmp?.Width ?? 400, bmp?.Height ?? 36);
-        for (int i = 0; i < 9; i++)
-        {
-            int y = eff.kbY + eff.chYOffset[i] + eff.kbYOffset;
-            if (bmp != null) g.DrawImage(bmp, new Rectangle(eff.kbX, y, bmp.Width, bmp.Height));
-        }
-        Reg(new Rectangle(eff.kbX, eff.kbY, rect.Width, rect.Height), "鍵盤",
+        var kb0 = _renderer.FindAsset(eff.kb0Bitmap);
+        int kbW = kb0?.Width ?? 400;
+        int kbH = kb0?.Height ?? 36;
+        Reg(new Rectangle(eff.kbX, eff.kbY, kbW, kbH), "鍵盤",
             (nx, ny) => _doc.SetLayoutRaw("Keyboard", "Pos", $"{nx},{ny}"));
-    }
 
-    private void DrawBanner(Graphics g, SkinLayout eff)
-    {
-        var bmp = _bitmaps.Get(_doc, BitmapRole.Banner);
-        var dest = new Rectangle(eff.bannerX, eff.bannerY, eff.bannerW, eff.bannerH);
-        if (bmp != null)
-        {
-            var src = new Rectangle(0, 0, Math.Min(bmp.Width, eff.bannerW), Math.Min(bmp.Height, eff.bannerH));
-            g.DrawImage(bmp, dest, src, GraphicsUnit.Pixel);
-        }
-        else DrawPlaceholder(g, dest, "Banner");
-        Reg(dest, "バナー", (nx, ny) => _doc.SetLayoutRaw("Banner", "Rect", $"{nx},{ny},{eff.bannerW},{eff.bannerH}"));
-    }
-
-    private void DrawStatus(Graphics g, SkinLayout eff)
-    {
-        using var font = new Font("Consolas", 7f);
-        using var brush = new SolidBrush(Color.LightGreen);
-        g.FillRectangle(new SolidBrush(Color.FromArgb(160, Color.Black)), eff.statusX, eff.statusY, eff.statusBackW, eff.statusBackH * 9 / 4);
-        for (int i = 0; i < 9; i++)
-        {
-            string label = i < 8 ? $"CH{i + 1} V:99 P:0 D:0" : "PCM V:99 P:0";
-            g.DrawString(label, font, brush, eff.statusX, eff.statusY + eff.chYOffset[i] * 0.3f);
-        }
         Reg(new Rectangle(eff.statusX, eff.statusY, eff.statusBackW, eff.statusBackH), "ステータス",
             (nx, ny) => _doc.SetLayoutRaw("Status", "Pos", $"{nx},{ny}"));
-    }
 
-    private void DrawTitle(Graphics g, SkinLayout eff)
-    {
-        var rect = new Rectangle(eff.titleX, eff.titleY, eff.titleW, eff.titleH);
-        using var font = new Font("Meiryo UI", Math.Max(6, eff.titleH - 4));
-        using var bg = new SolidBrush(Color.Black);
-        using var fg = new SolidBrush(Color.White);
-        g.FillRectangle(bg, rect);
-        var clip = g.Save();
-        g.SetClip(rect);
-        g.DrawString("プレビュー曲名 - スキンエディタ", font, fg, rect.X + 2, rect.Y);
-        g.Restore(clip);
-        Reg(rect, "曲名", (nx, ny) => _doc.SetLayoutRaw("Title", "Rect", $"{nx},{ny},{eff.titleW},{eff.titleH}"));
-    }
+        Reg(new Rectangle(eff.bannerX, eff.bannerY, eff.bannerW, eff.bannerH), "バナー",
+            (nx, ny) => _doc.SetLayoutRaw("Banner", "Rect", $"{nx},{ny},{eff.bannerW},{eff.bannerH}"));
 
-    private void DrawFileList(Graphics g, SkinLayout eff)
-    {
-        int size = 0;
-        var rect = new Rectangle(eff.fileListX, eff.fileListY, eff.fileListW, eff.fileListH);
-        using var bg = new SolidBrush(Color.FromArgb(160, Color.Black));
-        g.FillRectangle(bg, rect);
-        using var font = new Font("Meiryo UI", Math.Max(6, eff.fileListItemH[size] - 3));
-        using var fg = new SolidBrush(Color.White);
-        int itemH = Math.Max(1, eff.fileListItemH[size]);
-        int rows = Math.Max(1, eff.fileListRows[size]);
-        var clip = g.Save();
-        g.SetClip(rect);
-        for (int i = 0; i < rows && i < DummyFiles.Length + 3; i++)
-        {
-            int y = rect.Y + i * itemH;
-            string sample = DummyFiles[i % DummyFiles.Length];
-            var parts = sample.Split("  ", 2);
-            g.DrawString(parts[0], font, fg, rect.X + eff.fileListBaseNameX[size], y);
-            if (parts.Length > 1) g.DrawString(parts[1], font, fg, rect.X + eff.fileListTitleX[size], y);
-        }
-        g.Restore(clip);
-        Reg(rect, "ファイラー",
+        Reg(new Rectangle(eff.titleX, eff.titleY, eff.titleW, eff.titleH), "曲名",
+            (nx, ny) => _doc.SetLayoutRaw("Title", "Rect", $"{nx},{ny},{eff.titleW},{eff.titleH}"));
+
+        Reg(new Rectangle(eff.fileListX, eff.fileListY, eff.fileListW, eff.fileListH), "ファイラー",
             (nx, ny) => _doc.SetLayoutRaw("FileList", "Rect", $"{nx},{ny},{eff.fileListW},{eff.fileListH}"));
-    }
 
-    private void DrawScrollBar(Graphics g, SkinLayout eff)
-    {
-        var bmp = _bitmaps.Get(_doc, BitmapRole.ScrollBar);
-        var outer = new Rectangle(eff.scrollX, eff.scrollY, eff.scrollW, eff.scrollH);
-        if (bmp != null)
-        {
-            DrawSrc(g, bmp, eff.scrollSrcUpArrow, eff.scrollX + eff.scrollPosUpArrow[0], eff.scrollY + eff.scrollPosUpArrow[1]);
-            DrawSrc(g, bmp, eff.scrollSrcBar, eff.scrollX + eff.scrollPosBar[0], eff.scrollY + eff.scrollPosBar[1]);
-            DrawSrc(g, bmp, eff.scrollSrcDownArrow, eff.scrollX + eff.scrollPosDownArrow[0], eff.scrollY + eff.scrollPosDownArrow[1]);
-
-            int movement = Math.Max(0, eff.ScrollBarMovement());
-            int thumbY = eff.scrollY + eff.scrollPosBar[1] + (int)(0.3 * movement);
-            DrawSrc(g, bmp, eff.scrollSrcThumb, eff.scrollX + eff.scrollPosBar[0], thumbY);
-        }
-        else DrawPlaceholder(g, outer, "ScrollBar");
-        Reg(outer, "スクロールバー",
+        Reg(new Rectangle(eff.scrollX, eff.scrollY, eff.scrollW, eff.scrollH), "スクロールバー",
             (nx, ny) => _doc.SetLayoutRaw("ScrollBar", "Rect", $"{nx},{ny},{eff.scrollW},{eff.scrollH}"));
-    }
 
-    private void DrawProgressBar(Graphics g, SkinLayout eff)
-    {
-        var bmp = _bitmaps.Get(_doc, BitmapRole.ProgressBar);
-        var outer = new Rectangle(eff.progX, eff.progY, eff.progW, eff.progH);
-        if (bmp != null && eff.progW > 0 && eff.progH > 0)
-        {
-            int len = Math.Clamp((int)(eff.progW * StateProgress), 0, eff.progW);
-            // 素材は上段=未再生 / 下段=再生済み（skin.cpp のコメント）。
-            g.DrawImage(bmp, new Rectangle(eff.progX, eff.progY, len, eff.progH),
-                new Rectangle(0, eff.progH, len, eff.progH), GraphicsUnit.Pixel);
-            g.DrawImage(bmp, new Rectangle(eff.progX + len, eff.progY, eff.progW - len, eff.progH),
-                new Rectangle(len, 0, eff.progW - len, eff.progH), GraphicsUnit.Pixel);
-        }
-        else DrawPlaceholder(g, outer, "ProgressBar");
-        Reg(outer, "プログレスバー",
+        Reg(new Rectangle(eff.progX, eff.progY, eff.progW, eff.progH), "プログレスバー",
             (nx, ny) => _doc.SetLayoutRaw("ProgressBar", "Rect", $"{nx},{ny},{eff.progW},{eff.progH}"));
-    }
 
-    private void DrawVolumeBar(Graphics g, SkinLayout eff)
-    {
-        var bmp = _bitmaps.Get(_doc, BitmapRole.VolumeBar);
-        var outer = new Rectangle(eff.volX, eff.volY, eff.volW, eff.volH);
-        if (bmp != null)
-        {
-            DrawSrc(g, bmp, eff.volRect[1], eff.volX, eff.volY);
-            int movement = Math.Max(0, eff.VolBarMovement());
-            int knobX = eff.volX + (int)((StateVolume + 100) / 200.0 * movement);
-            DrawSrc(g, bmp, eff.volRect[0], knobX, eff.volY);
-        }
-        else DrawPlaceholder(g, outer, "VolumeBar");
-        Reg(outer, "音量バー",
+        Reg(new Rectangle(eff.volX, eff.volY, eff.volW, eff.volH), "音量バー",
             (nx, ny) => _doc.SetLayoutRaw("VolumeBar", "Rect", $"{nx},{ny},{eff.volW},{eff.volH}"));
-    }
 
-    private void DrawPlayKey(Graphics g, SkinLayout eff)
-    {
-        var bmp = _bitmaps.Get(_doc, BitmapRole.PlayKey);
-        if (bmp == null) return;
+        // 操作ボタンは使うボタンぶんの外接矩形（掴める範囲を実物に合わせる）。
+        int pkW = 0, pkH = 0;
         for (int i = 0; i < eff.numPlayKeys && i < 9; i++)
         {
-            int x = eff.playKeyX + eff.playKeyPos[i][0];
-            int y = eff.playKeyY + eff.playKeyPos[i][1];
-            DrawSrc(g, bmp, eff.playKeyRect[i], x, y);
+            pkW = Math.Max(pkW, eff.playKeyPos[i][0] + eff.playKeyRect[i].W);
+            pkH = Math.Max(pkH, eff.playKeyPos[i][1] + eff.playKeyRect[i].H);
         }
-        Reg(new Rectangle(eff.playKeyX, eff.playKeyY, 40, 24), "操作ボタン",
+        if (pkW <= 0 || pkH <= 0) { pkW = 40; pkH = 24; }
+        Reg(new Rectangle(eff.playKeyX, eff.playKeyY, pkW, pkH), "操作ボタン",
             (nx, ny) => _doc.SetLayoutRaw("PlayKey", "Pos", $"{nx},{ny}"));
     }
 
@@ -265,21 +196,6 @@ public sealed class PreviewCanvas : Panel
         Check(eff.volX, eff.volY, eff.volW, eff.volH);
     }
 
-    private static void DrawSrc(Graphics g, Bitmap bmp, Xywh src, int destX, int destY)
-    {
-        var srcRect = new Rectangle(
-            Math.Clamp(src.X, 0, bmp.Width), Math.Clamp(src.Y, 0, bmp.Height),
-            Math.Clamp(src.W, 0, Math.Max(0, bmp.Width - src.X)), Math.Clamp(src.H, 0, Math.Max(0, bmp.Height - src.Y)));
-        if (srcRect.Width <= 0 || srcRect.Height <= 0) return;
-        g.DrawImage(bmp, new Rectangle(destX, destY, srcRect.Width, srcRect.Height), srcRect, GraphicsUnit.Pixel);
-    }
-
-    private static void DrawPlaceholder(Graphics g, Rectangle rect, string label)
-    {
-        using var pen = new Pen(Color.Gray) { DashStyle = DashStyle.Dash };
-        g.DrawRectangle(pen, rect);
-    }
-
     // ---- 選択・ドラッグ ----------------------------------------------------
     private void Reg(Rectangle skinRect, string sectionTitle, Action<int, int> move)
     {
@@ -289,11 +205,9 @@ public sealed class PreviewCanvas : Panel
             SectionTitle = sectionTitle,
             Move = (nx, ny) => move(nx, ny),
         });
-        // ドラッグの原点計算用に、この呼び出し時点の skin 座標も控える。
+        // ドラッグの原点計算用に、この時点の skin 座標も控える。
         _lastOrigin[sectionTitle] = new PointF(skinRect.X, skinRect.Y);
     }
-
-    private readonly Dictionary<string, PointF> _lastOrigin = new();
 
     private RectangleF ToScreen(Rectangle r) =>
         new(_origin.X + r.X * _scale, _origin.Y + r.Y * _scale, r.Width * _scale, r.Height * _scale);
@@ -320,5 +234,15 @@ public sealed class PreviewCanvas : Panel
         int nx = (int)Math.Round(_dragOriginSkin.X + (cur.X - _dragStartSkin.X));
         int ny = (int)Math.Round(_dragOriginSkin.Y + (cur.Y - _dragStartSkin.Y));
         _dragging.Move(nx, ny);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            _renderer.Dispose();
+            _textLayer.Dispose();
+        }
+        base.Dispose(disposing);
     }
 }
