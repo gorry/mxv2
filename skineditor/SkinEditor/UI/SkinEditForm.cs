@@ -23,6 +23,19 @@ public sealed class SkinEditForm : Form
         ["スクロールバー"] = new[] { BitmapRole.ScrollBar },
     };
 
+    // 「配色」単独タブは廃止し、各セクションを対応するレイアウトタブへ
+    // 移した（ユーザー指示）。キーは LayoutFieldSchema 側のタブ名、値は
+    // ColorFieldSchema.BuildSections() が返す ColorSectionDef.Title。
+    private static readonly Dictionary<string, string> ColorSectionByTab = new()
+    {
+        ["画面"] = "背景 (Back)",
+        ["鍵盤"] = "鍵盤 (KB)",
+        ["ステータス"] = "ステータス (Status)",
+        ["曲名"] = "曲名 (MDXTitle)",
+        ["ファイラー"] = "ファイラー (Filer)",
+        ["操作ボタン"] = "操作ボタン (PlayKey)",
+    };
+
     private readonly SkinDocument _doc;
     private readonly PreviewCanvas _preview;
     private readonly List<FieldEditControl> _layoutControls = new();
@@ -144,6 +157,8 @@ public sealed class SkinEditForm : Form
         // タブ数が多いので、矢印での横スクロールではなく複数行で全部並べて見せる。
         var tabs = new TabControl { Dock = DockStyle.Fill, Multiline = true };
         split.Panel2.Controls.Add(tabs);
+
+        var colorSectionsByTitle = ColorFieldSchema.BuildSections().ToDictionary(s => s.Title);
 
         foreach (var section in LayoutFieldSchema.BuildSections())
         {
@@ -376,32 +391,30 @@ public sealed class SkinEditForm : Form
                     flow.Controls.Add(row);
                 }
             }
+
+            // 「配色」単独タブは廃止したので、対応するセクションがあれば
+            // このタブの末尾（レイアウト項目の後）へ続けて置く。
+            if (ColorSectionByTab.TryGetValue(section.Title, out var colorTitle) &&
+                colorSectionsByTitle.TryGetValue(colorTitle, out var colorSection))
+            {
+                var head = new Label
+                {
+                    Text = "配色", Width = rowWidth, Height = Dpi.S(this, 22),
+                    Font = new System.Drawing.Font(Font, System.Drawing.FontStyle.Bold),
+                    Margin = new Padding(0, Dpi.S(this, 12), 0, Dpi.S(this, 4)),
+                };
+                flow.Controls.Add(head);
+                foreach (var field in colorSection.Fields)
+                {
+                    var ctrl = new ColorFieldEditControl(doc, field) { Width = rowWidth };
+                    _colorControls.Add(ctrl);
+                    flow.Controls.Add(ctrl);
+                }
+            }
+
             page.Controls.Add(flow);
             tabs.TabPages.Add(page);
         }
-
-        var colorsPage = new TabPage("配色");
-        var colorsFlow = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true,
-        };
-        foreach (var section in ColorFieldSchema.BuildSections())
-        {
-            var head = new Label
-            {
-                Text = section.Title, Width = rowWidth, Height = Dpi.S(this, 22),
-                Font = new System.Drawing.Font(Font, System.Drawing.FontStyle.Bold),
-            };
-            colorsFlow.Controls.Add(head);
-            foreach (var field in section.Fields)
-            {
-                var ctrl = new ColorFieldEditControl(doc, field) { Width = rowWidth };
-                _colorControls.Add(ctrl);
-                colorsFlow.Controls.Add(ctrl);
-            }
-        }
-        colorsPage.Controls.Add(colorsFlow);
-        tabs.TabPages.Add(colorsPage);
 
         _preview.PartActivated += title =>
         {
