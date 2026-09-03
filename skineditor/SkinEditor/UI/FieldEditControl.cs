@@ -98,7 +98,8 @@ public sealed class FieldEditControl : Panel
 
         _suppressCommit = true;
         _check.Checked = hasBase ? own : true;
-        _check.Enabled = hasBase;
+        // ReadOnly は継承チェックボックスごと触らせない（値は見えるが変更不可）。
+        _check.Enabled = hasBase && !_field.ReadOnly;
 
         var parts = _field.Format(_doc.Effective).Split(',');
         for (int i = 0; i < _numerics.Length && i < parts.Length; i++)
@@ -108,7 +109,7 @@ public sealed class FieldEditControl : Panel
                 v = Math.Clamp(v, (int)_numerics[i].Minimum, (int)_numerics[i].Maximum);
                 if (_numerics[i].Value != v) _numerics[i].Value = v;
             }
-            _numerics[i].Enabled = _check.Checked;
+            _numerics[i].Enabled = _check.Checked && !_field.ReadOnly;
         }
         _suppressCommit = false;
     }

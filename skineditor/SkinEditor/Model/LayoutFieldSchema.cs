@@ -8,8 +8,11 @@ namespace SkinEditor.Model;
 
 public enum FieldKind { Int, IntList, Xywh, Str }
 
+// ReadOnly は「値は表示するが、継承チェックボックスも数値欄も編集不可にする」
+// 指定（FieldEditControl 側で見る）。SHUFFLE 未実装の間、[PlayKey] Count を
+// うっかり 9 にしてボタンを増やせないようにするために追加した。
 public sealed record FieldDef(string Section, string Key, string Label, FieldKind Kind,
-    Func<SkinLayout, string> Format);
+    Func<SkinLayout, string> Format, bool ReadOnly = false);
 
 public sealed record FieldSectionDef(string Title, IReadOnlyList<FieldDef> Fields);
 
@@ -140,10 +143,15 @@ public static class LayoutFieldSchema
         var playKey = new List<FieldDef>
         {
             new("PlayKey", "Pos", "位置 (x,y)", FieldKind.IntList, e => $"{e.playKeyX},{e.playKeyY}"),
-            new("PlayKey", "Count", "使うボタンの数 (0-9・8ならSHUFFLE無し)", FieldKind.Int, e => $"{e.numPlayKeys}"),
+            // SHUFFLE (index 8) が未実装で当分実装の予定も無いので、
+            // 9 にして出してしまわないよう編集不可にする（ユーザー指示）。
+            new("PlayKey", "Count", "使うボタンの数", FieldKind.Int, e => $"{e.numPlayKeys}", ReadOnly: true),
         };
-        string[] names = { "PREV", "STOP", "PLAY", "FASTPLAY", "PAUSE", "NEXT", "CONT", "REPEAT", "SHUFFLE" };
-        for (int i = 0; i < 9; i++)
+        string[] names = { "PREV", "STOP", "PLAY", "FAST", "PAUSE", "NEXT", "CONT", "REPEAT", "SHUFFLE" };
+        // SHUFFLE (index 8) は当分実装の予定が無いので出さない（ユーザー指示）。
+        // playKey.Add(new FieldDef("PlayKey", "Src8", "素材内: SHUFFLE (x,y,w,h)", FieldKind.Xywh,
+        //     e => e.playKeyRect[8].ToString()));
+        for (int i = 0; i < 8; i++)
         {
             int idx = i;
             playKey.Add(new FieldDef("PlayKey", $"Src{idx}", $"素材内: {names[idx]} (x,y,w,h)", FieldKind.Xywh,
@@ -155,7 +163,7 @@ public static class LayoutFieldSchema
             playKey.Add(new FieldDef("PlayKey", $"Pos{idx}", $"配置: {names[idx]} (x,y)", FieldKind.IntList,
                 e => SkinLayoutIo.Join(e.playKeyPos[idx])));
         }
-        playKey.Add(new FieldDef("PlayKey", "PalKey", "パレット: 鍵盤色 (keyBright)", FieldKind.Int, e => $"{e.palPlayKeyKey}"));
+        playKey.Add(new FieldDef("PlayKey", "PalKey", "パレット: ボタンの色", FieldKind.Int, e => $"{e.palPlayKeyKey}"));
         playKey.Add(new FieldDef("PlayKey", "PalPlayLed", "パレット: PLAY LED", FieldKind.Int, e => $"{e.palPlayLed}"));
         playKey.Add(new FieldDef("PlayKey", "PalPauseLed", "パレット: PAUSE LED", FieldKind.Int, e => $"{e.palPauseLed}"));
         playKey.Add(new FieldDef("PlayKey", "PalContLed", "パレット: CONT LED", FieldKind.Int, e => $"{e.palContLed}"));

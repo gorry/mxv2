@@ -397,7 +397,12 @@ public sealed class SkinEditForm : Form
             if (ColorSectionByTab.TryGetValue(section.Title, out var colorTitle) &&
                 colorSectionsByTitle.TryGetValue(colorTitle, out var colorSection))
             {
-                var head = new Label
+                // 素の Label は AutoSize=true のまま Width/Height を明示すると
+                // 文字が縦に切れることがある（SingleLineLabel のコメント参照）。
+                // この見出しはタブ 1 個につき 1 回しか作らないコードだが、
+                // 対応する全タブ（画面/鍵盤/ステータス/曲名/ファイラー/
+                // 操作ボタン）で共有しているので、ここを直せば全部直る。
+                var head = new SingleLineLabel
                 {
                     Text = "配色", Width = rowWidth, Height = Dpi.S(this, 22),
                     Font = new System.Drawing.Font(Font, System.Drawing.FontStyle.Bold),
