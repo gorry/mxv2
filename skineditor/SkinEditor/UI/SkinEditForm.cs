@@ -6,22 +6,12 @@ namespace SkinEditor.UI;
 
 public sealed class SkinEditForm : Form
 {
-    // どのタブの最上部に、どの素材のインポート行を置くか。
-    // 「ビットマップ」専用タブは廃止し、対応するタブへ振り分ける（ユーザー指示）。
-    private static readonly Dictionary<string, BitmapRole[]> BitmapRowsByTab = new()
-    {
-        ["画面"] = new[] { BitmapRole.Back },
-        ["鍵盤"] = new[] { BitmapRole.Kb0, BitmapRole.Kb1, BitmapRole.Kb2 },
-        // 「レベルメータ」タブは廃止して「ステータス」へ統合した。
-        // 「ミニフォント」は一度ここへ統合したが、2026-09-03 に独立したタブへ戻した。
-        ["ステータス"] = new[] { BitmapRole.LevelMeter },
-        ["ミニフォント"] = new[] { BitmapRole.MiniFont },
-        ["バナー"] = new[] { BitmapRole.Banner },
-        ["操作ボタン"] = new[] { BitmapRole.PlayKey },
-        ["プログレスバー"] = new[] { BitmapRole.ProgressBar },
-        ["音量バー"] = new[] { BitmapRole.VolumeBar },
-        ["スクロールバー"] = new[] { BitmapRole.ScrollBar },
-    };
+    // 素材のインポート行は、どのタブ／どのグループのものかという対応表では
+    // 持たない。「たまたまこのページのこの項目の隣にある」というだけの
+    // 位置情報として、各項目（FieldDef）の LeadingBitmaps / TrailingBitmaps
+    // に直接持たせてある（Model/LayoutFieldSchema.cs 参照。2026-09-04、
+    // ユーザー指示。以前はここに BitmapRowsByTab / GroupBitmapRole という
+    // 「タブ名／グループ名 → 素材」の対応表があった）。
 
     // 「配色」単独タブは廃止し、各セクションを対応するレイアウトタブへ
     // 移した（ユーザー指示）。キーは LayoutFieldSchema 側のタブ名、値は
@@ -168,20 +158,71 @@ public sealed class SkinEditForm : Form
                 Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown,
                 WrapContents = false, AutoScroll = true,
             };
-            if (BitmapRowsByTab.TryGetValue(section.Title, out var roles))
+            // 素材のインポート行 1 つぶんを追加する。indented は、他のインデント
+            // 行（PCM グループなど）と同じ幅・左マージンに揃えるかどうか。
+            void AddBitmapRow(BitmapRole role, bool shortLabel, bool indented)
             {
-                foreach (var role in roles)
+                var row = new BitmapRoleRow(doc, role, _preview, shortLabel: shortLabel) { Width = rowWidth };
+                if (indented)
                 {
-                    var row = new BitmapRoleRow(doc, role, _preview) { Width = rowWidth };
-                    _bitmapRows.Add(row);
-                    flow.Controls.Add(row);
+                    row.Width = Dpi.S(this, 566);
+                    row.Margin = new Padding(Dpi.S(this, 24), 0, 0, Dpi.S(this, 4));
                 }
+                _bitmapRows.Add(row);
+                flow.Controls.Add(row);
             }
+
+            // FieldDef.Group が変わったところに太字の見出しを挟み、その項目を
+            // インデントする（レベルメータ・配置など。タブを割るほどではない
+            // まとまりを示す。2026-09-03、ユーザー指示）。
+            string lastGroup = "";
             foreach (var field in section.Fields)
             {
-                var ctrl = new FieldEditControl(doc, field) { Width = rowWidth };
-                _layoutControls.Add(ctrl);
-                flow.Controls.Add(ctrl);
+                if (field.Group != lastGroup)
+                {
+                    lastGroup = field.Group;
+                    if (!string.IsNullOrEmpty(field.Group))
+                    {
+                        flow.Controls.Add(new SingleLineLabel
+                        {
+                            Text = field.Group, Width = rowWidth, Height = Dpi.S(this, 22),
+                            Font = new System.Drawing.Font(Font, System.Drawing.FontStyle.Bold),
+                            Margin = new Padding(0, Dpi.S(this, 12), 0, Dpi.S(this, 4)),
+                        });
+                    }
+                }
+
+                bool indented = !string.IsNullOrEmpty(field.Group);
+
+                // この項目の直前に素材行がある、というだけの位置情報
+                // （FieldDef.LeadingBitmaps。2026-09-04、ユーザー指示）。
+                if (field.LeadingBitmaps != null)
+                {
+                    foreach (var role in field.LeadingBitmaps) AddBitmapRow(role, field.BitmapShortLabel, indented);
+                }
+
+                {
+                    var ctrl = new FieldEditControl(doc, field) { Width = rowWidth };
+                    if (indented)
+                    {
+                        // グループの一員だと分かるよう、他のインデント行（PCM や
+                        // 1オクターブの鍵のX など）と同じ幅・左マージンに揃える。
+                        ctrl.Width = Dpi.S(this, 566);
+                        ctrl.Margin = new Padding(Dpi.S(this, 24), 0, 0, Dpi.S(this, 4));
+                    }
+                    _layoutControls.Add(ctrl);
+                    flow.Controls.Add(ctrl);
+                }
+
+                // この項目の直後に素材行がある、というだけの位置情報
+                // （FieldDef.TrailingBitmaps）。「鍵盤」の「位置」のように、
+                // 項目の入力欄自体は前へ出したいが、素材行は元の並び順の
+                // ままにしたい（＝この項目の直後）ときに使う
+                // （2026-09-04、ユーザー指示）。
+                if (field.TrailingBitmaps != null)
+                {
+                    foreach (var role in field.TrailingBitmaps) AddBitmapRow(role, field.BitmapShortLabel, indented);
+                }
 
                 // 「1オクターブの鍵のX」(XOffset, 13個) は「位置 (x,y)」の
                 // 直後、この位置に音名ラベル付きの 4 行として挿入する
@@ -347,11 +388,16 @@ public sealed class SkinEditForm : Form
                 // ここも Text を直接 CheckBox に持たせず同じ形に合わせる
                 // （CheckBox.Text は Enabled=false で自動的に灰色になり、
                 // 他の行と見た目が揃わなかった）。
+                //
+                // 「PCM の位置」は「配置」グループのサブグループにした
+                // （2026-09-04、ユーザー指示）ので、他の「配置」項目と同じ
+                // インデント（Width=566・左マージン24）に揃える。8 行の
+                // チャンネル行はさらに 1 段深い（PcmChannelRow 側で 48px）。
                 var pcmCheckRow = new Panel
                 {
-                    Width = rowWidth,
+                    Width = Dpi.S(this, 566),
                     Height = Dpi.S(this, 24),
-                    Margin = new Padding(0, 0, 0, Dpi.S(this, 4)),
+                    Margin = new Padding(Dpi.S(this, 24), 0, 0, Dpi.S(this, 4)),
                 };
                 _pcmCheck = new CheckBox
                 {
@@ -386,7 +432,7 @@ public sealed class SkinEditForm : Form
 
                 for (int i = 0; i < 8; i++)
                 {
-                    var row = new PcmChannelRow(doc, i) { Width = Dpi.S(this, 566) };
+                    var row = new PcmChannelRow(doc, i) { Width = Dpi.S(this, 542) };
                     _pcmRows.Add(row);
                     flow.Controls.Add(row);
                 }

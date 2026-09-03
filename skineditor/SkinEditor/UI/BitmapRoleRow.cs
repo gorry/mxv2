@@ -23,7 +23,10 @@ public sealed class BitmapRoleRow : Panel
     private readonly SingleLineLabel _statusLabel;
     private bool _suppressCommit;
 
-    public BitmapRoleRow(SkinDocument doc, BitmapRole role, PreviewCanvas preview)
+    // shortLabel は「素材: <役割名> (<ファイル名>)」ではなく「素材 (<ファイル名>)」
+    // にする指定。太字のグループ見出し（例: 「レベルメータ」）の直後に置くとき、
+    // 役割名の重複を避けるために使う（2026-09-04、ユーザー指示）。
+    public BitmapRoleRow(SkinDocument doc, BitmapRole role, PreviewCanvas preview, bool shortLabel = false)
     {
         _doc = doc;
         _role = role;
@@ -48,7 +51,9 @@ public sealed class BitmapRoleRow : Panel
         // SingleLineLabel のコメント）。折り返さないラベルを使う。
         var label = new SingleLineLabel
         {
-            Text = $"素材: {BitmapRoleInfo.DisplayName(role)} ({BitmapRoleInfo.DefaultFileName(role)})",
+            Text = shortLabel
+                ? $"素材 ({BitmapRoleInfo.DefaultFileName(role)})"
+                : $"素材: {BitmapRoleInfo.DisplayName(role)} ({BitmapRoleInfo.DefaultFileName(role)})",
             Width = Dpi.S(this, 360),
             Dock = DockStyle.Left,
         };

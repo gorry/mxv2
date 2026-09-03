@@ -17,8 +17,26 @@ public enum FieldKind { Int, IntList, Xywh, Str }
 // ユーザー指示。ラベルと数値欄の間が間延びして見えるのを避けるため）。
 // 「(小,大)」（FileList の 2 値）は並び順ではなく意味の違いを示す注記なので
 // 対象外で、これまでどおりラベルに埋め込んだまま。
+//
+// Group は同じタブの中でさらに項目をまとめたいときの見出し。空でなければ、
+// 直前の項目と Group が変わったところに太字の見出し行を挟み、その項目自体も
+// インデントする（SkinEditForm 側）。タブそのものを分けるほどではないが、
+// ひとまとまりだと分かってほしい項目向け（2026-09-03、ユーザー指示。
+// 「ステータス」タブの「レベルメータ」「配置」に使った）。
+//
+// LeadingBitmaps / TrailingBitmaps は、この項目の直前／直後に素材の
+// インポート行を置きたいときに使う。「このタブ（またはこのグループ）には
+// 必ずこの素材がある」という関連付けではなく、**たまたまこのページの
+// この項目の隣にその素材行がある、というだけの位置情報**にしてある
+// （2026-09-04、ユーザー指示。以前は BitmapRowsByTab / GroupBitmapRole と
+// いう「タブ名／グループ名 → 素材」の対応表が SkinEditForm.cs にあったが、
+// それをやめてここへ一本化した）。BitmapShortLabel は「素材: 役割名
+// (ファイル名)」ではなく「素材 (ファイル名)」と短く出す指定
+// （見出しなどで役割名が既に分かっているとき用）。
 public sealed record FieldDef(string Section, string Key, string Label, FieldKind Kind,
-    Func<SkinLayout, string> Format, bool ReadOnly = false, string Suffix = "");
+    Func<SkinLayout, string> Format, bool ReadOnly = false, string Suffix = "", string Group = "",
+    IReadOnlyList<BitmapRole>? LeadingBitmaps = null, IReadOnlyList<BitmapRole>? TrailingBitmaps = null,
+    bool BitmapShortLabel = false);
 
 public sealed record FieldSectionDef(string Title, IReadOnlyList<FieldDef> Fields);
 
@@ -28,16 +46,21 @@ public static class LayoutFieldSchema
     {
         var status = new List<FieldDef>
         {
-            // レベルメータの素材行（BitmapRowsByTab）の次に来るよう、
-            // レベルメータの設定をこのタブの先頭に置く
-            // （「レベルメータ」タブは廃止してここへ統合した）。
-            new("LevelMeter", "PaletteOffset", "パレット開始番号", FieldKind.Int, e => $"{e.levelMeterPalOfs}"),
-            new("LevelMeter", "Cells", "セル数", FieldKind.Int, e => $"{e.levelMeterWidthCells}"),
-            new("LevelMeter", "SrcX", "素材内: 左端の切り捨て", FieldKind.Int, e => $"{e.levelMeterSrcX}"),
-            // ミニフォントは 2026-09-03 に独立したタブへ戻した（ユーザー指示）。
+            // ステータス欄全体の位置・大きさなので、タブの一番上（レベルメータ
+            // グループより前）に置く（2026-09-04、ユーザー指示）。
             new("Status", "Pos", "位置", FieldKind.IntList, e => $"{e.statusX},{e.statusY}", Suffix: "(x,y)"),
             new("Status", "BackWidth", "背景幅", FieldKind.Int, e => $"{e.statusBackW}"),
             new("Status", "BackHeight", "背景高さ", FieldKind.Int, e => $"{e.statusBackH}"),
+            // 「レベルメータ」タブは廃止してここへ統合した。素材行は
+            // このすぐ下の項目の直前（＝「レベルメータ」見出しの直後）に
+            // たまたま置いてある、というだけ。
+            new("LevelMeter", "PaletteOffset", "パレット開始番号", FieldKind.Int, e => $"{e.levelMeterPalOfs}",
+                Group: "レベルメータ", LeadingBitmaps: new[] { BitmapRole.LevelMeter }, BitmapShortLabel: true),
+            new("LevelMeter", "Cells", "セル数", FieldKind.Int, e => $"{e.levelMeterWidthCells}",
+                Group: "レベルメータ"),
+            new("LevelMeter", "SrcX", "素材内: 左端の切り捨て", FieldKind.Int, e => $"{e.levelMeterSrcX}",
+                Group: "レベルメータ"),
+            // ミニフォントは 2026-09-03 に独立したタブへ戻した（ユーザー指示）。
             // PcmX/PcmY (各8個) はここには含めない。「PCM 1ch」～「PCM 8ch」の
             // (x,y) 2値編集として SkinEditForm 側で専用に描画する
             // （PcmChannelRow。8個のスピンボタン列にはしない、というユーザー指示）。
@@ -47,20 +70,29 @@ public static class LayoutFieldSchema
         for (int i = 0; i < StatusItems.Count; i++)
         {
             int idx = i;
-            status.Add(new FieldDef("Status", StatusItems.Keys[idx], $"配置: {StatusItems.Labels[idx]}",
-                FieldKind.IntList, e => SkinLayoutIo.Join(e.statusPos[idx]), Suffix: "(x,y)"));
+            // 「配置」グループの見出しで分かるので、項目名に「配置: 」は
+            // 付けない（2026-09-04、ユーザー指示）。
+            status.Add(new FieldDef("Status", StatusItems.Keys[idx], StatusItems.Labels[idx],
+                FieldKind.IntList, e => SkinLayoutIo.Join(e.statusPos[idx]), Suffix: "(x,y)", Group: "配置"));
         }
 
         var list = new List<FieldSectionDef>
         {
             new("画面", new List<FieldDef>
             {
-                new("Screen", "Width", "幅", FieldKind.Int, e => $"{e.screenW}"),
+                // back.bmp の素材行は、たまたまこの項目の直前にある。
+                new("Screen", "Width", "幅", FieldKind.Int, e => $"{e.screenW}",
+                    LeadingBitmaps: new[] { BitmapRole.Back }),
                 new("Screen", "Height", "高さ", FieldKind.Int, e => $"{e.screenH}"),
             }),
             new("鍵盤", new List<FieldDef>
             {
-                new("Keyboard", "Pos", "位置", FieldKind.IntList, e => $"{e.kbX},{e.kbY}", Suffix: "(x,y)"),
+                // kb0/kb1/kb2 の素材行は、たまたま「位置」の直後（「1オクターブの
+                // 鍵のX」より前）にある。「位置」を一番上に出す都合で、この項目の
+                // 自分の入力欄の後・関連グループの前、という位置になる
+                // （2026-09-04、ユーザー指示）。
+                new("Keyboard", "Pos", "位置", FieldKind.IntList, e => $"{e.kbX},{e.kbY}", Suffix: "(x,y)",
+                    TrailingBitmaps: new[] { BitmapRole.Kb0, BitmapRole.Kb1, BitmapRole.Kb2 }),
                 // XOffset (13個) はここには含めない。「1オクターブの鍵のX」として
                 // 音名ラベル付きの 4 行（C,C#,D,D#／E,F,F#,G／G#,A,A#,B／
                 // オクターブ幅）に SkinEditForm 側で専用に描画する
@@ -76,16 +108,18 @@ public static class LayoutFieldSchema
             new("ステータス", status),
             // ミニフォント（ステータス欄などのビットマップ文字）。1 文字の
             // 大きさは素材そのもので決まるので、ここにあるのは画面に置くときの
-            // 送りだけ。素材の行は BitmapRowsByTab がこのタブの先頭に置く。
+            // 送りだけ。素材行は、たまたまこのタブの最初の項目の直前にある。
             new("ミニフォント", new List<FieldDef>
             {
-                new("MiniFont", "Width", "送り幅", FieldKind.Int, e => $"{e.miniFontW}"),
+                new("MiniFont", "Width", "送り幅", FieldKind.Int, e => $"{e.miniFontW}",
+                    LeadingBitmaps: new[] { BitmapRole.MiniFont }),
                 new("MiniFont", "Height", "行の高さ", FieldKind.Int, e => $"{e.miniFontH}"),
             }),
             new("バナー", new List<FieldDef>
             {
                 new("Banner", "Rect", "矩形", FieldKind.Xywh,
-                    e => $"{e.bannerX},{e.bannerY},{e.bannerW},{e.bannerH}", Suffix: "(x,y,w,h)"),
+                    e => $"{e.bannerX},{e.bannerY},{e.bannerW},{e.bannerH}", Suffix: "(x,y,w,h)",
+                    LeadingBitmaps: new[] { BitmapRole.Banner }),
             }),
             new("曲名", new List<FieldDef>
             {
@@ -111,7 +145,8 @@ public static class LayoutFieldSchema
             new("スクロールバー", new List<FieldDef>
             {
                 new("ScrollBar", "Rect", "矩形", FieldKind.Xywh,
-                    e => $"{e.scrollX},{e.scrollY},{e.scrollW},{e.scrollH}", Suffix: "(x,y,w,h)"),
+                    e => $"{e.scrollX},{e.scrollY},{e.scrollW},{e.scrollH}", Suffix: "(x,y,w,h)",
+                    LeadingBitmaps: new[] { BitmapRole.ScrollBar }),
                 new("ScrollBar", "SrcThumb", "素材内: つまみ", FieldKind.Xywh, e => e.scrollSrcThumb.ToString(),
                     Suffix: "(x,y,w,h)"),
                 new("ScrollBar", "SrcUpArrowPress", "素材内: 上矢印(押下)", FieldKind.Xywh,
@@ -134,14 +169,16 @@ public static class LayoutFieldSchema
             new("プログレスバー", new List<FieldDef>
             {
                 new("ProgressBar", "Rect", "矩形", FieldKind.Xywh,
-                    e => $"{e.progX},{e.progY},{e.progW},{e.progH}", Suffix: "(x,y,w,h)"),
+                    e => $"{e.progX},{e.progY},{e.progW},{e.progH}", Suffix: "(x,y,w,h)",
+                    LeadingBitmaps: new[] { BitmapRole.ProgressBar }),
                 new("ProgressBar", "TimeX", "時刻表示 X オフセット", FieldKind.Int, e => $"{e.progTimeXOfs}"),
                 new("ProgressBar", "TimeY", "時刻表示 Y オフセット", FieldKind.Int, e => $"{e.progTimeYOfs}"),
             }),
             new("音量バー", new List<FieldDef>
             {
                 new("VolumeBar", "Rect", "矩形", FieldKind.Xywh,
-                    e => $"{e.volX},{e.volY},{e.volW},{e.volH}", Suffix: "(x,y,w,h)"),
+                    e => $"{e.volX},{e.volY},{e.volW},{e.volH}", Suffix: "(x,y,w,h)",
+                    LeadingBitmaps: new[] { BitmapRole.VolumeBar }),
                 new("VolumeBar", "TimeX", "時刻表示 X オフセット", FieldKind.Int, e => $"{e.volTimeXOfs}"),
                 new("VolumeBar", "TimeY", "時刻表示 Y オフセット", FieldKind.Int, e => $"{e.volTimeYOfs}"),
                 new("VolumeBar", "NobWidth", "つまみ幅", FieldKind.Int, e => $"{e.volNobW}"),
@@ -154,7 +191,8 @@ public static class LayoutFieldSchema
 
         var playKey = new List<FieldDef>
         {
-            new("PlayKey", "Pos", "位置", FieldKind.IntList, e => $"{e.playKeyX},{e.playKeyY}", Suffix: "(x,y)"),
+            new("PlayKey", "Pos", "位置", FieldKind.IntList, e => $"{e.playKeyX},{e.playKeyY}", Suffix: "(x,y)",
+                LeadingBitmaps: new[] { BitmapRole.PlayKey }),
             // SHUFFLE (index 8) が未実装で当分実装の予定も無いので、
             // 9 にして出してしまわないよう編集不可にする（ユーザー指示）。
             new("PlayKey", "Count", "使うボタンの数", FieldKind.Int, e => $"{e.numPlayKeys}", ReadOnly: true),
