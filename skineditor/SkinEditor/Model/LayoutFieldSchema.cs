@@ -25,11 +25,7 @@ public static class LayoutFieldSchema
             new("LevelMeter", "PaletteOffset", "パレット開始番号", FieldKind.Int, e => $"{e.levelMeterPalOfs}"),
             new("LevelMeter", "Cells", "セル数", FieldKind.Int, e => $"{e.levelMeterWidthCells}"),
             new("LevelMeter", "SrcX", "素材内: 左端の切り捨て", FieldKind.Int, e => $"{e.levelMeterSrcX}"),
-            // 「ミニフォント」タブも廃止してここへ統合した。指示どおり
-            // 「セル数」と「位置」の間に置く。1 文字の大きさは素材そのもので
-            // 決まるので、ここにあるのは画面に置くときの送りだけ。
-            new("MiniFont", "Width", "ミニフォント 送り幅", FieldKind.Int, e => $"{e.miniFontW}"),
-            new("MiniFont", "Height", "ミニフォント 行の高さ", FieldKind.Int, e => $"{e.miniFontH}"),
+            // ミニフォントは 2026-09-03 に独立したタブへ戻した（ユーザー指示）。
             new("Status", "Pos", "位置 (x,y)", FieldKind.IntList, e => $"{e.statusX},{e.statusY}"),
             new("Status", "BackWidth", "背景幅", FieldKind.Int, e => $"{e.statusBackW}"),
             new("Status", "BackHeight", "背景高さ", FieldKind.Int, e => $"{e.statusBackH}"),
@@ -69,6 +65,14 @@ public static class LayoutFieldSchema
                 new("Keyboard", "KeyOffset", "鍵の描画原点補正", FieldKind.Int, e => $"{e.keyOffset}"),
             }),
             new("ステータス", status),
+            // ミニフォント（ステータス欄などのビットマップ文字）。1 文字の
+            // 大きさは素材そのもので決まるので、ここにあるのは画面に置くときの
+            // 送りだけ。素材の行は BitmapRowsByTab がこのタブの先頭に置く。
+            new("ミニフォント", new List<FieldDef>
+            {
+                new("MiniFont", "Width", "送り幅", FieldKind.Int, e => $"{e.miniFontW}"),
+                new("MiniFont", "Height", "行の高さ", FieldKind.Int, e => $"{e.miniFontH}"),
+            }),
             new("バナー", new List<FieldDef>
             {
                 new("Banner", "Rect", "矩形 (x,y,w,h)", FieldKind.Xywh,
