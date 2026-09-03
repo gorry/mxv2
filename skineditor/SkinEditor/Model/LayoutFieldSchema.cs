@@ -11,8 +11,14 @@ public enum FieldKind { Int, IntList, Xywh, Str }
 // ReadOnly は「値は表示するが、継承チェックボックスも数値欄も編集不可にする」
 // 指定（FieldEditControl 側で見る）。SHUFFLE 未実装の間、[PlayKey] Count を
 // うっかり 9 にしてボタンを増やせないようにするために追加した。
+//
+// Suffix は「(x,y)」「(x,y,w,h)」のような、値の並び順を示す注記。ラベルの
+// 末尾に埋め込まず、FieldEditControl が数値欄の右へ別に描く（2026-09-03、
+// ユーザー指示。ラベルと数値欄の間が間延びして見えるのを避けるため）。
+// 「(小,大)」（FileList の 2 値）は並び順ではなく意味の違いを示す注記なので
+// 対象外で、これまでどおりラベルに埋め込んだまま。
 public sealed record FieldDef(string Section, string Key, string Label, FieldKind Kind,
-    Func<SkinLayout, string> Format, bool ReadOnly = false);
+    Func<SkinLayout, string> Format, bool ReadOnly = false, string Suffix = "");
 
 public sealed record FieldSectionDef(string Title, IReadOnlyList<FieldDef> Fields);
 
@@ -29,7 +35,7 @@ public static class LayoutFieldSchema
             new("LevelMeter", "Cells", "セル数", FieldKind.Int, e => $"{e.levelMeterWidthCells}"),
             new("LevelMeter", "SrcX", "素材内: 左端の切り捨て", FieldKind.Int, e => $"{e.levelMeterSrcX}"),
             // ミニフォントは 2026-09-03 に独立したタブへ戻した（ユーザー指示）。
-            new("Status", "Pos", "位置 (x,y)", FieldKind.IntList, e => $"{e.statusX},{e.statusY}"),
+            new("Status", "Pos", "位置", FieldKind.IntList, e => $"{e.statusX},{e.statusY}", Suffix: "(x,y)"),
             new("Status", "BackWidth", "背景幅", FieldKind.Int, e => $"{e.statusBackW}"),
             new("Status", "BackHeight", "背景高さ", FieldKind.Int, e => $"{e.statusBackH}"),
             // PcmX/PcmY (各8個) はここには含めない。「PCM 1ch」～「PCM 8ch」の
@@ -41,8 +47,8 @@ public static class LayoutFieldSchema
         for (int i = 0; i < StatusItems.Count; i++)
         {
             int idx = i;
-            status.Add(new FieldDef("Status", StatusItems.Keys[idx], $"配置: {StatusItems.Labels[idx]} (x,y)",
-                FieldKind.IntList, e => SkinLayoutIo.Join(e.statusPos[idx])));
+            status.Add(new FieldDef("Status", StatusItems.Keys[idx], $"配置: {StatusItems.Labels[idx]}",
+                FieldKind.IntList, e => SkinLayoutIo.Join(e.statusPos[idx]), Suffix: "(x,y)"));
         }
 
         var list = new List<FieldSectionDef>
@@ -54,7 +60,7 @@ public static class LayoutFieldSchema
             }),
             new("鍵盤", new List<FieldDef>
             {
-                new("Keyboard", "Pos", "位置 (x,y)", FieldKind.IntList, e => $"{e.kbX},{e.kbY}"),
+                new("Keyboard", "Pos", "位置", FieldKind.IntList, e => $"{e.kbX},{e.kbY}", Suffix: "(x,y)"),
                 // XOffset (13個) はここには含めない。「1オクターブの鍵のX」として
                 // 音名ラベル付きの 4 行（C,C#,D,D#／E,F,F#,G／G#,A,A#,B／
                 // オクターブ幅）に SkinEditForm 側で専用に描画する
@@ -78,18 +84,18 @@ public static class LayoutFieldSchema
             }),
             new("バナー", new List<FieldDef>
             {
-                new("Banner", "Rect", "矩形 (x,y,w,h)", FieldKind.Xywh,
-                    e => $"{e.bannerX},{e.bannerY},{e.bannerW},{e.bannerH}"),
+                new("Banner", "Rect", "矩形", FieldKind.Xywh,
+                    e => $"{e.bannerX},{e.bannerY},{e.bannerW},{e.bannerH}", Suffix: "(x,y,w,h)"),
             }),
             new("曲名", new List<FieldDef>
             {
-                new("Title", "Rect", "矩形 (x,y,w,h)", FieldKind.Xywh,
-                    e => $"{e.titleX},{e.titleY},{e.titleW},{e.titleH}"),
+                new("Title", "Rect", "矩形", FieldKind.Xywh,
+                    e => $"{e.titleX},{e.titleY},{e.titleW},{e.titleH}", Suffix: "(x,y,w,h)"),
             }),
             new("ファイラー", new List<FieldDef>
             {
-                new("FileList", "Rect", "矩形 (x,y,w,h)", FieldKind.Xywh,
-                    e => $"{e.fileListX},{e.fileListY},{e.fileListW},{e.fileListH}"),
+                new("FileList", "Rect", "矩形", FieldKind.Xywh,
+                    e => $"{e.fileListX},{e.fileListY},{e.fileListW},{e.fileListH}", Suffix: "(x,y,w,h)"),
                 new("FileList", "Rows", "行数 (小,大)", FieldKind.IntList, e => SkinLayoutIo.Join(e.fileListRows)),
                 new("FileList", "ItemHeight", "1行の高さ (小,大)", FieldKind.IntList,
                     e => SkinLayoutIo.Join(e.fileListItemH)),
@@ -104,64 +110,70 @@ public static class LayoutFieldSchema
             }),
             new("スクロールバー", new List<FieldDef>
             {
-                new("ScrollBar", "Rect", "矩形 (x,y,w,h)", FieldKind.Xywh,
-                    e => $"{e.scrollX},{e.scrollY},{e.scrollW},{e.scrollH}"),
-                new("ScrollBar", "SrcThumb", "素材内: つまみ (x,y,w,h)", FieldKind.Xywh, e => e.scrollSrcThumb.ToString()),
-                new("ScrollBar", "SrcUpArrowPress", "素材内: 上矢印(押下) (x,y,w,h)", FieldKind.Xywh,
-                    e => e.scrollSrcUpArrowPress.ToString()),
-                new("ScrollBar", "SrcDownArrowPress", "素材内: 下矢印(押下) (x,y,w,h)", FieldKind.Xywh,
-                    e => e.scrollSrcDownArrowPress.ToString()),
-                new("ScrollBar", "SrcUpArrow", "素材内: 上矢印 (x,y,w,h)", FieldKind.Xywh, e => e.scrollSrcUpArrow.ToString()),
-                new("ScrollBar", "SrcBar", "素材内: 溝 (x,y,w,h)", FieldKind.Xywh, e => e.scrollSrcBar.ToString()),
-                new("ScrollBar", "SrcDownArrow", "素材内: 下矢印 (x,y,w,h)", FieldKind.Xywh,
-                    e => e.scrollSrcDownArrow.ToString()),
-                new("ScrollBar", "PosUpArrow", "配置: 上矢印 (x,y)", FieldKind.IntList,
-                    e => SkinLayoutIo.Join(e.scrollPosUpArrow)),
-                new("ScrollBar", "PosBar", "配置: 溝 (x,y)", FieldKind.IntList, e => SkinLayoutIo.Join(e.scrollPosBar)),
-                new("ScrollBar", "PosDownArrow", "配置: 下矢印 (x,y)", FieldKind.IntList,
-                    e => SkinLayoutIo.Join(e.scrollPosDownArrow)),
+                new("ScrollBar", "Rect", "矩形", FieldKind.Xywh,
+                    e => $"{e.scrollX},{e.scrollY},{e.scrollW},{e.scrollH}", Suffix: "(x,y,w,h)"),
+                new("ScrollBar", "SrcThumb", "素材内: つまみ", FieldKind.Xywh, e => e.scrollSrcThumb.ToString(),
+                    Suffix: "(x,y,w,h)"),
+                new("ScrollBar", "SrcUpArrowPress", "素材内: 上矢印(押下)", FieldKind.Xywh,
+                    e => e.scrollSrcUpArrowPress.ToString(), Suffix: "(x,y,w,h)"),
+                new("ScrollBar", "SrcDownArrowPress", "素材内: 下矢印(押下)", FieldKind.Xywh,
+                    e => e.scrollSrcDownArrowPress.ToString(), Suffix: "(x,y,w,h)"),
+                new("ScrollBar", "SrcUpArrow", "素材内: 上矢印", FieldKind.Xywh, e => e.scrollSrcUpArrow.ToString(),
+                    Suffix: "(x,y,w,h)"),
+                new("ScrollBar", "SrcBar", "素材内: 溝", FieldKind.Xywh, e => e.scrollSrcBar.ToString(),
+                    Suffix: "(x,y,w,h)"),
+                new("ScrollBar", "SrcDownArrow", "素材内: 下矢印", FieldKind.Xywh,
+                    e => e.scrollSrcDownArrow.ToString(), Suffix: "(x,y,w,h)"),
+                new("ScrollBar", "PosUpArrow", "配置: 上矢印", FieldKind.IntList,
+                    e => SkinLayoutIo.Join(e.scrollPosUpArrow), Suffix: "(x,y)"),
+                new("ScrollBar", "PosBar", "配置: 溝", FieldKind.IntList, e => SkinLayoutIo.Join(e.scrollPosBar),
+                    Suffix: "(x,y)"),
+                new("ScrollBar", "PosDownArrow", "配置: 下矢印", FieldKind.IntList,
+                    e => SkinLayoutIo.Join(e.scrollPosDownArrow), Suffix: "(x,y)"),
             }),
             new("プログレスバー", new List<FieldDef>
             {
-                new("ProgressBar", "Rect", "矩形 (x,y,w,h)", FieldKind.Xywh,
-                    e => $"{e.progX},{e.progY},{e.progW},{e.progH}"),
+                new("ProgressBar", "Rect", "矩形", FieldKind.Xywh,
+                    e => $"{e.progX},{e.progY},{e.progW},{e.progH}", Suffix: "(x,y,w,h)"),
                 new("ProgressBar", "TimeX", "時刻表示 X オフセット", FieldKind.Int, e => $"{e.progTimeXOfs}"),
                 new("ProgressBar", "TimeY", "時刻表示 Y オフセット", FieldKind.Int, e => $"{e.progTimeYOfs}"),
             }),
             new("音量バー", new List<FieldDef>
             {
-                new("VolumeBar", "Rect", "矩形 (x,y,w,h)", FieldKind.Xywh,
-                    e => $"{e.volX},{e.volY},{e.volW},{e.volH}"),
+                new("VolumeBar", "Rect", "矩形", FieldKind.Xywh,
+                    e => $"{e.volX},{e.volY},{e.volW},{e.volH}", Suffix: "(x,y,w,h)"),
                 new("VolumeBar", "TimeX", "時刻表示 X オフセット", FieldKind.Int, e => $"{e.volTimeXOfs}"),
                 new("VolumeBar", "TimeY", "時刻表示 Y オフセット", FieldKind.Int, e => $"{e.volTimeYOfs}"),
                 new("VolumeBar", "NobWidth", "つまみ幅", FieldKind.Int, e => $"{e.volNobW}"),
-                new("VolumeBar", "NobSrc", "素材内: つまみ (x,y,w,h)", FieldKind.Xywh, e => e.volRect[0].ToString()),
-                new("VolumeBar", "SlideSrc", "素材内: スライド (x,y,w,h)", FieldKind.Xywh, e => e.volRect[1].ToString()),
+                new("VolumeBar", "NobSrc", "素材内: つまみ", FieldKind.Xywh, e => e.volRect[0].ToString(),
+                    Suffix: "(x,y,w,h)"),
+                new("VolumeBar", "SlideSrc", "素材内: スライド", FieldKind.Xywh, e => e.volRect[1].ToString(),
+                    Suffix: "(x,y,w,h)"),
             }),
         };
 
         var playKey = new List<FieldDef>
         {
-            new("PlayKey", "Pos", "位置 (x,y)", FieldKind.IntList, e => $"{e.playKeyX},{e.playKeyY}"),
+            new("PlayKey", "Pos", "位置", FieldKind.IntList, e => $"{e.playKeyX},{e.playKeyY}", Suffix: "(x,y)"),
             // SHUFFLE (index 8) が未実装で当分実装の予定も無いので、
             // 9 にして出してしまわないよう編集不可にする（ユーザー指示）。
             new("PlayKey", "Count", "使うボタンの数", FieldKind.Int, e => $"{e.numPlayKeys}", ReadOnly: true),
         };
         string[] names = { "PREV", "STOP", "PLAY", "FAST", "PAUSE", "NEXT", "CONT", "REPEAT", "SHUFFLE" };
         // SHUFFLE (index 8) は当分実装の予定が無いので出さない（ユーザー指示）。
-        // playKey.Add(new FieldDef("PlayKey", "Src8", "素材内: SHUFFLE (x,y,w,h)", FieldKind.Xywh,
-        //     e => e.playKeyRect[8].ToString()));
+        // playKey.Add(new FieldDef("PlayKey", "Src8", "素材内: SHUFFLE", FieldKind.Xywh,
+        //     e => e.playKeyRect[8].ToString(), Suffix: "(x,y,w,h)"));
         for (int i = 0; i < 8; i++)
         {
             int idx = i;
-            playKey.Add(new FieldDef("PlayKey", $"Src{idx}", $"素材内: {names[idx]} (x,y,w,h)", FieldKind.Xywh,
-                e => e.playKeyRect[idx].ToString()));
+            playKey.Add(new FieldDef("PlayKey", $"Src{idx}", $"素材内: {names[idx]}", FieldKind.Xywh,
+                e => e.playKeyRect[idx].ToString(), Suffix: "(x,y,w,h)"));
         }
         for (int i = 0; i < 9; i++)
         {
             int idx = i;
-            playKey.Add(new FieldDef("PlayKey", $"Pos{idx}", $"配置: {names[idx]} (x,y)", FieldKind.IntList,
-                e => SkinLayoutIo.Join(e.playKeyPos[idx])));
+            playKey.Add(new FieldDef("PlayKey", $"Pos{idx}", $"配置: {names[idx]}", FieldKind.IntList,
+                e => SkinLayoutIo.Join(e.playKeyPos[idx]), Suffix: "(x,y)"));
         }
         playKey.Add(new FieldDef("PlayKey", "PalKey", "パレット: ボタンの色", FieldKind.Int, e => $"{e.palPlayKeyKey}"));
         playKey.Add(new FieldDef("PlayKey", "PalPlayLed", "パレット: PLAY LED", FieldKind.Int, e => $"{e.palPlayLed}"));

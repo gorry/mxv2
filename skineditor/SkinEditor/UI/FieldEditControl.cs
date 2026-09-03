@@ -16,6 +16,7 @@ public sealed class FieldEditControl : Panel
     private readonly CheckBox _check;
     private readonly SingleLineLabel _label;
     private readonly NumericUpDown[] _numerics;
+    private readonly SingleLineLabel? _suffixLabel;
     private bool _suppressCommit;
 
     public FieldEditControl(SkinDocument doc, FieldDef field)
@@ -57,6 +58,22 @@ public sealed class FieldEditControl : Panel
             };
             n.ValueChanged += (_, _) => Commit();
             _numerics[i] = n;
+        }
+
+        // 「(x,y)」等の並び順の注記は、ラベルへ埋め込まず数値欄の右へ置く
+        // （2026-09-03、ユーザー指示）。Dock=Left は最初に追加したものが
+        // 最も右に来るので、数値欄より先に足す。
+        if (!string.IsNullOrEmpty(field.Suffix))
+        {
+            _suffixLabel = new SingleLineLabel
+            {
+                Text = field.Suffix,
+                Width = TextRenderer.MeasureText(field.Suffix, Control.DefaultFont).Width + Dpi.S(this, 8),
+                Dock = DockStyle.Left,
+                Margin = new Padding(0, 0, 0, 0),
+                ForeColor = SystemColors.GrayText,
+            };
+            Controls.Add(_suffixLabel);
         }
 
         // Dock=Left は追加順と逆に並ぶので、見た目の左からの順で逆順に足す。
