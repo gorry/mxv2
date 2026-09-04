@@ -97,8 +97,13 @@ public sealed class DrawScreenPort
     public RenderBitmap Screen => _screen;
     public List<TextDraw> TextDraws { get; } = new();
 
-    // スクロールバーの見た目の状態（本体 ScrollBarFlag）。プレビューでは
-    // 押下表示を使わないので既定 0 のまま。
+    // スクロールバーの見た目の状態（本体 DrawScreen::ScrollBarFlag）。
+    // 本体の kScrollBarDrag（つまみドラッグ中は自動再配置しない）はプレビューに
+    // ドラッグの概念が無いので移植していない。矢印の押下表示の2つだけ
+    // [スクロールバー] タブの「上矢印」「下矢印」トグルボタンから使う
+    // （2026-09-04、ユーザー指示）。
+    public const int ScrollBarUpArrowDown = 1 << 1;
+    public const int ScrollBarDownArrowDown = 1 << 2;
     public int ScrollBarFlags { get; set; }
     public int ScrollBarThumb { get; private set; }
 
@@ -659,6 +664,20 @@ public sealed class DrawScreenPort
         // つまみは溝の中を動く。
         Blitter.Copy(_scrollBar, _skin.scrollPosBar[0], _skin.scrollPosBar[1] + ScrollBarThumb,
             thumb.W, thumb.H, _scrollBarBase, thumb.X, thumb.Y, 100);
+
+        // 矢印の押下表示は通常の矢印と同じ場所に差し替える。
+        if ((ScrollBarFlags & ScrollBarUpArrowDown) != 0)
+        {
+            var s = _skin.scrollSrcUpArrowPress;
+            Blitter.Copy(_scrollBar, _skin.scrollPosUpArrow[0], _skin.scrollPosUpArrow[1], s.W, s.H,
+                _scrollBarBase, s.X, s.Y, 100);
+        }
+        if ((ScrollBarFlags & ScrollBarDownArrowDown) != 0)
+        {
+            var s = _skin.scrollSrcDownArrowPress;
+            Blitter.Copy(_scrollBar, _skin.scrollPosDownArrow[0], _skin.scrollPosDownArrow[1], s.W, s.H,
+                _scrollBarBase, s.X, s.Y, 100);
+        }
 
         // ファイラーと重なっている列には触らない（重なりぶんは絵が無いので、
         // 描かずに残すのが正しい。本体のコメント参照）。

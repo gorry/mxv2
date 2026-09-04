@@ -89,6 +89,26 @@ public sealed class PreviewCanvas : Panel
         get => _state.Progress;
         set { _state.Progress = value; _dirty = true; }
     }
+    public int StateScroll
+    {
+        get => _state.Scroll;
+        set { _state.Scroll = value; _dirty = true; }
+    }
+    public bool StateScrollUpPressed
+    {
+        get => _state.ScrollUpPressed;
+        set { _state.ScrollUpPressed = value; _dirty = true; }
+    }
+    public bool StateScrollDownPressed
+    {
+        get => _state.ScrollDownPressed;
+        set { _state.ScrollDownPressed = value; _dirty = true; }
+    }
+    public int StateLevel
+    {
+        get => _state.Level;
+        set { _state.Level = value; _dirty = true; }
+    }
 
     public PreviewCanvas(SkinDocument doc)
     {

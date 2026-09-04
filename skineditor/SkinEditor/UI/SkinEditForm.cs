@@ -154,18 +154,13 @@ public sealed class SkinEditForm : Form
         split.SplitterDistance = panel1Width;
         split.Panel2MinSize = tabViewWidth;
 
+        // 音量・進捗スライダは、それぞれ対応するタブ（[音量バー]「音量」/
+        // [プログレスバー]「プレイ時間」）へ移したので、プレビューの下に
+        // 状態バーを置く必要が無くなった（2026-09-04、ユーザー指示）。
+        // プレビュー側パネルはキャンバスだけになる。
         _preview = new PreviewCanvas(doc) { Dock = DockStyle.Fill };
-        var previewHost = new Panel { Dock = DockStyle.Fill };
-        previewHost.Controls.Add(_preview);
-        var stateBar = BuildStateBar();
-        previewHost.Controls.Add(stateBar);
-        split.Panel1.Controls.Add(previewHost);
+        split.Panel1.Controls.Add(_preview);
 
-        // 状態バーが折り返さずに収まる幅を、プレビュー側パネルの最小幅として
-        // 確保する。ウィンドウやスプリッタをそれより狭くできなくすることで、
-        // 折り返し（項目が千切れて見える）自体を起こさせない。
-        int stateBarMinWidth = stateBar.PreferredSize.Width + Dpi.S(this, 24);
-        split.Panel1MinSize = Math.Max(split.Panel1MinSize, stateBarMinWidth);
         MinimumSize = new System.Drawing.Size(
             Size.Width - ClientSize.Width + split.Panel1MinSize + split.SplitterWidth + tabViewWidth,
             Dpi.S(this, 500));
@@ -546,6 +541,38 @@ public sealed class SkinEditForm : Form
                     pcmFlow.Controls.Add(row);
                     RegisterPreview(row, PreviewBindings.For("Status", "PcmX", i), null);
                 }
+
+                // 「レベル」スライダー。[レベルメータ] サブタブへ、レベルごとの
+                // 点灯具合を確認するために追加する（2026-09-04、ユーザー指示）。
+                // layout.ini には何も書かない一時的な状態（PreviewCanvas.
+                // StateLevel）。FM 8ch 全段に同じ値を適用する（レベルメータの
+                // 項目はどの段にも共通のため、段ごとには分けていない）。
+                var levelFlow = GetSubTabFlow("レベルメータ");
+                var levelRow = new FlowLayoutPanel
+                {
+                    FlowDirection = FlowDirection.LeftToRight,
+                    WrapContents = false,
+                    AutoSize = true,
+                    AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                    Margin = new Padding(0, Dpi.S(this, 8), 0, 0),
+                };
+                var levelLabel = new SingleLineLabel
+                {
+                    Text = "レベル",
+                    Width = LabeledValueRow.MeasureLabelWidth(this, new[] { "レベル" }),
+                    Height = Dpi.S(this, 24),
+                    Margin = new Padding(0, Dpi.S(this, 3), Dpi.S(this, 8), 0),
+                };
+                var levelSlider = new TrackBar
+                {
+                    Minimum = 0, Maximum = 100, Value = 0,
+                    Width = Dpi.S(this, 150), Margin = new Padding(0),
+                };
+                levelSlider.ValueChanged += (_, _) => { _preview.StateLevel = levelSlider.Value; _preview.Invalidate(); };
+                levelRow.Controls.Add(levelLabel);
+                levelRow.Controls.Add(levelSlider);
+                levelFlow.Controls.Add(levelRow);
+                RegisterPreview(levelRow, new PreviewBinding(PreviewRegions.Ids.LevelMeter), null);
             }
             if (section.Title == "操作ボタン")
             {
@@ -622,6 +649,100 @@ public sealed class SkinEditForm : Form
                     RegisterPreview(toggleRow,
                         new PreviewBinding(PreviewRegions.Ids.Indexed(PreviewRegions.Ids.PlayKeyButton, idx)), null);
                 }
+            }
+            // プレビュー確認用のスライダ。layout.ini には何も書かない一時的な
+            // 状態（2026-09-04、ユーザー指示）。以前はプレビューの下に
+            // 「音量」「進捗」という状態バーでまとめて置いていたが、対応する
+            // タブへ移した（進捗は「プレイ時間」に改名）。これでプレビューの
+            // 下に何も要らなくなったので、状態バー自体を廃止した
+            // （BuildStateBar は削除済み）。[スクロールバー] の「スクロール」
+            // も同じ形で追加した。
+            (string Label, int Min, int Max, int Init, Action<int> Set, string Region)? sliderDef =
+                section.Title switch
+                {
+                    "プログレスバー" => ("プレイ時間", 0, 100, 40,
+                        v => _preview.StateProgress = v / 100.0, PreviewRegions.Ids.ProgressBar),
+                    "音量バー" => ("音量", -100, 100, 0,
+                        v => _preview.StateVolume = v, PreviewRegions.Ids.VolumeBar),
+                    "スクロールバー" => ("スクロール", 0, 100, 0,
+                        v => _preview.StateScroll = v, PreviewRegions.Ids.ScrollBar),
+                    _ => null,
+                };
+            if (sliderDef is { } sd)
+            {
+                var sliderRow = new FlowLayoutPanel
+                {
+                    FlowDirection = FlowDirection.LeftToRight,
+                    WrapContents = false,
+                    AutoSize = true,
+                    AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                    Margin = new Padding(0, Dpi.S(this, 12), 0, 0),
+                };
+                var sliderLabel = new SingleLineLabel
+                {
+                    Text = sd.Label,
+                    // 固定幅の当て推量は文言しだいで破綻する（"ラベル幅の教訓"）ので、
+                    // 他の行と同じく実測する。ここは揃える相手がいない単独ラベルなので
+                    // 自分の文字列だけで測ってよい。
+                    Width = LabeledValueRow.MeasureLabelWidth(this, new[] { sd.Label }),
+                    Height = Dpi.S(this, 24),
+                    Margin = new Padding(0, Dpi.S(this, 3), Dpi.S(this, 8), 0),
+                };
+                var slider = new TrackBar
+                {
+                    Minimum = sd.Min, Maximum = sd.Max, Value = sd.Init,
+                    Width = Dpi.S(this, 150), Margin = new Padding(0),
+                };
+                slider.ValueChanged += (_, _) => { sd.Set(slider.Value); _preview.Invalidate(); };
+                sliderRow.Controls.Add(sliderLabel);
+                sliderRow.Controls.Add(slider);
+                flow.Controls.Add(sliderRow);
+                RegisterPreview(sliderRow, new PreviewBinding(sd.Region), null);
+            }
+            if (section.Title == "スクロールバー")
+            {
+                // 上下矢印の押下状態をプレビューで確認するためのトグルボタン
+                // （2026-09-04、ユーザー指示）。layout.ini には何も書かない
+                // 一時的な状態。[操作ボタン] の「押す」と同じ Appearance.Button。
+                var arrowRow = new FlowLayoutPanel
+                {
+                    FlowDirection = FlowDirection.LeftToRight,
+                    WrapContents = false,
+                    AutoSize = true,
+                    AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                    Margin = new Padding(0, Dpi.S(this, 8), 0, 0),
+                };
+                var arrowToggleSize = new System.Drawing.Size(Dpi.S(this, 72), Dpi.S(this, 28));
+                var upToggle = new CheckBox
+                {
+                    Text = "上矢印", Appearance = Appearance.Button,
+                    AutoSize = true, MinimumSize = arrowToggleSize,
+                    Margin = new Padding(0, 0, Dpi.S(this, 8), 0),
+                };
+                upToggle.CheckedChanged += (_, _) =>
+                {
+                    _preview.StateScrollUpPressed = upToggle.Checked;
+                    _preview.Invalidate();
+                };
+                var downToggle = new CheckBox
+                {
+                    Text = "下矢印", Appearance = Appearance.Button,
+                    AutoSize = true, MinimumSize = arrowToggleSize,
+                    Margin = new Padding(0),
+                };
+                downToggle.CheckedChanged += (_, _) =>
+                {
+                    _preview.StateScrollDownPressed = downToggle.Checked;
+                    _preview.Invalidate();
+                };
+                arrowRow.Controls.Add(upToggle);
+                arrowRow.Controls.Add(downToggle);
+                flow.Controls.Add(arrowRow);
+                // 上矢印・下矢印は別々のアイテムなので、それぞれ別に登録する
+                // （行全体を1つの領域に結び付けると、片方だけ選択して枠を
+                // 出すことができなくなる）。
+                RegisterPreview(upToggle, new PreviewBinding(PreviewRegions.Ids.ScrollUpArrow), null);
+                RegisterPreview(downToggle, new PreviewBinding(PreviewRegions.Ids.ScrollDownArrow), null);
             }
 
             // 「配色」単独タブは廃止したので、対応するセクションがあれば
@@ -771,40 +892,6 @@ public sealed class SkinEditForm : Form
             var value = PreviewDragMath.ValueFor(b, _preview.BuildRegions(), nx, ny);
             if (value != null) _doc.SetLayoutRaw(section, key, value);
         };
-    }
-
-    private Panel BuildStateBar()
-    {
-        // 折り返すと項目が中途半端に千切れて見えるため、折り返さない。
-        // その代わり、必要な最小幅を呼び出し側（split.Panel1MinSize /
-        // フォームの MinimumSize）で確保して、ウィンドウを狭めても
-        // 折り返しが起きないようにする。
-        var bar = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Bottom,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = false,
-            Padding = new Padding(Dpi.S(this, 4)),
-        };
-        // PLAY/CONT/PAUSE/REPEAT の4チェックは、各ボタンのサブタブに置いた
-        // 「押す」「LED」トグルボタンに役目を譲って廃止した（2026-09-04、
-        // ユーザー指示）。ここに残るのは音量・進捗のようにボタン単位で
-        // 語れない状態だけ。
-        var volLabel = new Label { Text = "音量", AutoSize = true, Padding = new Padding(Dpi.S(this, 8), Dpi.S(this, 6), 0, 0) };
-        var vol = new TrackBar { Minimum = -100, Maximum = 100, Value = 0, Width = Dpi.S(this, 100) };
-        vol.ValueChanged += (_, _) => { _preview.StateVolume = vol.Value; _preview.Invalidate(); };
-
-        var progLabel = new Label { Text = "進捗", AutoSize = true, Padding = new Padding(Dpi.S(this, 8), Dpi.S(this, 6), 0, 0) };
-        var prog = new TrackBar { Minimum = 0, Maximum = 100, Value = 40, Width = Dpi.S(this, 100) };
-        prog.ValueChanged += (_, _) => { _preview.StateProgress = prog.Value / 100.0; _preview.Invalidate(); };
-
-        bar.Controls.Add(volLabel);
-        bar.Controls.Add(vol);
-        bar.Controls.Add(progLabel);
-        bar.Controls.Add(prog);
-        return bar;
     }
 
     private void RefreshAll()

@@ -12,10 +12,11 @@ using SkinEditor.Model.Render;
 
 namespace SkinEditor.UI;
 
-// プレビューに出す「演奏状態」。操作ボタンの各サブタブの「押す」「LED」
-// トグルボタンと、状態バーの音量・進捗スライダから書き換えられる
-// （2026-09-04、ユーザー指示で「PLAY/CONT/PAUSE/REPEAT」の4チェックを
-// 各ボタンのサブタブへ移した）。
+// プレビューに出す「演奏状態」。プレビューの下にあった状態バーは廃止し、
+// 各項目は対応するタブへ移した（2026-09-04、ユーザー指示）: 操作ボタンの
+// 各サブタブの「押す」「LED」トグル、[プログレスバー]の「プレイ時間」、
+// [音量バー]の「音量」、[スクロールバー]の「スクロール」「上矢印」「下矢印」、
+// [ステータス]の[レベルメータ]サブタブの「レベル」。
 public sealed class PreviewState
 {
     // 押されているボタン。並びは LayoutFieldSchema の playKey サブタブと同じ
@@ -26,6 +27,10 @@ public sealed class PreviewState
     public bool LedPause;
     public bool LedCont = true;
     public bool LedRepeat;
+    public int Scroll;              // 0..100（ファイラーの一覧の何%スクロールしたか）
+    public bool ScrollUpPressed;
+    public bool ScrollDownPressed;
+    public int Level;               // 0..100（レベルメータを左から何%点灯させるか）
     public int Volume;             // -100..100
     public double Progress = 0.4;  // 0..1
 }
@@ -126,13 +131,45 @@ public sealed class PreviewRenderer : IDisposable
             DummyPlayTimeMs);
         port.PutTotalVolBar(state.Volume);
 
-        // ファイラーは先頭から。スクロールバーのつまみが中ほどに来るよう、
-        // 行数より多めのダミーを流している。
+        // レベルメータは Redraw が呼ぶ PutStatusZero で毎回いったん全消灯に
+        // なるので、[ステータス]の[レベルメータ]サブタブの「レベル」
+        // スライダー (0..100%) で上書きする（2026-09-04、ユーザー指示）。
+        // 左から何セル点灯させるかは PutLevelMeter の levelMeterInfo[i] の
+        // 並びと同じ（i が小さいほど左＝先に点く）。FM 8ch 全段に同じ値を
+        // 適用する（levelMeterWidthCells 等の項目はどの段にも共通のため）。
+        // ついでにステータスの音量値（V000〜V127）も同じ「レベル」に連動させる
+        // （2026-09-04、ユーザー指示。0..100% を 0..127 へ比例配分）。
+        {
+            int cells = Math.Max(1, skin.levelMeterWidthCells);
+            int level = Math.Clamp(state.Level, 0, 100);
+            int lit = (int)Math.Round(cells * level / 100.0);
+            var meter = new byte[cells];
+            for (int i = 0; i < lit; i++) meter[i] = 1;
+            int volume = (int)Math.Round(127 * level / 100.0);
+            for (int row = 0; row < 8; row++)
+            {
+                port.PutLevelMeter(meter, row);
+                port.PutVolume(volume, row);
+            }
+        }
+
+        // ファイラーは行数より多めのダミーを流してあるので、スクロールバーで
+        // 動かせる余地がある。位置は [スクロールバー] タブの「スクロール」
+        // スライダー (0..100%) で決める（2026-09-04、ユーザー指示）。
         int rows = Math.Max(1, port.FileListRows);
         int itemH = Math.Max(1, port.FileListItemH);
-        port.PutFileList(DummyFiles, 0, DummyCursor, 0);
         int maxTopPx = Math.Max(0, (DummyFiles.Length - rows) * itemH);
-        port.PutScrollBar(0, maxTopPx);
+        int topPx = maxTopPx <= 0 ? 0 : (int)((long)maxTopPx * Math.Clamp(state.Scroll, 0, 100) / 100);
+        // top は行単位（PutFileList が丸ごと描く行の先頭）、offset はその中の
+        // 端数ピクセル。本体 Filer::topPx() / top() と同じ切り分け方。
+        int top = topPx / itemH;
+        int offset = topPx % itemH;
+        port.PutFileList(DummyFiles, top, DummyCursor, offset);
+        // 上下矢印の押下表示も [スクロールバー] タブのトグルボタンから。
+        port.ScrollBarFlags =
+            (state.ScrollUpPressed ? DrawScreenPort.ScrollBarUpArrowDown : 0) |
+            (state.ScrollDownPressed ? DrawScreenPort.ScrollBarDownArrowDown : 0);
+        port.PutScrollBar(topPx, maxTopPx);
 
         _textDraws = port.TextDraws;
 
