@@ -60,7 +60,7 @@ public sealed class PcmChannelRow : Panel
 
     private NumericUpDown MakeNumeric() => new()
     {
-        Width = Dpi.S(this, 72),
+        Width = SpinWidth.For(this, -9999),
         Minimum = -9999,
         Maximum = 9999,
         DecimalPlaces = 0,

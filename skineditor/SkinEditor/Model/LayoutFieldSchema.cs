@@ -12,11 +12,12 @@ public enum FieldKind { Int, IntList, Xywh, Str }
 // 指定（FieldEditControl 側で見る）。SHUFFLE 未実装の間、[PlayKey] Count を
 // うっかり 9 にしてボタンを増やせないようにするために追加した。
 //
-// Suffix は「(x,y)」「(x,y,w,h)」のような、値の並び順を示す注記。ラベルの
-// 末尾に埋め込まず、FieldEditControl が数値欄の右へ別に描く（2026-09-03、
-// ユーザー指示。ラベルと数値欄の間が間延びして見えるのを避けるため）。
-// 「(小,大)」（FileList の 2 値）は並び順ではなく意味の違いを示す注記なので
-// 対象外で、これまでどおりラベルに埋め込んだまま。
+// Suffix は「(x,y)」「(x,y,w,h)」のような、値の並び順や意味を示す注記。
+// ラベルの末尾に埋め込まず、FieldEditControl が数値欄の右へ別に描く
+// （2026-09-03、ユーザー指示。ラベルと数値欄の間が間延びして見えるのを
+// 避けるため）。「(小,大)」（FileList の 2 値。並び順ではなく意味の
+// 違いを示す注記）も、最初はこの対象外でラベルに埋め込んだままにしていたが、
+// 2026-09-06 にユーザー指示で他の Suffix と同様に右側へ出す形へ変えた。
 //
 // Group は同じタブの中でさらに項目をまとめたいときの見出し。空でなければ、
 // 直前の項目と Group が変わったところに太字の見出し行を挟み、その項目自体も
@@ -179,18 +180,18 @@ public static class LayoutFieldSchema
                 new("FileList", "Rect", "矩形", FieldKind.Xywh,
                     e => $"{e.fileListX},{e.fileListY},{e.fileListW},{e.fileListH}", Suffix: "(x,y,w,h)",
                     ComponentMin: new[] { -9999, -9999, 1, 1 }, ComponentMax: new[] { 9999, 9999, 9999, 9999 }),
-                new("FileList", "Rows", "行数 (小,大)", FieldKind.IntList, e => SkinLayoutIo.Join(e.fileListRows),
-                    IntMin: 1, IntMax: 999),
-                new("FileList", "ItemHeight", "1行の高さ (小,大)", FieldKind.IntList,
-                    e => SkinLayoutIo.Join(e.fileListItemH), IntMin: 1, IntMax: 999),
-                new("FileList", "BaseNameX", "ファイル名開始X (小,大)", FieldKind.IntList,
-                    e => SkinLayoutIo.Join(e.fileListBaseNameX), IntMin: 0, IntMax: 9999),
-                new("FileList", "BaseNameWidth", "ファイル名幅 (小,大)", FieldKind.IntList,
-                    e => SkinLayoutIo.Join(e.fileListBaseNameW), IntMin: 1, IntMax: 9999),
-                new("FileList", "TitleX", "曲名開始X (小,大)", FieldKind.IntList,
-                    e => SkinLayoutIo.Join(e.fileListTitleX), IntMin: 0, IntMax: 9999),
-                new("FileList", "TitleWidth", "曲名幅 (小,大)", FieldKind.IntList,
-                    e => SkinLayoutIo.Join(e.fileListTitleW), IntMin: 1, IntMax: 9999),
+                new("FileList", "Rows", "行数", FieldKind.IntList, e => SkinLayoutIo.Join(e.fileListRows),
+                    Suffix: "(小,大)", IntMin: 1, IntMax: 999),
+                new("FileList", "ItemHeight", "1行の高さ", FieldKind.IntList,
+                    e => SkinLayoutIo.Join(e.fileListItemH), Suffix: "(小,大)", IntMin: 1, IntMax: 999),
+                new("FileList", "BaseNameX", "ファイル名開始X", FieldKind.IntList,
+                    e => SkinLayoutIo.Join(e.fileListBaseNameX), Suffix: "(小,大)", IntMin: 0, IntMax: 9999),
+                new("FileList", "BaseNameWidth", "ファイル名幅", FieldKind.IntList,
+                    e => SkinLayoutIo.Join(e.fileListBaseNameW), Suffix: "(小,大)", IntMin: 1, IntMax: 9999),
+                new("FileList", "TitleX", "曲名開始X", FieldKind.IntList,
+                    e => SkinLayoutIo.Join(e.fileListTitleX), Suffix: "(小,大)", IntMin: 0, IntMax: 9999),
+                new("FileList", "TitleWidth", "曲名幅", FieldKind.IntList,
+                    e => SkinLayoutIo.Join(e.fileListTitleW), Suffix: "(小,大)", IntMin: 1, IntMax: 9999),
             }),
             new("スクロールバー", new List<FieldDef>
             {

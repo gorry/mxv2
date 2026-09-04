@@ -59,8 +59,9 @@ public sealed class LabeledValueRow : Panel
             var numeric = new NumericUpDown
             {
                 // 60px だと3桁の値（例: 304）でスピンボタンと重なって桁が
-                // 切れて見えた（実際に踏んだ）ので広げる。
-                Width = Dpi.S(this, 66),
+                // 切れて見えた（実際に踏んだ）ので広げる。符号が要る
+                // （Minimum が負の）項目はさらに広げる（SpinWidth 参照）。
+                Width = SpinWidth.For(this, 66, min),
                 Minimum = min,
                 Maximum = max,
                 DecimalPlaces = 0,

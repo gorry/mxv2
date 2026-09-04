@@ -52,9 +52,18 @@ public sealed class FieldEditControl : Panel
             // 2026-09-05）。
             int min = field.ComponentMin != null && i < field.ComponentMin.Length ? field.ComponentMin[i] : field.IntMin;
             int max = field.ComponentMax != null && i < field.ComponentMax.Length ? field.ComponentMax[i] : field.IntMax;
+            // 幅は実際の Min ではなく「Xywh の列としての桁数」で揃える。
+            // Rect は x,y が符号付き（5桁）・w,h が符号無し（4桁）の項目が
+            // 多いが、素材内位置のように x,y も 0 始まり（符号無し）の項目が
+            // 混ざると、同じ Xywh なのに行によって「5,5,4,4桁」「4,4,4,4桁」と
+            // 幅がバラバラになり見比べにくい（2026-09-06、ユーザー指摘）。
+            // Xywh は x,y(index 0,1) を常に符号付き幅、w,h(index 2,3) を
+            // 常に符号無し幅にして列を揃える（クランプに使う実際の
+            // Minimum/Maximum は変えない。見た目の幅だけの話）。
+            int widthMin = field.Kind == FieldKind.Xywh ? (i < 2 ? -1 : 0) : min;
             var n = new NumericUpDown
             {
-                Width = Dpi.S(this, 72),
+                Width = SpinWidth.For(this, widthMin),
                 Minimum = min,
                 Maximum = max,
                 DecimalPlaces = 0,
