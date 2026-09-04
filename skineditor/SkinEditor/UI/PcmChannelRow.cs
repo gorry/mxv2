@@ -61,8 +61,8 @@ public sealed class PcmChannelRow : Panel
     private NumericUpDown MakeNumeric() => new()
     {
         Width = Dpi.S(this, 72),
-        Minimum = -99999,
-        Maximum = 99999,
+        Minimum = -9999,
+        Maximum = 9999,
         DecimalPlaces = 0,
         Dock = DockStyle.Left,
         Margin = new Padding(0, Dpi.S(this, 3), Dpi.S(this, 4), Dpi.S(this, 3)),

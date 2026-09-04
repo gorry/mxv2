@@ -46,11 +46,17 @@ public sealed class FieldEditControl : Panel
         _numerics = new NumericUpDown[count];
         for (int i = 0; i < count; i++)
         {
+            // ComponentMin/ComponentMax（x,y,w,h で範囲が違う Xywh 項目向け）が
+            // あればそれを、無ければ IntMin/IntMax を全部の値に使う
+            // （skineditor_spin_ranges.md でユーザーがレビューした値。
+            // 2026-09-05）。
+            int min = field.ComponentMin != null && i < field.ComponentMin.Length ? field.ComponentMin[i] : field.IntMin;
+            int max = field.ComponentMax != null && i < field.ComponentMax.Length ? field.ComponentMax[i] : field.IntMax;
             var n = new NumericUpDown
             {
                 Width = Dpi.S(this, 72),
-                Minimum = -99999,
-                Maximum = 99999,
+                Minimum = min,
+                Maximum = max,
                 DecimalPlaces = 0,
                 Dock = DockStyle.Left,
                 Margin = new Padding(0, Dpi.S(this, 3), Dpi.S(this, 4), Dpi.S(this, 3)),
@@ -119,6 +125,27 @@ public sealed class FieldEditControl : Panel
         _check.Enabled = hasBase && !_field.ReadOnly;
 
         var parts = _field.Format(_doc.Effective).Split(',');
+
+        // 「素材内: ...」項目（SizeBoundRole 付き）は、x,y,w,h 全部の Max を
+        // 決め打ちの ComponentMax ではなく実際の素材の大きさから計算する
+        // （2026-09-06、ユーザー指示）。`SkinDocument.ClipRect`（素材
+        // インポート時に同じことをしている）と同じ考え方:
+        //   x: 0..素材の横幅-1／y: 0..素材の縦幅-1（矩形の原点は素材内）
+        //   w: 1..素材の横幅-現在のx／h: 1..素材の縦幅-現在のy
+        //     （w,h の上限は「素材の端までの残り幅」なので x,y に連動する）
+        // 素材が見つからない・読めないときは ComponentMax の決め打ち値へ
+        // フォールバックする。x,y も w,h も再入力のたびに変わりうるので、
+        // 呼ぶたびに測り直す。
+        if (_field.SizeBoundRole is { } role && _field.Kind == FieldKind.Xywh && _numerics.Length == 4)
+        {
+            var size = _doc.ResolveBitmapSize(role);
+            int curX = int.TryParse(parts[0], out var xv) ? xv : 0;
+            int curY = int.TryParse(parts[1], out var yv) ? yv : 0;
+            _numerics[0].Maximum = size != null ? Math.Max(0, size.Value.Width - 1) : _field.ComponentMax![0];
+            _numerics[1].Maximum = size != null ? Math.Max(0, size.Value.Height - 1) : _field.ComponentMax![1];
+            _numerics[2].Maximum = size != null ? Math.Max(1, size.Value.Width - curX) : _field.ComponentMax![2];
+            _numerics[3].Maximum = size != null ? Math.Max(1, size.Value.Height - curY) : _field.ComponentMax![3];
+        }
         for (int i = 0; i < _numerics.Length && i < parts.Length; i++)
         {
             if (int.TryParse(parts[i], out var v))

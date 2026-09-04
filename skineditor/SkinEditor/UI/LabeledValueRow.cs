@@ -32,7 +32,7 @@ public sealed class LabeledValueRow : Panel
         labels.Select(s => TextRenderer.MeasureText(s, Control.DefaultFont).Width).Max() + Dpi.S(ctx, 8);
 
     public LabeledValueRow(SkinDocument doc, string section, string key, Func<SkinLayout, int[]> select,
-        int startIndex, string[] labels, int labelWidth)
+        int startIndex, string[] labels, int labelWidth, int min = -9999, int max = 9999)
     {
         _doc = doc;
         _section = section;
@@ -61,8 +61,8 @@ public sealed class LabeledValueRow : Panel
                 // 60px だと3桁の値（例: 304）でスピンボタンと重なって桁が
                 // 切れて見えた（実際に踏んだ）ので広げる。
                 Width = Dpi.S(this, 66),
-                Minimum = -99999,
-                Maximum = 99999,
+                Minimum = min,
+                Maximum = max,
                 DecimalPlaces = 0,
                 Dock = DockStyle.Left,
                 Margin = new Padding(0, Dpi.S(this, 3), Dpi.S(this, 8), Dpi.S(this, 3)),

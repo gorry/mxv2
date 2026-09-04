@@ -403,4 +403,30 @@ public sealed class SkinDocument
         list.AddRange(_baseDirs);
         return list;
     }
+
+    // スピンボタンの Max を「素材の実際の大きさ」に合わせるために使う
+    // （2026-09-05、ユーザー指示。素材内の Src 矩形の幅・高さは素材の外を
+    // 指せないはずなので、決め打ちの数値ではなく実際の素材サイズを上限に
+    // したい、という一覧表の「備考」欄の指定）。own→Base 鎖の順に探すのは
+    // BitmapRoleRow.FindInherited と同じ考え方。見つからない・読めない
+    // ときは null（呼び出し側は決め打ちのフォールバック値を使う）。
+    public (int Width, int Height)? ResolveBitmapSize(BitmapRole role)
+    {
+        var name = BitmapRoleInfo.DefaultFileName(role);
+        foreach (var dir in AllDirsNearToFar())
+        {
+            var p = Path.Combine(dir, name);
+            if (!File.Exists(p)) continue;
+            try
+            {
+                using var img = System.Drawing.Image.FromFile(p);
+                return (img.Width, img.Height);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+        return null;
+    }
 }

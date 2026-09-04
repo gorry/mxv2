@@ -379,7 +379,8 @@ public sealed class SkinEditForm : Form
                     foreach (var names in noteRows)
                     {
                         int labelWidth = names.Length > 1 ? noteLabelWidth : octaveLabelWidth;
-                        var noteRow = new LabeledValueRow(doc, "Keyboard", "XOffset", e => e.kbXOffset, idx, names, labelWidth)
+                        var noteRow = new LabeledValueRow(doc, "Keyboard", "XOffset", e => e.kbXOffset, idx, names, labelWidth,
+                                min: 0, max: 9999)
                             { Width = Dpi.S(this, 566) };
                         _kbXOffsetRows.Add(noteRow);
                         flow.Controls.Add(noteRow);
