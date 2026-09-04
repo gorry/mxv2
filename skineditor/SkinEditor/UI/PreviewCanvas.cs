@@ -31,6 +31,12 @@ public sealed class PreviewCanvas : Panel
     private float _scale = 1f;
     private PointF _origin;
 
+    // スキンの周りに空ける余白（上下・左右の合計）。倍率はこれを引いた
+    // 領域に対して決まるので、「幅 = スキンの幅 + Margin」にすると
+    // ちょうど等倍（ドットバイドット）になる。ウィンドウの初期サイズを
+    // 決める SkinEditForm 側からも使う。
+    public const int Margin = 16;
+
     // クリックした点（skin 座標）。どのアイテムを選ぶかは SkinEditForm が決める
     // （優先順位 H はコントロール側に付いていて、ここからは見えないため）。
     public event Action<Point>? PreviewClicked;
@@ -211,7 +217,7 @@ public sealed class PreviewCanvas : Panel
 
         var eff = _doc.Effective;
         int sw = Math.Max(1, eff.screenW), sh = Math.Max(1, eff.screenH);
-        _scale = Math.Max(0.05f, Math.Min((Width - 16f) / sw, (Height - 16f) / sh));
+        _scale = Math.Max(0.05f, Math.Min((Width - Margin) / (float)sw, (Height - Margin) / (float)sh));
         _origin = new PointF((Width - sw * _scale) / 2f, (Height - sh * _scale) / 2f);
 
         if (_dirty || _canvas == null)

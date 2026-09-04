@@ -1,8 +1,15 @@
-// mxv2 スキンエディタ - layout.ini の GUI 生成用スキーマ。
+// mxv2 スキンエディタ - layout.ini の項目そのものの定義（値の側）。
+//
+// **ここには「画面のどこに出るか」は書かない。** 並び順・タブ・サブタブ・
+// 素材行との前後関係・見出しといった配置の話は UI/TabLayout.cs が持つ
+// （2026-09-06 に分離。それまではこのファイルの並び順がそのまま画面の
+// 並び順で、配置の都合で増えた指定 Group/SubTab/LeadingBitmaps/
+// TrailingBitmaps/BitmapShortLabel がこのレコードに溜まっていた）。
 //
 // 表示文字列は src/skin.h と同じ書式（カンマ区切り）。値そのものの読み書きは
 // SkinDocument.SetLayoutRaw / OwnLayoutIni がそのまま文字列で扱うので、
-// ここでは「表示ラベル」と「今の実効値をどう文字列にするか」だけを持つ。
+// ここでは「表示ラベル」「今の実効値をどう文字列にするか」「値の取りうる
+// 範囲」だけを持つ。
 
 namespace SkinEditor.Model;
 
@@ -12,315 +19,207 @@ public enum FieldKind { Int, IntList, Xywh, Str }
 // 指定（FieldEditControl 側で見る）。SHUFFLE 未実装の間、[PlayKey] Count を
 // うっかり 9 にしてボタンを増やせないようにするために追加した。
 //
-// Suffix は「(x,y)」「(x,y,w,h)」のような、値の並び順や意味を示す注記。
-// ラベルの末尾に埋め込まず、FieldEditControl が数値欄の右へ別に描く
+// Suffix は「(x,y)」「(x,y,w,h)」「(小,大)」のような、値の並び順や意味を示す
+// 注記。ラベルの末尾に埋め込まず、FieldEditControl が数値欄の右へ別に描く
 // （2026-09-03、ユーザー指示。ラベルと数値欄の間が間延びして見えるのを
-// 避けるため）。「(小,大)」（FileList の 2 値。並び順ではなく意味の
-// 違いを示す注記）も、最初はこの対象外でラベルに埋め込んだままにしていたが、
-// 2026-09-06 にユーザー指示で他の Suffix と同様に右側へ出す形へ変えた。
+// 避けるため）。
 //
-// Group は同じタブの中でさらに項目をまとめたいときの見出し。空でなければ、
-// 直前の項目と Group が変わったところに太字の見出し行を挟み、その項目自体も
-// インデントする（SkinEditForm 側）。タブそのものを分けるほどではないが、
-// ひとまとまりだと分かってほしい項目向け（2026-09-03、ユーザー指示。
-// 「ステータス」タブの「レベルメータ」「配置」に使った）。
-//
-// LeadingBitmaps / TrailingBitmaps は、この項目の直前／直後に素材の
-// インポート行を置きたいときに使う。「このタブ（またはこのグループ）には
-// 必ずこの素材がある」という関連付けではなく、**たまたまこのページの
-// この項目の隣にその素材行がある、というだけの位置情報**にしてある
-// （2026-09-04、ユーザー指示。以前は BitmapRowsByTab / GroupBitmapRole と
-// いう「タブ名／グループ名 → 素材」の対応表が SkinEditForm.cs にあったが、
-// それをやめてここへ一本化した）。BitmapShortLabel は「素材: 役割名
-// (ファイル名)」ではなく「素材 (ファイル名)」と短く出す指定
-// （見出しなどで役割名が既に分かっているとき用）。
-//
-// SubTab は Group とは別物。Group は同じフラットな並びの中で太字見出し＋
-// インデントに留めるのに対し、SubTab は**入れ子の TabControl**でページを
-// 分ける（2026-09-04、ユーザー指示。「ステータス」タブの「レベルメータ」
-// 「配置」「ピッチLFO」「音量LFO」「PCM」に使った）。
-// SubTab が変わったところで新しい TabPage を作る（同じ SubTab の項目が
-// 離れて出てきたら、既存のページへ合流する）。
-//
-// IntMin/IntMax はスピンボタンの既定の範囲（`skineditor_spin_ranges.md` で
+// IntMin/IntMax はスピンボタンの範囲（`skineditor_spin_ranges.md` で
 // ユーザーがレビューした値）。既定は「(x,y)」系の項目にそのまま使える
 // -9999〜9999。ComponentMin/ComponentMax は Xywh（x,y,w,h の4値）で
 // w,h だけ別の範囲にしたいときの上書き（配列の添字は x,y,w,h の並びと
 // 一致させる。null なら IntMin/IntMax がそのまま全部の値に掛かる）。
 // SizeBoundRole は「素材内: ...」のような、値が実際にインポートされている
-// 素材のサイズを超えられない項目に付ける。付いている場合、w,h の Max は
+// 素材のサイズを超えられない項目に付ける。付いている場合、x,y,w,h の Max は
 // ComponentMax の値ではなく `SkinDocument.ResolveBitmapSize` で得た実際の
-// 素材の幅・高さを使う（素材が見つからないときだけ ComponentMax
-// にフォールバック）。2026-09-05、ユーザー指示（`skineditor_spin_ranges.md`
-// の「備考」欄）。
+// 素材の大きさから決まる（素材が見つからないときだけ ComponentMax へ
+// フォールバック）。2026-09-05〜06、ユーザー指示。
 public sealed record FieldDef(string Section, string Key, string Label, FieldKind Kind,
-    Func<SkinLayout, string> Format, bool ReadOnly = false, string Suffix = "", string Group = "",
-    IReadOnlyList<BitmapRole>? LeadingBitmaps = null, IReadOnlyList<BitmapRole>? TrailingBitmaps = null,
-    bool BitmapShortLabel = false, string SubTab = "",
+    Func<SkinLayout, string> Format, bool ReadOnly = false, string Suffix = "",
     int IntMin = -9999, int IntMax = 9999, int[]? ComponentMin = null, int[]? ComponentMax = null,
     BitmapRole? SizeBoundRole = null);
 
-public sealed record FieldSectionDef(string Title, IReadOnlyList<FieldDef> Fields);
-
 public static class LayoutFieldSchema
 {
-    public static IReadOnlyList<FieldSectionDef> BuildSections()
+    // 「x,y は符号付き 5 桁ぶん・w,h は符号無し 4 桁ぶん」という矩形の既定。
+    // 素材内の矩形（Src 系）は x,y も 0 始まりなのでこちらではない。
+    private static readonly int[] RectMin = { -9999, -9999, 1, 1 };
+    private static readonly int[] RectMax = { 9999, 9999, 9999, 9999 };
+    // 素材内の矩形。x,y は 0 始まり、w,h は 1 以上（実際の上限は素材の大きさ）。
+    private static readonly int[] SrcMin = { 0, 0, 1, 1 };
+    private static readonly int[] SrcMax = { 9999, 9999, 9999, 9999 };
+
+    private static List<FieldDef>? _all;
+
+    // 全項目。並び順に意味は無い（画面の並びは UI/TabLayout.cs）。
+    public static IReadOnlyList<FieldDef> All() => _all ??= Build();
+
+    // Section/Key で 1 項目を引く。TabLayout の書き間違いは
+    // ここで例外になって起動時に分かる（テストでも突き合わせている）。
+    public static FieldDef Get(string section, string key)
     {
-        var status = new List<FieldDef>
+        foreach (var f in All())
         {
-            // ステータス欄全体の位置・大きさなので、タブの一番上（レベルメータ
-            // グループより前）に置く（2026-09-04、ユーザー指示）。x,y は 9 段
-            // 全体の左上、w,h は 1 段ぶんの背景の大きさ（2026-09-04 に Pos /
-            // BackWidth / BackHeight を Rect 1 つにまとめた）。
+            if (f.Section == section && f.Key == key) return f;
+        }
+        throw new KeyNotFoundException($"layout.ini の項目 {section}/{key} は LayoutFieldSchema に無い");
+    }
+
+    private static List<FieldDef> Build()
+    {
+        var list = new List<FieldDef>
+        {
+            // ---- 画面 ------------------------------------------------------
+            new("Screen", "Width", "幅", FieldKind.Int, e => $"{e.screenW}", IntMin: 1, IntMax: 9999),
+            new("Screen", "Height", "高さ", FieldKind.Int, e => $"{e.screenH}", IntMin: 1, IntMax: 9999),
+
+            // ---- 鍵盤 ------------------------------------------------------
+            new("Keyboard", "Pos", "位置", FieldKind.IntList, e => $"{e.kbX},{e.kbY}", Suffix: "(x,y)"),
+            new("Keyboard", "YOffset", "Y オフセット", FieldKind.Int, e => $"{e.kbYOffset}"),
+            new("Keyboard", "KeyOffset", "鍵の描画原点補正", FieldKind.Int, e => $"{e.keyOffset}",
+                IntMin: 0, IntMax: 12),
+            // XOffset (13個) と ChannelY (9個) はここに無い。音名／チャンネル名の
+            // ラベル付きで数個ずつの行に分けて描くので（LabeledValueRow）、
+            // 1 項目 1 行の FieldDef では表せない。配置ともども TabLayout 側。
+
+            // ---- ステータス ------------------------------------------------
+            // x,y は 9 段全体の左上、w,h は 1 段ぶんの背景の大きさ。
             new("Status", "Rect", "矩形", FieldKind.Xywh,
                 e => $"{e.statusX},{e.statusY},{e.statusW},{e.statusH}", Suffix: "(x,y,w,h)",
-                ComponentMin: new[] { -9999, -9999, 0, 0 }, ComponentMax: new[] { 9999, 9999, 9999, 9999 }),
-            // 「レベルメータ」タブは廃止してここへ統合し、2026-09-04 に
-            // 「ステータス」タブ内のサブタブへ変えた（ユーザー指示）。素材行は
-            // このすぐ下の項目の直前（＝このサブページの先頭）に
-            // たまたま置いてある、というだけ。
-            // StatusItems の「レベルメータ」項目（元は下のループで「配置」
-            // サブタブへ入るはずだった分、idx==LevelMeter は下でスキップ）は、
-            // このサブタブの中では「位置」という名で置く（2026-09-04、
-            // ユーザー指示）。
-            new("Status", "PosLevelMeter", "位置", FieldKind.IntList, e => SkinLayoutIo.Join(e.statusPos[(int)StatusItem.LevelMeter]),
-                Suffix: "(x,y)", SubTab: "レベルメータ", LeadingBitmaps: new[] { BitmapRole.LevelMeter }, BitmapShortLabel: true),
-            new("LevelMeter", "PaletteOffset", "パレット開始番号", FieldKind.Int, e => $"{e.levelMeterPalOfs}",
-                SubTab: "レベルメータ", IntMin: 0, IntMax: 255),
-            new("LevelMeter", "Cells", "セル数", FieldKind.Int, e => $"{e.levelMeterWidthCells}",
-                SubTab: "レベルメータ", IntMin: 0, IntMax: 192),
-            new("LevelMeter", "SrcX", "素材内: 左端の切り捨て", FieldKind.Int, e => $"{e.levelMeterSrcX}",
-                SubTab: "レベルメータ", IntMin: 0, IntMax: 9999),
-            // ミニフォントは 2026-09-03 に独立したタブへ戻した（ユーザー指示）。
-            // PcmX/PcmY (各8個) はここには含めない。「PCM 1ch」～「PCM 8ch」の
-            // (x,y) 2値編集として SkinEditForm 側で専用に描画する
-            // （PcmChannelRow。8個のスピンボタン列にはしない、というユーザー指示）。
-        };
-        // 1 段の中での各項目の位置。FM の 16 項目は [Status] Pos からの相対、
-        // PCM の 2 項目は PcmX/PcmY のスロットからの相対（StatusItems 参照）。
-        // 「配置」は「配置」「ピッチLFO」「音量LFO」
-        // 「PCM」の 4 つのサブタブに分けてある（2026-09-04、
-        // ユーザー指示）。StatusItems の並び（音量～ポインタ / ピッチLFO系 /
-        // 音量LFO系 / PCM系）がそのまま境目になっている。
-        for (int i = 0; i < StatusItems.Count; i++)
-        {
-            // 「レベルメータ」だけは「配置」ではなく「レベルメータ」サブタブへ
-            // （「位置」という名で）上で個別に置いてあるので、ここでは
-            // スキップする（2026-09-04、ユーザー指示）。
-            if (i == (int)StatusItem.LevelMeter) continue;
+                ComponentMin: new[] { -9999, -9999, 0, 0 }, ComponentMax: RectMax),
+            new("LevelMeter", "PaletteOffset", "パレット開始番号", FieldKind.Int,
+                e => $"{e.levelMeterPalOfs}", IntMin: 0, IntMax: 255),
+            new("LevelMeter", "Cells", "セル数", FieldKind.Int,
+                e => $"{e.levelMeterWidthCells}", IntMin: 0, IntMax: 192),
+            new("LevelMeter", "SrcX", "素材内: 左端の切り捨て", FieldKind.Int,
+                e => $"{e.levelMeterSrcX}", IntMin: 0, IntMax: 9999),
+            // PcmX/PcmY (各8個) もここに無い（「PCM 1ch」〜「PCM 8ch」の
+            // (x,y) 行に分けて描く。PcmChannelRow）。
 
-            int idx = i;
-            string subTab = idx switch
-            {
-                <= 6 => "配置",                 // 音量～ポインタ（レベルメータを除く）
-                <= 11 => "ピッチLFO",           // ピッチLFO・ピッチLFO 1～4
-                <= 15 => "音量LFO",             // 音量LFO・音量LFO 1～3
-                _ => "PCM",                     // PCM 音量・PCM ポインタ
-            };
-            // 「配置」系サブタブの見出しで分かるので、項目名に「配置: 」は
-            // 付けない（2026-09-04、ユーザー指示）。
-            status.Add(new FieldDef("Status", StatusItems.Keys[idx], StatusItems.Labels[idx],
-                FieldKind.IntList, e => SkinLayoutIo.Join(e.statusPos[idx]), Suffix: "(x,y)", SubTab: subTab));
-        }
+            // ---- ミニフォント ----------------------------------------------
+            // 1 文字の大きさは素材そのもので決まるので、あるのは送りだけ。
+            new("MiniFont", "Width", "送り幅", FieldKind.Int, e => $"{e.miniFontW}", IntMin: 0, IntMax: 9999),
+            new("MiniFont", "Height", "行の高さ", FieldKind.Int, e => $"{e.miniFontH}", IntMin: 0, IntMax: 9999),
 
-        var list = new List<FieldSectionDef>
-        {
-            new("画面", new List<FieldDef>
-            {
-                // back.bmp の素材行は、たまたまこの項目の直前にある。
-                new("Screen", "Width", "幅", FieldKind.Int, e => $"{e.screenW}",
-                    LeadingBitmaps: new[] { BitmapRole.Back }, IntMin: 1, IntMax: 9999),
-                new("Screen", "Height", "高さ", FieldKind.Int, e => $"{e.screenH}", IntMin: 1, IntMax: 9999),
-            }),
-            new("鍵盤", new List<FieldDef>
-            {
-                // kb0/kb1/kb2 の素材行は、たまたま「位置」の直後（「1オクターブの
-                // 鍵のX」より前）にある。「位置」を一番上に出す都合で、この項目の
-                // 自分の入力欄の後・関連グループの前、という位置になる
-                // （2026-09-04、ユーザー指示）。
-                new("Keyboard", "Pos", "位置", FieldKind.IntList, e => $"{e.kbX},{e.kbY}", Suffix: "(x,y)",
-                    TrailingBitmaps: new[] { BitmapRole.Kb0, BitmapRole.Kb1, BitmapRole.Kb2 }),
-                // XOffset (13個) はここには含めない。「1オクターブの鍵のX」として
-                // 音名ラベル付きの 4 行（C,C#,D,D#／E,F,F#,G／G#,A,A#,B／
-                // オクターブ幅）に SkinEditForm 側で専用に描画する
-                // （LabeledValueRow。13個並びのスピンボタン列にはしない、
-                // というユーザー指示）。
-                new("Keyboard", "YOffset", "Y オフセット", FieldKind.Int, e => $"{e.kbYOffset}"),
-                // ChannelY (9個) もここには含めない。「各チャンネルのY位置」として
-                // FM1-4／FM5-8／PCM の3行に SkinEditForm 側で専用に描画する
-                // （同じく LabeledValueRow。9個並びのスピンボタン列にはしない、
-                // というユーザー指示）。
-                new("Keyboard", "KeyOffset", "鍵の描画原点補正", FieldKind.Int, e => $"{e.keyOffset}", IntMin: 0, IntMax: 12),
-            }),
-            new("ステータス", status),
-            // ミニフォント（ステータス欄などのビットマップ文字）。1 文字の
-            // 大きさは素材そのもので決まるので、ここにあるのは画面に置くときの
-            // 送りだけ。素材行は、たまたまこのタブの最初の項目の直前にある。
-            new("ミニフォント", new List<FieldDef>
-            {
-                new("MiniFont", "Width", "送り幅", FieldKind.Int, e => $"{e.miniFontW}",
-                    LeadingBitmaps: new[] { BitmapRole.MiniFont }, IntMin: 0, IntMax: 9999),
-                new("MiniFont", "Height", "行の高さ", FieldKind.Int, e => $"{e.miniFontH}", IntMin: 0, IntMax: 9999),
-            }),
-            new("バナー", new List<FieldDef>
-            {
-                new("Banner", "Rect", "矩形", FieldKind.Xywh,
-                    e => $"{e.bannerX},{e.bannerY},{e.bannerW},{e.bannerH}", Suffix: "(x,y,w,h)",
-                    LeadingBitmaps: new[] { BitmapRole.Banner },
-                    ComponentMin: new[] { -9999, -9999, 1, 1 }, ComponentMax: new[] { 9999, 9999, 9999, 9999 }),
-            }),
-            new("曲名", new List<FieldDef>
-            {
-                new("Title", "Rect", "矩形", FieldKind.Xywh,
-                    e => $"{e.titleX},{e.titleY},{e.titleW},{e.titleH}", Suffix: "(x,y,w,h)",
-                    ComponentMin: new[] { -9999, -9999, 1, 1 }, ComponentMax: new[] { 9999, 9999, 9999, 9999 }),
-            }),
-            new("ファイラー", new List<FieldDef>
-            {
-                new("FileList", "Rect", "矩形", FieldKind.Xywh,
-                    e => $"{e.fileListX},{e.fileListY},{e.fileListW},{e.fileListH}", Suffix: "(x,y,w,h)",
-                    ComponentMin: new[] { -9999, -9999, 1, 1 }, ComponentMax: new[] { 9999, 9999, 9999, 9999 }),
-                new("FileList", "Rows", "行数", FieldKind.IntList, e => SkinLayoutIo.Join(e.fileListRows),
-                    Suffix: "(小,大)", IntMin: 1, IntMax: 999),
-                new("FileList", "ItemHeight", "1行の高さ", FieldKind.IntList,
-                    e => SkinLayoutIo.Join(e.fileListItemH), Suffix: "(小,大)", IntMin: 1, IntMax: 999),
-                new("FileList", "BaseNameX", "ファイル名開始X", FieldKind.IntList,
-                    e => SkinLayoutIo.Join(e.fileListBaseNameX), Suffix: "(小,大)", IntMin: 0, IntMax: 9999),
-                new("FileList", "BaseNameWidth", "ファイル名幅", FieldKind.IntList,
-                    e => SkinLayoutIo.Join(e.fileListBaseNameW), Suffix: "(小,大)", IntMin: 1, IntMax: 9999),
-                new("FileList", "TitleX", "曲名開始X", FieldKind.IntList,
-                    e => SkinLayoutIo.Join(e.fileListTitleX), Suffix: "(小,大)", IntMin: 0, IntMax: 9999),
-                new("FileList", "TitleWidth", "曲名幅", FieldKind.IntList,
-                    e => SkinLayoutIo.Join(e.fileListTitleW), Suffix: "(小,大)", IntMin: 1, IntMax: 9999),
-            }),
-            new("スクロールバー", new List<FieldDef>
-            {
-                new("ScrollBar", "Rect", "矩形", FieldKind.Xywh,
-                    e => $"{e.scrollX},{e.scrollY},{e.scrollW},{e.scrollH}", Suffix: "(x,y,w,h)",
-                    LeadingBitmaps: new[] { BitmapRole.ScrollBar },
-                    ComponentMin: new[] { -9999, -9999, 1, 1 }, ComponentMax: new[] { 9999, 9999, 9999, 9999 }),
-                new("ScrollBar", "SrcThumb", "素材内: つまみ", FieldKind.Xywh, e => e.scrollSrcThumb.ToString(),
-                    Suffix: "(x,y,w,h)", ComponentMin: new[] { 0, 0, 1, 1 }, ComponentMax: new[] { 9999, 9999, 9999, 9999 },
-                    SizeBoundRole: BitmapRole.ScrollBar),
-                new("ScrollBar", "SrcUpArrowPress", "素材内: 上矢印(押下)", FieldKind.Xywh,
-                    e => e.scrollSrcUpArrowPress.ToString(), Suffix: "(x,y,w,h)",
-                    ComponentMin: new[] { 0, 0, 1, 1 }, ComponentMax: new[] { 9999, 9999, 9999, 9999 },
-                    SizeBoundRole: BitmapRole.ScrollBar),
-                new("ScrollBar", "SrcDownArrowPress", "素材内: 下矢印(押下)", FieldKind.Xywh,
-                    e => e.scrollSrcDownArrowPress.ToString(), Suffix: "(x,y,w,h)",
-                    ComponentMin: new[] { 0, 0, 1, 1 }, ComponentMax: new[] { 9999, 9999, 9999, 9999 },
-                    SizeBoundRole: BitmapRole.ScrollBar),
-                new("ScrollBar", "SrcUpArrow", "素材内: 上矢印", FieldKind.Xywh, e => e.scrollSrcUpArrow.ToString(),
-                    Suffix: "(x,y,w,h)", ComponentMin: new[] { 0, 0, 1, 1 }, ComponentMax: new[] { 9999, 9999, 9999, 9999 },
-                    SizeBoundRole: BitmapRole.ScrollBar),
-                new("ScrollBar", "SrcBar", "素材内: 溝", FieldKind.Xywh, e => e.scrollSrcBar.ToString(),
-                    Suffix: "(x,y,w,h)", ComponentMin: new[] { 0, 0, 1, 1 }, ComponentMax: new[] { 9999, 9999, 9999, 9999 },
-                    SizeBoundRole: BitmapRole.ScrollBar),
-                new("ScrollBar", "SrcDownArrow", "素材内: 下矢印", FieldKind.Xywh,
-                    e => e.scrollSrcDownArrow.ToString(), Suffix: "(x,y,w,h)",
-                    ComponentMin: new[] { 0, 0, 1, 1 }, ComponentMax: new[] { 9999, 9999, 9999, 9999 },
-                    SizeBoundRole: BitmapRole.ScrollBar),
-                new("ScrollBar", "PosUpArrow", "配置: 上矢印", FieldKind.IntList,
-                    e => SkinLayoutIo.Join(e.scrollPosUpArrow), Suffix: "(x,y)"),
-                new("ScrollBar", "PosBar", "配置: 溝", FieldKind.IntList, e => SkinLayoutIo.Join(e.scrollPosBar),
-                    Suffix: "(x,y)"),
-                new("ScrollBar", "PosDownArrow", "配置: 下矢印", FieldKind.IntList,
-                    e => SkinLayoutIo.Join(e.scrollPosDownArrow), Suffix: "(x,y)"),
-            }),
-            new("プログレスバー", new List<FieldDef>
-            {
-                new("ProgressBar", "Rect", "矩形", FieldKind.Xywh,
-                    e => $"{e.progX},{e.progY},{e.progW},{e.progH}", Suffix: "(x,y,w,h)",
-                    LeadingBitmaps: new[] { BitmapRole.ProgressBar },
-                    ComponentMin: new[] { -9999, -9999, 1, 1 }, ComponentMax: new[] { 9999, 9999, 9999, 9999 }),
-                new("ProgressBar", "TimePos", "時刻表示位置", FieldKind.IntList,
-                    e => SkinLayoutIo.Join(e.progTimePos), Suffix: "(x,y)"),
-            }),
-            new("音量バー", new List<FieldDef>
-            {
-                new("VolumeBar", "Rect", "矩形", FieldKind.Xywh,
-                    e => $"{e.volX},{e.volY},{e.volW},{e.volH}", Suffix: "(x,y,w,h)",
-                    LeadingBitmaps: new[] { BitmapRole.VolumeBar },
-                    ComponentMin: new[] { -9999, -9999, 1, 1 }, ComponentMax: new[] { 9999, 9999, 9999, 9999 }),
-                new("VolumeBar", "TimePos", "時刻表示位置", FieldKind.IntList,
-                    e => SkinLayoutIo.Join(e.volTimePos), Suffix: "(x,y)"),
-                new("VolumeBar", "NobWidth", "つまみ幅", FieldKind.Int, e => $"{e.volNobW}", IntMin: 0, IntMax: 9999),
-                new("VolumeBar", "NobSrc", "素材内: つまみ", FieldKind.Xywh, e => e.volRect[0].ToString(),
-                    Suffix: "(x,y,w,h)", ComponentMin: new[] { 0, 0, 1, 1 }, ComponentMax: new[] { 9999, 9999, 9999, 9999 },
-                    SizeBoundRole: BitmapRole.VolumeBar),
-                new("VolumeBar", "SlideSrc", "素材内: スライド", FieldKind.Xywh, e => e.volRect[1].ToString(),
-                    Suffix: "(x,y,w,h)", ComponentMin: new[] { 0, 0, 1, 1 }, ComponentMax: new[] { 9999, 9999, 9999, 9999 },
-                    SizeBoundRole: BitmapRole.VolumeBar),
-            }),
-        };
+            // ---- バナー / 曲名 ---------------------------------------------
+            new("Banner", "Rect", "矩形", FieldKind.Xywh,
+                e => $"{e.bannerX},{e.bannerY},{e.bannerW},{e.bannerH}", Suffix: "(x,y,w,h)",
+                ComponentMin: RectMin, ComponentMax: RectMax),
+            new("Title", "Rect", "矩形", FieldKind.Xywh,
+                e => $"{e.titleX},{e.titleY},{e.titleW},{e.titleH}", Suffix: "(x,y,w,h)",
+                ComponentMin: RectMin, ComponentMax: RectMax),
 
-        var playKey = new List<FieldDef>
-        {
-            // x,y は Pos<n> の原点、w,h は使うボタン全体を覆う大きさ
-            // （2026-09-04 に Pos から Rect へ変えた）。
+            // ---- ファイラー ------------------------------------------------
+            new("FileList", "Rect", "矩形", FieldKind.Xywh,
+                e => $"{e.fileListX},{e.fileListY},{e.fileListW},{e.fileListH}", Suffix: "(x,y,w,h)",
+                ComponentMin: RectMin, ComponentMax: RectMax),
+            new("FileList", "Rows", "行数", FieldKind.IntList,
+                e => SkinLayoutIo.Join(e.fileListRows), Suffix: "(小,大)", IntMin: 1, IntMax: 999),
+            new("FileList", "ItemHeight", "1行の高さ", FieldKind.IntList,
+                e => SkinLayoutIo.Join(e.fileListItemH), Suffix: "(小,大)", IntMin: 1, IntMax: 999),
+            new("FileList", "BaseNameX", "ファイル名開始X", FieldKind.IntList,
+                e => SkinLayoutIo.Join(e.fileListBaseNameX), Suffix: "(小,大)", IntMin: 0, IntMax: 9999),
+            new("FileList", "BaseNameWidth", "ファイル名幅", FieldKind.IntList,
+                e => SkinLayoutIo.Join(e.fileListBaseNameW), Suffix: "(小,大)", IntMin: 1, IntMax: 9999),
+            new("FileList", "TitleX", "曲名開始X", FieldKind.IntList,
+                e => SkinLayoutIo.Join(e.fileListTitleX), Suffix: "(小,大)", IntMin: 0, IntMax: 9999),
+            new("FileList", "TitleWidth", "曲名幅", FieldKind.IntList,
+                e => SkinLayoutIo.Join(e.fileListTitleW), Suffix: "(小,大)", IntMin: 1, IntMax: 9999),
+
+            // ---- スクロールバー --------------------------------------------
+            new("ScrollBar", "Rect", "矩形", FieldKind.Xywh,
+                e => $"{e.scrollX},{e.scrollY},{e.scrollW},{e.scrollH}", Suffix: "(x,y,w,h)",
+                ComponentMin: RectMin, ComponentMax: RectMax),
+            new("ScrollBar", "SrcThumb", "素材内: つまみ", FieldKind.Xywh,
+                e => e.scrollSrcThumb.ToString(), Suffix: "(x,y,w,h)",
+                ComponentMin: SrcMin, ComponentMax: SrcMax, SizeBoundRole: BitmapRole.ScrollBar),
+            new("ScrollBar", "SrcUpArrowPress", "素材内: 上矢印(押下)", FieldKind.Xywh,
+                e => e.scrollSrcUpArrowPress.ToString(), Suffix: "(x,y,w,h)",
+                ComponentMin: SrcMin, ComponentMax: SrcMax, SizeBoundRole: BitmapRole.ScrollBar),
+            new("ScrollBar", "SrcDownArrowPress", "素材内: 下矢印(押下)", FieldKind.Xywh,
+                e => e.scrollSrcDownArrowPress.ToString(), Suffix: "(x,y,w,h)",
+                ComponentMin: SrcMin, ComponentMax: SrcMax, SizeBoundRole: BitmapRole.ScrollBar),
+            new("ScrollBar", "SrcUpArrow", "素材内: 上矢印", FieldKind.Xywh,
+                e => e.scrollSrcUpArrow.ToString(), Suffix: "(x,y,w,h)",
+                ComponentMin: SrcMin, ComponentMax: SrcMax, SizeBoundRole: BitmapRole.ScrollBar),
+            new("ScrollBar", "SrcBar", "素材内: 溝", FieldKind.Xywh,
+                e => e.scrollSrcBar.ToString(), Suffix: "(x,y,w,h)",
+                ComponentMin: SrcMin, ComponentMax: SrcMax, SizeBoundRole: BitmapRole.ScrollBar),
+            new("ScrollBar", "SrcDownArrow", "素材内: 下矢印", FieldKind.Xywh,
+                e => e.scrollSrcDownArrow.ToString(), Suffix: "(x,y,w,h)",
+                ComponentMin: SrcMin, ComponentMax: SrcMax, SizeBoundRole: BitmapRole.ScrollBar),
+            new("ScrollBar", "PosUpArrow", "配置: 上矢印", FieldKind.IntList,
+                e => SkinLayoutIo.Join(e.scrollPosUpArrow), Suffix: "(x,y)"),
+            new("ScrollBar", "PosBar", "配置: 溝", FieldKind.IntList,
+                e => SkinLayoutIo.Join(e.scrollPosBar), Suffix: "(x,y)"),
+            new("ScrollBar", "PosDownArrow", "配置: 下矢印", FieldKind.IntList,
+                e => SkinLayoutIo.Join(e.scrollPosDownArrow), Suffix: "(x,y)"),
+
+            // ---- プログレスバー --------------------------------------------
+            new("ProgressBar", "Rect", "矩形", FieldKind.Xywh,
+                e => $"{e.progX},{e.progY},{e.progW},{e.progH}", Suffix: "(x,y,w,h)",
+                ComponentMin: RectMin, ComponentMax: RectMax),
+            new("ProgressBar", "TimePos", "時刻表示位置", FieldKind.IntList,
+                e => SkinLayoutIo.Join(e.progTimePos), Suffix: "(x,y)"),
+
+            // ---- 音量バー --------------------------------------------------
+            new("VolumeBar", "Rect", "矩形", FieldKind.Xywh,
+                e => $"{e.volX},{e.volY},{e.volW},{e.volH}", Suffix: "(x,y,w,h)",
+                ComponentMin: RectMin, ComponentMax: RectMax),
+            new("VolumeBar", "TimePos", "時刻表示位置", FieldKind.IntList,
+                e => SkinLayoutIo.Join(e.volTimePos), Suffix: "(x,y)"),
+            new("VolumeBar", "NobWidth", "つまみ幅", FieldKind.Int, e => $"{e.volNobW}", IntMin: 0, IntMax: 9999),
+            new("VolumeBar", "NobSrc", "素材内: つまみ", FieldKind.Xywh,
+                e => e.volRect[0].ToString(), Suffix: "(x,y,w,h)",
+                ComponentMin: SrcMin, ComponentMax: SrcMax, SizeBoundRole: BitmapRole.VolumeBar),
+            new("VolumeBar", "SlideSrc", "素材内: スライド", FieldKind.Xywh,
+                e => e.volRect[1].ToString(), Suffix: "(x,y,w,h)",
+                ComponentMin: SrcMin, ComponentMax: SrcMax, SizeBoundRole: BitmapRole.VolumeBar),
+
+            // ---- 操作ボタン ------------------------------------------------
+            // x,y は Pos<n> の原点、w,h は使うボタン全体を覆う大きさ。
             new("PlayKey", "Rect", "矩形", FieldKind.Xywh,
                 e => $"{e.playKeyX},{e.playKeyY},{e.playKeyW},{e.playKeyH}", Suffix: "(x,y,w,h)",
-                LeadingBitmaps: new[] { BitmapRole.PlayKey },
-                ComponentMin: new[] { 0, 0, 1, 1 }, ComponentMax: new[] { 9999, 9999, 9999, 9999 }),
+                ComponentMin: SrcMin, ComponentMax: SrcMax),
             // SHUFFLE (index 8) が未実装で当分実装の予定も無いので、
             // 9 にして出してしまわないよう編集不可にする（ユーザー指示）。
-            new("PlayKey", "Count", "使うボタンの数", FieldKind.Int, e => $"{e.numPlayKeys}", ReadOnly: true,
-                IntMin: 1, IntMax: 9),
+            new("PlayKey", "Count", "使うボタンの数", FieldKind.Int, e => $"{e.numPlayKeys}",
+                ReadOnly: true, IntMin: 1, IntMax: 9),
+            new("PlayKey", "PalKey", "ボタンの色", FieldKind.Int, e => $"{e.palPlayKeyKey}", IntMin: 0, IntMax: 255),
+            new("PlayKey", "PalDark", "LED: 消灯", FieldKind.Int, e => $"{e.palDark}", IntMin: 0, IntMax: 255),
+            new("PlayKey", "PalRed", "LED: 赤", FieldKind.Int, e => $"{e.palRed}", IntMin: 0, IntMax: 255),
+            new("PlayKey", "PalGreen", "LED: 緑", FieldKind.Int, e => $"{e.palGreen}", IntMin: 0, IntMax: 255),
+            new("PlayKey", "PalYellow", "LED: 黄", FieldKind.Int, e => $"{e.palYellow}", IntMin: 0, IntMax: 255),
+            new("PlayKey", "PalBlue", "LED: 青", FieldKind.Int, e => $"{e.palBlue}", IntMin: 0, IntMax: 255),
+            new("PlayKey", "PalPlayLed", "LEDのパレット", FieldKind.Int, e => $"{e.palPlayLed}", IntMin: 0, IntMax: 255),
+            new("PlayKey", "PalPauseLed", "LEDのパレット", FieldKind.Int, e => $"{e.palPauseLed}", IntMin: 0, IntMax: 255),
+            new("PlayKey", "PalContLed", "LEDのパレット", FieldKind.Int, e => $"{e.palContLed}", IntMin: 0, IntMax: 255),
+            new("PlayKey", "PalRepeatLed", "LEDのパレット", FieldKind.Int, e => $"{e.palRepeatLed}", IntMin: 0, IntMax: 255),
         };
-        // ボタンごとにサブタブを分ける（2026-09-04、ユーザー指示。「ステータス」
-        // タブの仕組みをそのまま流用）。各サブタブに「素材内位置」「配置」を、
-        // PLAY/PAUSE/CONT/REPEAT にはさらに自分の LED パレットも置く。
-        // SHUFFLE (index 8) は当分実装の予定が無いので出さない（Src8 と同じ扱い。
-        // 以前は Pos8 だけ取りこぼして出てしまっていたので、ここで揃えた）。
-        string[] names = { "PREV", "STOP", "PLAY", "FAST", "PAUSE", "NEXT", "CONT", "REPEAT" };
-        for (int i = 0; i < names.Length; i++)
+
+        // ステータス 1 段の中での各項目の位置（StatusItems の 18 項目）。
+        // FM の 16 項目は [Status] Rect の左上からの相対、PCM の 2 項目は
+        // PcmX/PcmY のスロットからの相対。レベルメータだけはラベルが
+        // 「位置」（サブタブ名で何のことか分かるため。2026-09-04、ユーザー指示）。
+        for (int i = 0; i < StatusItems.Count; i++)
         {
             int idx = i;
-            string subTab = names[idx];
-            playKey.Add(new FieldDef("PlayKey", $"Src{idx}", "素材内位置", FieldKind.Xywh,
-                e => e.playKeyRect[idx].ToString(), Suffix: "(x,y,w,h)", SubTab: subTab,
-                ComponentMin: new[] { 0, 0, 1, 1 }, ComponentMax: new[] { 9999, 9999, 9999, 9999 },
-                SizeBoundRole: BitmapRole.PlayKey));
-            playKey.Add(new FieldDef("PlayKey", $"Pos{idx}", "配置", FieldKind.IntList,
-                e => SkinLayoutIo.Join(e.playKeyPos[idx]), Suffix: "(x,y)", SubTab: subTab));
-            switch (subTab)
-            {
-                case "PLAY":
-                    playKey.Add(new FieldDef("PlayKey", "PalPlayLed", "LEDのパレット", FieldKind.Int,
-                        e => $"{e.palPlayLed}", SubTab: subTab, IntMin: 0, IntMax: 255));
-                    break;
-                case "PAUSE":
-                    playKey.Add(new FieldDef("PlayKey", "PalPauseLed", "LEDのパレット", FieldKind.Int,
-                        e => $"{e.palPauseLed}", SubTab: subTab, IntMin: 0, IntMax: 255));
-                    break;
-                case "CONT":
-                    playKey.Add(new FieldDef("PlayKey", "PalContLed", "LEDのパレット", FieldKind.Int,
-                        e => $"{e.palContLed}", SubTab: subTab, IntMin: 0, IntMax: 255));
-                    break;
-                case "REPEAT":
-                    playKey.Add(new FieldDef("PlayKey", "PalRepeatLed", "LEDのパレット", FieldKind.Int,
-                        e => $"{e.palRepeatLed}", SubTab: subTab, IntMin: 0, IntMax: 255));
-                    break;
-            }
+            string label = idx == (int)StatusItem.LevelMeter ? "位置" : StatusItems.Labels[idx];
+            list.Add(new FieldDef("Status", StatusItems.Keys[idx], label, FieldKind.IntList,
+                e => SkinLayoutIo.Join(e.statusPos[idx]), Suffix: "(x,y)"));
         }
-        // 素材全体のパレット番号（ボタンごとの LED ではなく playkey.bmp の
-        // 色玉そのもの）は、ボタン名のサブタブと並ぶ「パレット」サブタブへ
-        // まとめる（2026-09-04、ユーザー指示。以前はここだけフラットに
-        // 残っていた）。ラベルも「パレット: ...」の接頭辞をやめて短くした
-        // （サブタブ名で分かるので、他のサブタブと同じ扱い）。
-        playKey.Add(new FieldDef("PlayKey", "PalKey", "ボタンの色", FieldKind.Int, e => $"{e.palPlayKeyKey}",
-            SubTab: "パレット", IntMin: 0, IntMax: 255));
-        playKey.Add(new FieldDef("PlayKey", "PalDark", "LED: 消灯", FieldKind.Int, e => $"{e.palDark}",
-            SubTab: "パレット", IntMin: 0, IntMax: 255));
-        playKey.Add(new FieldDef("PlayKey", "PalRed", "LED: 赤", FieldKind.Int, e => $"{e.palRed}",
-            SubTab: "パレット", IntMin: 0, IntMax: 255));
-        playKey.Add(new FieldDef("PlayKey", "PalGreen", "LED: 緑", FieldKind.Int, e => $"{e.palGreen}",
-            SubTab: "パレット", IntMin: 0, IntMax: 255));
-        playKey.Add(new FieldDef("PlayKey", "PalYellow", "LED: 黄", FieldKind.Int, e => $"{e.palYellow}",
-            SubTab: "パレット", IntMin: 0, IntMax: 255));
-        playKey.Add(new FieldDef("PlayKey", "PalBlue", "LED: 青", FieldKind.Int, e => $"{e.palBlue}",
-            SubTab: "パレット", IntMin: 0, IntMax: 255));
-        list.Add(new FieldSectionDef("操作ボタン", playKey));
+
+        // 操作ボタン 8 個ぶんの「素材内位置」「配置」。
+        // SHUFFLE (index 8) は当分実装の予定が無いので出さない。
+        for (int i = 0; i < 8; i++)
+        {
+            int idx = i;
+            list.Add(new FieldDef("PlayKey", $"Src{idx}", "素材内位置", FieldKind.Xywh,
+                e => e.playKeyRect[idx].ToString(), Suffix: "(x,y,w,h)",
+                ComponentMin: SrcMin, ComponentMax: SrcMax, SizeBoundRole: BitmapRole.PlayKey));
+            list.Add(new FieldDef("PlayKey", $"Pos{idx}", "配置", FieldKind.IntList,
+                e => SkinLayoutIo.Join(e.playKeyPos[idx]), Suffix: "(x,y)"));
+        }
 
         return list;
     }

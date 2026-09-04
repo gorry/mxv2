@@ -30,21 +30,18 @@ public class PreviewBindingTests
     public void EveryLayoutFieldHasABinding()
     {
         var regions = RegionsOf("Default");
-        foreach (var section in LayoutFieldSchema.BuildSections())
+        foreach (var f in LayoutFieldSchema.All())
         {
-            foreach (var f in section.Fields)
+            var b = PreviewBindings.For(f.Section, f.Key);
+            if (f.Section == "MiniFont")
             {
-                var b = PreviewBindings.For(f.Section, f.Key);
-                if (f.Section == "MiniFont")
-                {
-                    Assert.True(string.IsNullOrEmpty(b.Region), $"{f.Section}/{f.Key} は対応アイテムなしのはず");
-                    continue;
-                }
-                Assert.False(string.IsNullOrEmpty(b.Region), $"{f.Section}/{f.Key} の対応アイテムが無い");
-                Assert.True(regions.ContainsKey(b.Region), $"{f.Section}/{f.Key} -> 未知のアイテム {b.Region}");
-                if (!string.IsNullOrEmpty(b.DragParent))
-                    Assert.True(regions.ContainsKey(b.DragParent), $"{f.Section}/{f.Key} -> 未知の親 {b.DragParent}");
+                Assert.True(string.IsNullOrEmpty(b.Region), $"{f.Section}/{f.Key} は対応アイテムなしのはず");
+                continue;
             }
+            Assert.False(string.IsNullOrEmpty(b.Region), $"{f.Section}/{f.Key} の対応アイテムが無い");
+            Assert.True(regions.ContainsKey(b.Region), $"{f.Section}/{f.Key} -> 未知のアイテム {b.Region}");
+            if (!string.IsNullOrEmpty(b.DragParent))
+                Assert.True(regions.ContainsKey(b.DragParent), $"{f.Section}/{f.Key} -> 未知の親 {b.DragParent}");
         }
     }
 
@@ -100,10 +97,7 @@ public class PreviewBindingTests
             clickable[b.Region] = Math.Max(clickable.TryGetValue(b.Region, out var h) ? h : 0, b.Hit);
         }
 
-        foreach (var section in LayoutFieldSchema.BuildSections())
-        {
-            foreach (var f in section.Fields) Add(PreviewBindings.For(f.Section, f.Key));
-        }
+        foreach (var f in LayoutFieldSchema.All()) Add(PreviewBindings.For(f.Section, f.Key));
         for (int i = 0; i < 9; i++) Add(PreviewBindings.For("Keyboard", "ChannelY", i));
         foreach (BitmapRole role in Enum.GetValues<BitmapRole>()) Add(PreviewBindings.ForBitmap(role));
 
@@ -141,25 +135,22 @@ public class PreviewBindingTests
             Dictionary<string, Rectangle> Regions() => PreviewRegions.Build(doc.Effective,
                 n => { var a = assets.Find(n); return a == null ? null : new Size(a.Width, a.Height); }, 0);
 
-            foreach (var section in LayoutFieldSchema.BuildSections())
+            foreach (var f in LayoutFieldSchema.All())
             {
-                foreach (var f in section.Fields)
-                {
-                    var b = PreviewBindings.For(f.Section, f.Key);
-                    if (b.Drag == PreviewDrag.None) continue;
+                var b = PreviewBindings.For(f.Section, f.Key);
+                if (b.Drag == PreviewDrag.None) continue;
 
-                    // 元の位置から少しずらした先を狙う（0,0 だと、たまたま
-                    // 合っているだけの式でも通ってしまう）。
-                    var before = Regions()[b.Region];
-                    int tx = before.X + 17, ty = before.Y + 23;
-                    var value = PreviewDragMath.ValueFor(b, Regions(), tx, ty);
-                    Assert.NotNull(value);
-                    doc.SetLayoutRaw(f.Section, f.Key, value!);
+                // 元の位置から少しずらした先を狙う（0,0 だと、たまたま
+                // 合っているだけの式でも通ってしまう）。
+                var before = Regions()[b.Region];
+                int tx = before.X + 17, ty = before.Y + 23;
+                var value = PreviewDragMath.ValueFor(b, Regions(), tx, ty);
+                Assert.NotNull(value);
+                doc.SetLayoutRaw(f.Section, f.Key, value!);
 
-                    var after = Regions()[b.Region];
-                    Assert.True(after.X == tx && after.Y == ty,
-                        $"{f.Section}/{f.Key}: ({tx},{ty}) へ動かしたのに ({after.X},{after.Y}) になった");
-                }
+                var after = Regions()[b.Region];
+                Assert.True(after.X == tx && after.Y == ty,
+                    $"{f.Section}/{f.Key}: ({tx},{ty}) へ動かしたのに ({after.X},{after.Y}) になった");
             }
         }
         finally

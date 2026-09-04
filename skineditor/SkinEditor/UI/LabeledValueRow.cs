@@ -13,7 +13,7 @@ using SkinEditor.Model;
 
 namespace SkinEditor.UI;
 
-public sealed class LabeledValueRow : Panel
+public sealed class LabeledValueRow : Panel, IEditableRow
 {
     private readonly SkinDocument _doc;
     private readonly string _section;

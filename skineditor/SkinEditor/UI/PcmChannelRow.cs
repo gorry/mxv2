@@ -14,7 +14,7 @@ using SkinEditor.Model;
 
 namespace SkinEditor.UI;
 
-public sealed class PcmChannelRow : Panel
+public sealed class PcmChannelRow : Panel, IEditableRow
 {
     private readonly SkinDocument _doc;
     private readonly int _index;
