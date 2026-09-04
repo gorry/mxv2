@@ -129,6 +129,18 @@ public sealed class SkinEditForm : Form
         // 出ない幅を最初から確保する。
         int tabViewWidth = rowWidth + SystemInformation.VerticalScrollBarWidth + Dpi.S(this, 8);
 
+        // 右側（タブページ）の幅は「横スクロールバーが出ない幅」ちょうどに
+        // 固定し、ウィンドウをどう広げても縮めても変えない（2026-09-04、
+        // ユーザー指示：最小サイズ＝最大サイズにして動かないようにする）。
+        // `FixedPanel = Panel2` にすると、コンテナが伸縮したとき Panel2 の
+        // 幅は据え置かれ、伸縮ぶんは全部 Panel1（プレビュー）側が吸収する
+        // （＝ウィンドウサイズの変更に追従するのはプレビューだけになる）。
+        // `IsSplitterFixed = true` はユーザーがスプリッタをドラッグして
+        // 動かすこと自体を禁止する（プログラムからの SplitterDistance 設定は
+        // 引き続きできる）。
+        split.FixedPanel = FixedPanel.Panel2;
+        split.IsSplitterFixed = true;
+
         // SplitContainer.SplitterDistance / Panel1MinSize / Panel2MinSize は
         // どれも「その時点の実際の Width」に対して検証される
         // （範囲外だと例外）。だから先に ClientSize でフォーム（＝ split の
