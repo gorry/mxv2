@@ -547,6 +547,82 @@ public sealed class SkinEditForm : Form
                     RegisterPreview(row, PreviewBindings.For("Status", "PcmX", i), null);
                 }
             }
+            if (section.Title == "操作ボタン")
+            {
+                // 各ボタンのサブタブに、プレビュー確認用の「押す」トグルボタンを
+                // 追加する（2026-09-04、ユーザー指示）。layout.ini には何も
+                // 書かない、プレビューだけの一時的な状態（PreviewCanvas.
+                // SetButtonPressed / StateLed*）。LED パレットを持つボタン
+                // （PLAY/PAUSE/CONT/REPEAT）には「LED」トグルも並べて置く。
+                // これで編集画面下部にあった PLAY/CONT/PAUSE/REPEAT の4チェック
+                // は不要になったので廃止した（BuildStateBar 側）。
+                string[] buttonNames = { "PREV", "STOP", "PLAY", "FAST", "PAUSE", "NEXT", "CONT", "REPEAT" };
+                for (int i = 0; i < buttonNames.Length; i++)
+                {
+                    int idx = i;
+                    var buttonFlow = GetSubTabFlow(buttonNames[idx]);
+                    var toggleRow = new FlowLayoutPanel
+                    {
+                        FlowDirection = FlowDirection.LeftToRight,
+                        WrapContents = false,
+                        AutoSize = true,
+                        AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                        Margin = new Padding(0, Dpi.S(this, 8), 0, 0),
+                    };
+                    var toggleSize = new System.Drawing.Size(Dpi.S(this, 72), Dpi.S(this, 28));
+
+                    // Appearance.Button で押しボタン然とした見た目にする
+                    // （継承 ON/OFF のチェックボックスと見分けが付くように、
+                    // このタブだけ意図的に違う見た目にしてある）。
+                    // Margin を明示しないと既定値 Padding(3,3,3,3) になり、
+                    // 上マージン 0 を明示した ledToggle と縦位置がずれる
+                    // （実際に踏んだ不具合。FlowLayoutPanel は各コントロール
+                    // 自身の上マージン分だけ行の上端から下げて配置するため）。
+                    var pressToggle = new CheckBox
+                    {
+                        Text = "押す", Appearance = Appearance.Button,
+                        AutoSize = true, MinimumSize = toggleSize,
+                        Checked = _preview.GetButtonPressed(idx),
+                        Margin = new Padding(0, 0, Dpi.S(this, 8), 0),
+                    };
+                    pressToggle.CheckedChanged += (_, _) =>
+                    {
+                        _preview.SetButtonPressed(idx, pressToggle.Checked);
+                        _preview.Invalidate();
+                    };
+                    toggleRow.Controls.Add(pressToggle);
+
+                    (Func<bool> Get, Action<bool> Set)? led = buttonNames[idx] switch
+                    {
+                        "PLAY" => (() => _preview.StateLedPlay, v => _preview.StateLedPlay = v),
+                        "PAUSE" => (() => _preview.StateLedPause, v => _preview.StateLedPause = v),
+                        "CONT" => (() => _preview.StateLedCont, v => _preview.StateLedCont = v),
+                        "REPEAT" => (() => _preview.StateLedRepeat, v => _preview.StateLedRepeat = v),
+                        _ => null,
+                    };
+                    if (led is { } l)
+                    {
+                        var ledToggle = new CheckBox
+                        {
+                            Text = "LED", Appearance = Appearance.Button,
+                            AutoSize = true, MinimumSize = toggleSize,
+                            // 左右の間隔は pressToggle の右マージンで確保済みなので、
+                            // ここは上下だけ 0 にそろえる（左を空けると 2 重に空く）。
+                            Checked = l.Get(), Margin = new Padding(0),
+                        };
+                        ledToggle.CheckedChanged += (_, _) =>
+                        {
+                            l.Set(ledToggle.Checked);
+                            _preview.Invalidate();
+                        };
+                        toggleRow.Controls.Add(ledToggle);
+                    }
+
+                    buttonFlow.Controls.Add(toggleRow);
+                    RegisterPreview(toggleRow,
+                        new PreviewBinding(PreviewRegions.Ids.Indexed(PreviewRegions.Ids.PlayKeyButton, idx)), null);
+                }
+            }
 
             // 「配色」単独タブは廃止したので、対応するセクションがあれば
             // このタブの末尾（レイアウト項目の後）へ続けて置く。
@@ -712,16 +788,10 @@ public sealed class SkinEditForm : Form
             WrapContents = false,
             Padding = new Padding(Dpi.S(this, 4)),
         };
-        var checkSize = new System.Drawing.Size(0, Dpi.S(this, 32));
-        var play = new CheckBox { Text = "PLAY", Checked = _preview.StatePlay, AutoSize = true, MinimumSize = checkSize };
-        var cont = new CheckBox { Text = "CONT", Checked = _preview.StateCont, AutoSize = true, MinimumSize = checkSize };
-        var pause = new CheckBox { Text = "PAUSE", AutoSize = true, MinimumSize = checkSize };
-        var repeat = new CheckBox { Text = "REPEAT", AutoSize = true, MinimumSize = checkSize };
-        play.CheckedChanged += (_, _) => { _preview.StatePlay = play.Checked; _preview.Invalidate(); };
-        cont.CheckedChanged += (_, _) => { _preview.StateCont = cont.Checked; _preview.Invalidate(); };
-        pause.CheckedChanged += (_, _) => { _preview.StatePause = pause.Checked; _preview.Invalidate(); };
-        repeat.CheckedChanged += (_, _) => { _preview.StateRepeat = repeat.Checked; _preview.Invalidate(); };
-
+        // PLAY/CONT/PAUSE/REPEAT の4チェックは、各ボタンのサブタブに置いた
+        // 「押す」「LED」トグルボタンに役目を譲って廃止した（2026-09-04、
+        // ユーザー指示）。ここに残るのは音量・進捗のようにボタン単位で
+        // 語れない状態だけ。
         var volLabel = new Label { Text = "音量", AutoSize = true, Padding = new Padding(Dpi.S(this, 8), Dpi.S(this, 6), 0, 0) };
         var vol = new TrackBar { Minimum = -100, Maximum = 100, Value = 0, Width = Dpi.S(this, 100) };
         vol.ValueChanged += (_, _) => { _preview.StateVolume = vol.Value; _preview.Invalidate(); };
@@ -730,10 +800,6 @@ public sealed class SkinEditForm : Form
         var prog = new TrackBar { Minimum = 0, Maximum = 100, Value = 40, Width = Dpi.S(this, 100) };
         prog.ValueChanged += (_, _) => { _preview.StateProgress = prog.Value / 100.0; _preview.Invalidate(); };
 
-        bar.Controls.Add(play);
-        bar.Controls.Add(cont);
-        bar.Controls.Add(pause);
-        bar.Controls.Add(repeat);
         bar.Controls.Add(volLabel);
         bar.Controls.Add(vol);
         bar.Controls.Add(progLabel);

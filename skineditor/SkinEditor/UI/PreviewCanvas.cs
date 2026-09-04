@@ -47,26 +47,37 @@ public sealed class PreviewCanvas : Panel
     private PointF _dragOriginSkin;
     private Dictionary<string, Rectangle> _regions = new();
 
-    // ダミー再生状態（PreviewStateBar から書き換えられる）
-    public bool StatePlay
+    // ダミー再生状態（操作ボタンの各サブタブのトグルボタン、状態バーの
+    // 音量・進捗スライダから書き換えられる）。
+    public bool GetButtonPressed(int buttonIndex) =>
+        buttonIndex >= 0 && buttonIndex < _state.ButtonPressed.Length && _state.ButtonPressed[buttonIndex];
+
+    public void SetButtonPressed(int buttonIndex, bool pressed)
     {
-        get => _state.Play;
-        set { _state.Play = value; _dirty = true; }
+        if (buttonIndex < 0 || buttonIndex >= _state.ButtonPressed.Length) return;
+        _state.ButtonPressed[buttonIndex] = pressed;
+        _dirty = true;
     }
-    public bool StateCont
+
+    public bool StateLedPlay
     {
-        get => _state.Cont;
-        set { _state.Cont = value; _dirty = true; }
+        get => _state.LedPlay;
+        set { _state.LedPlay = value; _dirty = true; }
     }
-    public bool StatePause
+    public bool StateLedPause
     {
-        get => _state.Pause;
-        set { _state.Pause = value; _dirty = true; }
+        get => _state.LedPause;
+        set { _state.LedPause = value; _dirty = true; }
     }
-    public bool StateRepeat
+    public bool StateLedCont
     {
-        get => _state.Repeat;
-        set { _state.Repeat = value; _dirty = true; }
+        get => _state.LedCont;
+        set { _state.LedCont = value; _dirty = true; }
+    }
+    public bool StateLedRepeat
+    {
+        get => _state.LedRepeat;
+        set { _state.LedRepeat = value; _dirty = true; }
     }
     public int StateVolume
     {

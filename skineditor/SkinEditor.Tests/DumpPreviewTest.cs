@@ -26,7 +26,7 @@ public class DumpPreviewTest
         {
             var doc = SkinDocument.Open(root, name);
             using var renderer = new PreviewRenderer(doc);
-            var state = new PreviewState { Play = true, Cont = true, Volume = 0, Progress = 0.4 };
+            var state = new PreviewState { LedPlay = true, LedCont = true, Volume = 0, Progress = 0.4 };
 
             renderer.Render(state);  // 1 回目は素材の読み込みを含むので捨てる
             const int n = 20;

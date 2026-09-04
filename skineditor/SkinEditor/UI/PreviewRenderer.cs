@@ -12,13 +12,20 @@ using SkinEditor.Model.Render;
 
 namespace SkinEditor.UI;
 
-// プレビューに出す「演奏状態」。PreviewStateBar から書き換えられる。
+// プレビューに出す「演奏状態」。操作ボタンの各サブタブの「押す」「LED」
+// トグルボタンと、状態バーの音量・進捗スライダから書き換えられる
+// （2026-09-04、ユーザー指示で「PLAY/CONT/PAUSE/REPEAT」の4チェックを
+// 各ボタンのサブタブへ移した）。
 public sealed class PreviewState
 {
-    public bool Play = true;
-    public bool Cont = true;
-    public bool Pause;
-    public bool Repeat;
+    // 押されているボタン。並びは LayoutFieldSchema の playKey サブタブと同じ
+    // （0=PREV 1=STOP 2=PLAY 3=FAST 4=PAUSE 5=NEXT 6=CONT 7=REPEAT。
+    // SHUFFLE は未実装なので枠だけ確保して常に false）。
+    public readonly bool[] ButtonPressed = new bool[9];
+    public bool LedPlay = true;
+    public bool LedPause;
+    public bool LedCont = true;
+    public bool LedRepeat;
     public int Volume;             // -100..100
     public double Progress = 0.4;  // 0..1
 }
@@ -105,10 +112,14 @@ public sealed class PreviewRenderer : IDisposable
         }
 
         uint status = 0;
-        if (state.Play) status |= DrawScreenPort.PlayKeyPlayLed;
-        if (state.Pause) status |= DrawScreenPort.PlayKeyPauseLed;
-        if (state.Cont) status |= DrawScreenPort.PlayKeyContLed;
-        if (state.Repeat) status |= DrawScreenPort.PlayKeyRepeatLed;
+        for (int i = 0; i < state.ButtonPressed.Length && i < 9; i++)
+        {
+            if (state.ButtonPressed[i]) status |= 1u << i;
+        }
+        if (state.LedPlay) status |= DrawScreenPort.PlayKeyPlayLed;
+        if (state.LedPause) status |= DrawScreenPort.PlayKeyPauseLed;
+        if (state.LedCont) status |= DrawScreenPort.PlayKeyContLed;
+        if (state.LedRepeat) status |= DrawScreenPort.PlayKeyRepeatLed;
         port.PutPlayKey(status);
 
         port.PutProgressBar((uint)(DummyPlayTimeMs * Math.Clamp(state.Progress, 0, 1)),

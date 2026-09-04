@@ -248,19 +248,19 @@ public static class LayoutFieldSchema
             switch (subTab)
             {
                 case "PLAY":
-                    playKey.Add(new FieldDef("PlayKey", "PalPlayLed", "パレット", FieldKind.Int,
+                    playKey.Add(new FieldDef("PlayKey", "PalPlayLed", "LEDのパレット", FieldKind.Int,
                         e => $"{e.palPlayLed}", SubTab: subTab));
                     break;
                 case "PAUSE":
-                    playKey.Add(new FieldDef("PlayKey", "PalPauseLed", "パレット", FieldKind.Int,
+                    playKey.Add(new FieldDef("PlayKey", "PalPauseLed", "LEDのパレット", FieldKind.Int,
                         e => $"{e.palPauseLed}", SubTab: subTab));
                     break;
                 case "CONT":
-                    playKey.Add(new FieldDef("PlayKey", "PalContLed", "パレット", FieldKind.Int,
+                    playKey.Add(new FieldDef("PlayKey", "PalContLed", "LEDのパレット", FieldKind.Int,
                         e => $"{e.palContLed}", SubTab: subTab));
                     break;
                 case "REPEAT":
-                    playKey.Add(new FieldDef("PlayKey", "PalRepeatLed", "パレット", FieldKind.Int,
+                    playKey.Add(new FieldDef("PlayKey", "PalRepeatLed", "LEDのパレット", FieldKind.Int,
                         e => $"{e.palRepeatLed}", SubTab: subTab));
                     break;
             }
