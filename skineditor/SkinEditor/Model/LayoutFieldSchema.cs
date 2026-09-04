@@ -227,27 +227,41 @@ public static class LayoutFieldSchema
             // 9 にして出してしまわないよう編集不可にする（ユーザー指示）。
             new("PlayKey", "Count", "使うボタンの数", FieldKind.Int, e => $"{e.numPlayKeys}", ReadOnly: true),
         };
-        string[] names = { "PREV", "STOP", "PLAY", "FAST", "PAUSE", "NEXT", "CONT", "REPEAT", "SHUFFLE" };
-        // SHUFFLE (index 8) は当分実装の予定が無いので出さない（ユーザー指示）。
-        // playKey.Add(new FieldDef("PlayKey", "Src8", "素材内: SHUFFLE", FieldKind.Xywh,
-        //     e => e.playKeyRect[8].ToString(), Suffix: "(x,y,w,h)"));
-        for (int i = 0; i < 8; i++)
+        // ボタンごとにサブタブを分ける（2026-09-04、ユーザー指示。「ステータス」
+        // タブの仕組みをそのまま流用）。各サブタブに「素材内位置」「配置」を、
+        // PLAY/PAUSE/CONT/REPEAT にはさらに自分の LED パレットも置く。
+        // SHUFFLE (index 8) は当分実装の予定が無いので出さない（Src8 と同じ扱い。
+        // 以前は Pos8 だけ取りこぼして出てしまっていたので、ここで揃えた）。
+        string[] names = { "PREV", "STOP", "PLAY", "FAST", "PAUSE", "NEXT", "CONT", "REPEAT" };
+        for (int i = 0; i < names.Length; i++)
         {
             int idx = i;
-            playKey.Add(new FieldDef("PlayKey", $"Src{idx}", $"素材内: {names[idx]}", FieldKind.Xywh,
-                e => e.playKeyRect[idx].ToString(), Suffix: "(x,y,w,h)"));
-        }
-        for (int i = 0; i < 9; i++)
-        {
-            int idx = i;
-            playKey.Add(new FieldDef("PlayKey", $"Pos{idx}", $"配置: {names[idx]}", FieldKind.IntList,
-                e => SkinLayoutIo.Join(e.playKeyPos[idx]), Suffix: "(x,y)"));
+            string subTab = names[idx];
+            playKey.Add(new FieldDef("PlayKey", $"Src{idx}", "素材内位置", FieldKind.Xywh,
+                e => e.playKeyRect[idx].ToString(), Suffix: "(x,y,w,h)", SubTab: subTab));
+            playKey.Add(new FieldDef("PlayKey", $"Pos{idx}", "配置", FieldKind.IntList,
+                e => SkinLayoutIo.Join(e.playKeyPos[idx]), Suffix: "(x,y)", SubTab: subTab));
+            switch (subTab)
+            {
+                case "PLAY":
+                    playKey.Add(new FieldDef("PlayKey", "PalPlayLed", "パレット", FieldKind.Int,
+                        e => $"{e.palPlayLed}", SubTab: subTab));
+                    break;
+                case "PAUSE":
+                    playKey.Add(new FieldDef("PlayKey", "PalPauseLed", "パレット", FieldKind.Int,
+                        e => $"{e.palPauseLed}", SubTab: subTab));
+                    break;
+                case "CONT":
+                    playKey.Add(new FieldDef("PlayKey", "PalContLed", "パレット", FieldKind.Int,
+                        e => $"{e.palContLed}", SubTab: subTab));
+                    break;
+                case "REPEAT":
+                    playKey.Add(new FieldDef("PlayKey", "PalRepeatLed", "パレット", FieldKind.Int,
+                        e => $"{e.palRepeatLed}", SubTab: subTab));
+                    break;
+            }
         }
         playKey.Add(new FieldDef("PlayKey", "PalKey", "パレット: ボタンの色", FieldKind.Int, e => $"{e.palPlayKeyKey}"));
-        playKey.Add(new FieldDef("PlayKey", "PalPlayLed", "パレット: PLAY LED", FieldKind.Int, e => $"{e.palPlayLed}"));
-        playKey.Add(new FieldDef("PlayKey", "PalPauseLed", "パレット: PAUSE LED", FieldKind.Int, e => $"{e.palPauseLed}"));
-        playKey.Add(new FieldDef("PlayKey", "PalContLed", "パレット: CONT LED", FieldKind.Int, e => $"{e.palContLed}"));
-        playKey.Add(new FieldDef("PlayKey", "PalRepeatLed", "パレット: REPEAT LED", FieldKind.Int, e => $"{e.palRepeatLed}"));
         playKey.Add(new FieldDef("PlayKey", "PalDark", "パレット: 消灯", FieldKind.Int, e => $"{e.palDark}"));
         playKey.Add(new FieldDef("PlayKey", "PalRed", "パレット: 赤", FieldKind.Int, e => $"{e.palRed}"));
         playKey.Add(new FieldDef("PlayKey", "PalGreen", "パレット: 緑", FieldKind.Int, e => $"{e.palGreen}"));

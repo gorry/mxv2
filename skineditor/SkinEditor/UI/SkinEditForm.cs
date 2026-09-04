@@ -160,11 +160,13 @@ public sealed class SkinEditForm : Form
                 Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown,
                 WrapContents = false, AutoScroll = true,
             };
-            // サブタブの中の行は、入れ子の TabControl 自身の枠と縦スクロール
-            // バーのぶんだけ、タブ直下（flow）の行より少し狭くしないと
-            // 横スクロールが出てしまう（実測して踏んだ）。インデント行と
-            // 同じ 566px を流用する。
-            int RowWidthFor(FlowLayoutPanel target) => ReferenceEquals(target, flow) ? rowWidth : Dpi.S(this, 566);
+            // サブタブの中の行は、入れ子の TabControl 自身の枠のぶんだけ、
+            // タブ直下（flow）の行より少し狭くしないと横スクロールが出てしまう
+            // （実測して踏んだ）。40px 引けば足りる（2026-09-04、「操作ボタン」
+            // タブに (x,y,w,h) 付きの項目をサブタブへ入れたときに実測。それまでの
+            // 566px 固定は (x,y) までしか無かった頃の値で、Xywh には足りず
+            // サフィックスが欠けていた）。
+            int RowWidthFor(FlowLayoutPanel target) => ReferenceEquals(target, flow) ? rowWidth : rowWidth - Dpi.S(this, 40);
 
             // 素材のインポート行 1 つぶんを、渡された flow へ追加する。indented は
             // 他のインデント行（PCM グループなど）と同じ幅・左マージンに揃えるか。
