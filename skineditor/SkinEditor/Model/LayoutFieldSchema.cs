@@ -54,10 +54,11 @@ public static class LayoutFieldSchema
         var status = new List<FieldDef>
         {
             // ステータス欄全体の位置・大きさなので、タブの一番上（レベルメータ
-            // グループより前）に置く（2026-09-04、ユーザー指示）。
-            new("Status", "Pos", "位置", FieldKind.IntList, e => $"{e.statusX},{e.statusY}", Suffix: "(x,y)"),
-            new("Status", "BackWidth", "背景幅", FieldKind.Int, e => $"{e.statusBackW}"),
-            new("Status", "BackHeight", "背景高さ", FieldKind.Int, e => $"{e.statusBackH}"),
+            // グループより前）に置く（2026-09-04、ユーザー指示）。x,y は 9 段
+            // 全体の左上、w,h は 1 段ぶんの背景の大きさ（2026-09-04 に Pos /
+            // BackWidth / BackHeight を Rect 1 つにまとめた）。
+            new("Status", "Rect", "矩形", FieldKind.Xywh,
+                e => $"{e.statusX},{e.statusY},{e.statusW},{e.statusH}", Suffix: "(x,y,w,h)"),
             // 「レベルメータ」タブは廃止してここへ統合し、2026-09-04 に
             // 「ステータス」タブ内のサブタブへ変えた（ユーザー指示）。素材行は
             // このすぐ下の項目の直前（＝このサブページの先頭）に
@@ -221,7 +222,10 @@ public static class LayoutFieldSchema
 
         var playKey = new List<FieldDef>
         {
-            new("PlayKey", "Pos", "位置", FieldKind.IntList, e => $"{e.playKeyX},{e.playKeyY}", Suffix: "(x,y)",
+            // x,y は Pos<n> の原点、w,h は使うボタン全体を覆う大きさ
+            // （2026-09-04 に Pos から Rect へ変えた）。
+            new("PlayKey", "Rect", "矩形", FieldKind.Xywh,
+                e => $"{e.playKeyX},{e.playKeyY},{e.playKeyW},{e.playKeyH}", Suffix: "(x,y,w,h)",
                 LeadingBitmaps: new[] { BitmapRole.PlayKey }),
             // SHUFFLE (index 8) が未実装で当分実装の予定も無いので、
             // 9 にして出してしまわないよう編集不可にする（ユーザー指示）。

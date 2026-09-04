@@ -31,20 +31,21 @@ public sealed class PreviewCanvas : Panel
     private float _scale = 1f;
     private PointF _origin;
 
-    public event Action<string>? PartActivated;
+    // クリックした点（skin 座標）。どのアイテムを選ぶかは SkinEditForm が決める
+    // （優先順位 H はコントロール側に付いていて、ここからは見えないため）。
+    public event Action<Point>? PreviewClicked;
 
-    private sealed class DragRegion
-    {
-        public RectangleF ScreenRect;
-        public string SectionTitle = "";
-        public Action<int, int>? Move;  // 絶対座標 (skin px) を渡す
-    }
+    // 選択中のアイテム。枠を出す矩形と、ドラッグでの書き戻し先。
+    private string? _selectedRegion;
+    private Action<int, int>? _selectedMove;
 
-    private readonly List<DragRegion> _regions = new();
-    private DragRegion? _dragging;
+    private bool _pressed;
+    private bool _canDrag;
+    private bool _dragging;
+    private Point _pressPoint;
     private PointF _dragStartSkin;
     private PointF _dragOriginSkin;
-    private readonly Dictionary<string, PointF> _lastOrigin = new();
+    private Dictionary<string, Rectangle> _regions = new();
 
     // ダミー再生状態（PreviewStateBar から書き換えられる）
     public bool StatePlay
@@ -87,8 +88,26 @@ public sealed class PreviewCanvas : Panel
         doc.Changed += () => { _dirty = true; Invalidate(); };
         MouseDown += OnMouseDown;
         MouseMove += OnMouseMove;
-        MouseUp += (_, _) => _dragging = null;
+        MouseUp += OnMouseUp;
         Resize += (_, _) => Invalidate();
+    }
+
+    // 選択中のアイテムを差し替える。move が null ならドラッグでは動かせない。
+    public void SetSelection(string? regionId, Action<int, int>? move)
+    {
+        _selectedRegion = string.IsNullOrEmpty(regionId) ? null : regionId;
+        _selectedMove = move;
+        Invalidate();
+    }
+
+    // 今の実効値での全アイテムの矩形（skin 座標）。当たり判定に使う。
+    public Dictionary<string, Rectangle> BuildRegions() =>
+        PreviewRegions.Build(_doc.Effective, FindAssetSize, _state.Volume);
+
+    private Size? FindAssetSize(string fileName)
+    {
+        var a = _renderer.FindAsset(fileName);
+        return a == null ? null : new Size(a.Width, a.Height);
     }
 
     // 素材ファイルが差し替わったとき（BitmapRoleRow のインポート）。
@@ -106,7 +125,6 @@ public sealed class PreviewCanvas : Panel
         g.SmoothingMode = SmoothingMode.None;
         g.InterpolationMode = InterpolationMode.NearestNeighbor;
         g.PixelOffsetMode = PixelOffsetMode.Half;
-        _regions.Clear();
 
         var eff = _doc.Effective;
         int sw = Math.Max(1, eff.screenW), sh = Math.Max(1, eff.screenH);
@@ -131,54 +149,35 @@ public sealed class PreviewCanvas : Panel
         // 文字は拡大後の解像度で重ねる（本体 TextLayer と同じ 2 段構え）。
         _textLayer.Render(g, _renderer.TextDraws, _origin.X, _origin.Y, _scale);
 
+        _regions = BuildRegions();
+
         var save = g.Save();
         g.TranslateTransform(_origin.X, _origin.Y);
         g.ScaleTransform(_scale, _scale);
-        BuildRegions(eff);
         DrawOverflowWarnings(g, eff, sw, sh);
         g.Restore(save);
+
+        DrawSelectionFrame(g);
     }
 
-    // ---- 当たり判定の矩形（描画とは独立。layout の値だけで決まる） ----------
-    private void BuildRegions(SkinLayout eff)
+    // 選択中のアイテムの枠。アイテムのすぐ外側に白 1 画素、その外に黒 1 画素
+    // （skineditor_hitcheck.md）。1 画素は **スキンの 1 画素**なので拡大率に
+    // 比例させるが、縮小表示で消えないよう画面 1 画素は必ず確保する。
+    private void DrawSelectionFrame(Graphics g)
     {
-        var kb0 = _renderer.FindAsset(eff.kb0Bitmap);
-        int kbW = kb0?.Width ?? 400;
-        int kbH = kb0?.Height ?? 36;
-        Reg(new Rectangle(eff.kbX, eff.kbY, kbW, kbH), "鍵盤",
-            (nx, ny) => _doc.SetLayoutRaw("Keyboard", "Pos", $"{nx},{ny}"));
+        if (_selectedRegion == null) return;
+        if (!_regions.TryGetValue(_selectedRegion, out var item)) return;
 
-        Reg(new Rectangle(eff.statusX, eff.statusY, eff.statusBackW, eff.statusBackH), "ステータス",
-            (nx, ny) => _doc.SetLayoutRaw("Status", "Pos", $"{nx},{ny}"));
-
-        Reg(new Rectangle(eff.bannerX, eff.bannerY, eff.bannerW, eff.bannerH), "バナー",
-            (nx, ny) => _doc.SetLayoutRaw("Banner", "Rect", $"{nx},{ny},{eff.bannerW},{eff.bannerH}"));
-
-        Reg(new Rectangle(eff.titleX, eff.titleY, eff.titleW, eff.titleH), "曲名",
-            (nx, ny) => _doc.SetLayoutRaw("Title", "Rect", $"{nx},{ny},{eff.titleW},{eff.titleH}"));
-
-        Reg(new Rectangle(eff.fileListX, eff.fileListY, eff.fileListW, eff.fileListH), "ファイラー",
-            (nx, ny) => _doc.SetLayoutRaw("FileList", "Rect", $"{nx},{ny},{eff.fileListW},{eff.fileListH}"));
-
-        Reg(new Rectangle(eff.scrollX, eff.scrollY, eff.scrollW, eff.scrollH), "スクロールバー",
-            (nx, ny) => _doc.SetLayoutRaw("ScrollBar", "Rect", $"{nx},{ny},{eff.scrollW},{eff.scrollH}"));
-
-        Reg(new Rectangle(eff.progX, eff.progY, eff.progW, eff.progH), "プログレスバー",
-            (nx, ny) => _doc.SetLayoutRaw("ProgressBar", "Rect", $"{nx},{ny},{eff.progW},{eff.progH}"));
-
-        Reg(new Rectangle(eff.volX, eff.volY, eff.volW, eff.volH), "音量バー",
-            (nx, ny) => _doc.SetLayoutRaw("VolumeBar", "Rect", $"{nx},{ny},{eff.volW},{eff.volH}"));
-
-        // 操作ボタンは使うボタンぶんの外接矩形（掴める範囲を実物に合わせる）。
-        int pkW = 0, pkH = 0;
-        for (int i = 0; i < eff.numPlayKeys && i < 9; i++)
+        var r = ToScreen(item);
+        float t = Math.Max(1f, _scale);
+        using (var white = new Pen(Color.White, t))
         {
-            pkW = Math.Max(pkW, eff.playKeyPos[i][0] + eff.playKeyRect[i].W);
-            pkH = Math.Max(pkH, eff.playKeyPos[i][1] + eff.playKeyRect[i].H);
+            g.DrawRectangle(white, r.X - t / 2f, r.Y - t / 2f, r.Width + t, r.Height + t);
         }
-        if (pkW <= 0 || pkH <= 0) { pkW = 40; pkH = 24; }
-        Reg(new Rectangle(eff.playKeyX, eff.playKeyY, pkW, pkH), "操作ボタン",
-            (nx, ny) => _doc.SetLayoutRaw("PlayKey", "Pos", $"{nx},{ny}"));
+        using (var black = new Pen(Color.Black, t))
+        {
+            g.DrawRectangle(black, r.X - t * 1.5f, r.Y - t * 1.5f, r.Width + t * 3f, r.Height + t * 3f);
+        }
     }
 
     private void DrawOverflowWarnings(Graphics g, SkinLayout eff, int sw, int sh)
@@ -197,43 +196,54 @@ public sealed class PreviewCanvas : Panel
     }
 
     // ---- 選択・ドラッグ ----------------------------------------------------
-    private void Reg(Rectangle skinRect, string sectionTitle, Action<int, int> move)
-    {
-        _regions.Add(new DragRegion
-        {
-            ScreenRect = ToScreen(skinRect),
-            SectionTitle = sectionTitle,
-            Move = (nx, ny) => move(nx, ny),
-        });
-        // ドラッグの原点計算用に、この時点の skin 座標も控える。
-        _lastOrigin[sectionTitle] = new PointF(skinRect.X, skinRect.Y);
-    }
-
     private RectangleF ToScreen(Rectangle r) =>
         new(_origin.X + r.X * _scale, _origin.Y + r.Y * _scale, r.Width * _scale, r.Height * _scale);
 
     private PointF ToSkin(Point p) => new((p.X - _origin.X) / _scale, (p.Y - _origin.Y) / _scale);
 
+    // 押した時点では、まだクリック（＝選択の切り替え）かドラッグ（＝移動）か
+    // 決まらない。**選択中のアイテムの上で押して、動かしたときだけ移動**にする
+    // （動かさずに離せばクリック扱いで、同じ点の次の優先順位へ選択が移る）。
     private void OnMouseDown(object? sender, MouseEventArgs e)
     {
-        for (int i = _regions.Count - 1; i >= 0; i--)
-        {
-            if (!_regions[i].ScreenRect.Contains(e.Location)) continue;
-            _dragging = _regions[i];
-            _dragStartSkin = ToSkin(e.Location);
-            _dragOriginSkin = _lastOrigin.TryGetValue(_dragging.SectionTitle, out var o) ? o : PointF.Empty;
-            PartActivated?.Invoke(_dragging.SectionTitle);
-            return;
-        }
+        if (e.Button != MouseButtons.Left) return;
+        _pressed = true;
+        _dragging = false;
+        _pressPoint = e.Location;
+        _canDrag = false;
+
+        if (_selectedRegion == null || _selectedMove == null) return;
+        if (!_regions.TryGetValue(_selectedRegion, out var item)) return;
+        if (!ToScreen(item).Contains(e.Location)) return;
+        _canDrag = true;
+        _dragStartSkin = ToSkin(e.Location);
+        _dragOriginSkin = new PointF(item.X, item.Y);
     }
 
     private void OnMouseMove(object? sender, MouseEventArgs e)
     {
-        if (_dragging?.Move == null) return;
+        if (!_pressed || !_canDrag) return;
+        if (!_dragging)
+        {
+            // 手の震えで移動が始まらないよう、少し動かしてからドラッグにする。
+            if (Math.Abs(e.X - _pressPoint.X) < 3 && Math.Abs(e.Y - _pressPoint.Y) < 3) return;
+            _dragging = true;
+        }
         var cur = ToSkin(e.Location);
         int nx = (int)Math.Round(_dragOriginSkin.X + (cur.X - _dragStartSkin.X));
         int ny = (int)Math.Round(_dragOriginSkin.Y + (cur.Y - _dragStartSkin.Y));
-        _dragging.Move(nx, ny);
+        _selectedMove?.Invoke(nx, ny);
+    }
+
+    private void OnMouseUp(object? sender, MouseEventArgs e)
+    {
+        bool wasDrag = _dragging;
+        _pressed = false;
+        _canDrag = false;
+        _dragging = false;
+        if (e.Button != MouseButtons.Left || wasDrag) return;
+        var p = ToSkin(e.Location);
+        PreviewClicked?.Invoke(new Point((int)Math.Floor(p.X), (int)Math.Floor(p.Y)));
     }
 
     protected override void Dispose(bool disposing)

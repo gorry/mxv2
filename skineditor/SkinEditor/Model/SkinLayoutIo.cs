@@ -32,9 +32,11 @@ public static class SkinLayoutIo
         t.miniFontH = ini.GetInt("MiniFont", "Height", t.miniFontH);
         t.miniFontBitmap = ini.GetString("MiniFont", "ImgMiniFont", t.miniFontBitmap);
 
-        GetXy(ini, "Status", "Pos", ref t.statusX, ref t.statusY);
-        t.statusBackW = ini.GetInt("Status", "BackWidth", t.statusBackW);
-        t.statusBackH = ini.GetInt("Status", "BackHeight", t.statusBackH);
+        {
+            var r = new Xywh(t.statusX, t.statusY, t.statusW, t.statusH);
+            GetXywh(ini, "Status", "Rect", ref r);
+            t.statusX = r.X; t.statusY = r.Y; t.statusW = r.W; t.statusH = r.H;
+        }
         GetIntList(ini, "Status", "PcmX", t.pcmXOffset, 8);
         GetIntList(ini, "Status", "PcmY", t.pcmYOffset, 8);
         for (int i = 0; i < StatusItems.Count; i++)
@@ -111,7 +113,11 @@ public static class SkinLayoutIo
         }
         t.volBarBitmap = ini.GetString("VolumeBar", "ImgVolumeBar", t.volBarBitmap);
 
-        GetXy(ini, "PlayKey", "Pos", ref t.playKeyX, ref t.playKeyY);
+        {
+            var r = new Xywh(t.playKeyX, t.playKeyY, t.playKeyW, t.playKeyH);
+            GetXywh(ini, "PlayKey", "Rect", ref r);
+            t.playKeyX = r.X; t.playKeyY = r.Y; t.playKeyW = r.W; t.playKeyH = r.H;
+        }
         t.numPlayKeys = Math.Clamp(ini.GetInt("PlayKey", "Count", t.numPlayKeys), 0, 9);
         for (int i = 0; i < 9; i++)
         {
@@ -151,9 +157,7 @@ public static class SkinLayoutIo
         ini.SetInt("MiniFont", "Height", t.miniFontH);
         ini.SetString("MiniFont", "ImgMiniFont", t.miniFontBitmap);
 
-        ini.SetString("Status", "Pos", $"{t.statusX},{t.statusY}");
-        ini.SetInt("Status", "BackWidth", t.statusBackW);
-        ini.SetInt("Status", "BackHeight", t.statusBackH);
+        ini.SetString("Status", "Rect", $"{t.statusX},{t.statusY},{t.statusW},{t.statusH}");
         ini.SetString("Status", "PcmX", Join(t.pcmXOffset));
         ini.SetString("Status", "PcmY", Join(t.pcmYOffset));
         for (int i = 0; i < StatusItems.Count; i++)
@@ -202,7 +206,7 @@ public static class SkinLayoutIo
         ini.SetString("VolumeBar", "SlideSrc", t.volRect[1].ToString());
         ini.SetString("VolumeBar", "ImgVolumeBar", t.volBarBitmap);
 
-        ini.SetString("PlayKey", "Pos", $"{t.playKeyX},{t.playKeyY}");
+        ini.SetString("PlayKey", "Rect", $"{t.playKeyX},{t.playKeyY},{t.playKeyW},{t.playKeyH}");
         ini.SetInt("PlayKey", "Count", t.numPlayKeys);
         for (int i = 0; i < 9; i++)
         {

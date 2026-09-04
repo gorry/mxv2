@@ -95,6 +95,12 @@ public sealed class LabeledValueRow : Panel
         set { foreach (var n in _numerics) n.Enabled = value; }
     }
 
+    // 数値欄と、キー全体の中での通し番号。1 行に何個か並んでいて、それぞれ
+    // 別のアイテム（鍵 1 個・チャンネル 1 段）に対応するので、プレビューの
+    // 選択は行ではなく数値欄ごとに結び付ける。
+    public IEnumerable<(int Index, Control Ctrl)> ValueControls =>
+        _numerics.Select((n, i) => (_startIndex + i, (Control)n));
+
     public new void Refresh()
     {
         _suppressCommit = true;

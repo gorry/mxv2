@@ -89,8 +89,11 @@ struct Skin {
 	int miniFontW, miniFontH;
 
 	// ---- ステータス ---------------------------------------------------
-	int statusX, statusY;
-	int statusBackW, statusBackH;
+	// layout.ini では [Status] Rect に "x,y,w,h" でまとめて書く。x,y は
+	// 9 段全体の左上で、**w,h は 1 段ぶんの背景の大きさ**（段は chYOffset
+	// ごとに下へ並ぶ）。2026-09-04 に Pos / BackWidth / BackHeight を
+	// 1 つにまとめた。
+	int statusX, statusY, statusW, statusH;
 	int pcmXOffset[8], pcmYOffset[8];  // PCM 8ch のステータス欄の並び
 	// 項目ごとの位置。StatusItem の並びで [x, y]。旧 mxv は draw.cpp の
 	// 関数ごとに #define CX_D / CY_D で埋め込んでいたもの。
@@ -149,7 +152,11 @@ struct Skin {
 	Xywh volRect[2];  // volbar.bmp 内の つまみ / スライド
 
 	// ---- 操作ボタン -----------------------------------------------------
-	int playKeyX, playKeyY;
+	// layout.ini では [PlayKey] Rect に "x,y,w,h" で書く（2026-09-04 に Pos
+	// から変えた）。x,y は Pos<n> の原点。**w,h は使うボタン全体を覆う
+	// 大きさ**で、描画には使わない（ボタンは 1 つずつ Src<n>/Pos<n> で
+	// 描く）。スキンエディタが「操作ボタンのまとまり」を掴む範囲に使う。
+	int playKeyX, playKeyY, playKeyW, playKeyH;
 	int numPlayKeys;         // 使うボタンの数（SHUFFLE を含めるなら 9）
 	Xywh playKeyRect[9];     // playkey.bmp 内の位置と大きさ
 	int playKeyPos[9][2];    // 画面上の配置（playKeyX/Y からの相対）

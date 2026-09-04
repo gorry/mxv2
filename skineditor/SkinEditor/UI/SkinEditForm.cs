@@ -44,6 +44,18 @@ public sealed class SkinEditForm : Form
     private readonly BaseRefDropdown _baseRefDropdown;
     private readonly Button _revertColorsButton;
 
+    // プレビューの「選択」対象。**登録順が仕様書の並び順**で、優先順位 H が
+    // 同じときはこの順で先に書いたものが勝つ（skineditor_hitcheck.md）。
+    private sealed class PreviewTarget
+    {
+        public Control Ctrl = null!;             // フォーカスを持つコントロール
+        public PreviewBinding Binding = null!;   // 対応するアイテムと H
+        public Action<int, int>? Move;           // ドラッグでの書き戻し（絶対座標）
+    }
+
+    private readonly List<PreviewTarget> _previewTargets = new();
+    private PreviewTarget? _selectedTarget;
+
     public SkinEditForm(SkinDocument doc)
     {
         _doc = doc;
@@ -180,6 +192,7 @@ public sealed class SkinEditForm : Form
                 }
                 _bitmapRows.Add(row);
                 target.Controls.Add(row);
+                RegisterPreview(row, PreviewBindings.ForBitmap(role), null);
             }
 
             // 1 項目ぶん（LeadingBitmaps → 入力欄 → TrailingBitmaps）を、渡された
@@ -204,6 +217,8 @@ public sealed class SkinEditForm : Form
                 }
                 _layoutControls.Add(ctrl);
                 target.Controls.Add(ctrl);
+                var binding = PreviewBindings.For(field.Section, field.Key);
+                RegisterPreview(ctrl, binding, MoveActionFor(binding, field.Section, field.Key));
 
                 // この項目の直後に素材行がある、というだけの位置情報
                 // （FieldDef.TrailingBitmaps）。「鍵盤」の「位置」のように、
@@ -329,6 +344,8 @@ public sealed class SkinEditForm : Form
                     kbXOffsetCheckRow.Controls.Add(kbXOffsetCheckLabel);
                     kbXOffsetCheckRow.Controls.Add(_kbXOffsetCheck);
                     flow.Controls.Add(kbXOffsetCheckRow);
+                    RegisterPreview(kbXOffsetCheckRow,
+                        new PreviewBinding(PreviewRegions.Ids.KeyboardOctave), null);
 
                     // C,C#,D,D# / E,F,F#,G / G#,A,A#,B / オクターブ幅 の4行。
                     // 最後の1個は「オクターブ幅」であって次オクターブの C の
@@ -359,6 +376,10 @@ public sealed class SkinEditForm : Form
                             { Width = Dpi.S(this, 566) };
                         _kbXOffsetRows.Add(noteRow);
                         flow.Controls.Add(noteRow);
+                        // 数値欄 1 個が鍵 1 個（最後の「オクターブ幅」だけは
+                        // オクターブ全体）に対応する。
+                        foreach (var (vi, vc) in noteRow.ValueControls)
+                            RegisterPreview(vc, PreviewBindings.For("Keyboard", "XOffset", vi), null);
                         idx += names.Length;
                     }
                 }
@@ -405,6 +426,8 @@ public sealed class SkinEditForm : Form
                     kbChannelYCheckRow.Controls.Add(kbChannelYCheckLabel);
                     kbChannelYCheckRow.Controls.Add(_kbChannelYCheck);
                     flow.Controls.Add(kbChannelYCheckRow);
+                    RegisterPreview(kbChannelYCheckRow,
+                        new PreviewBinding(PreviewRegions.Ids.KeyboardAll), null);
 
                     // FM1-4／FM5-8 の2行はひとまとまりの列として揃えたいので、
                     // 「1オクターブの鍵のX」と同じ理由でラベル幅をまとめて測る
@@ -427,6 +450,9 @@ public sealed class SkinEditForm : Form
                             { Width = Dpi.S(this, 566) };
                         _kbChannelYRows.Add(chRow);
                         flow.Controls.Add(chRow);
+                        // 数値欄 1 個がチャンネル 1 段の鍵盤に対応する。
+                        foreach (var (vi, vc) in chRow.ValueControls)
+                            RegisterPreview(vc, PreviewBindings.For("Keyboard", "ChannelY", vi), null);
                         chIdx += names.Length;
                     }
                 }
@@ -496,6 +522,7 @@ public sealed class SkinEditForm : Form
                 pcmCheckRow.Controls.Add(pcmCheckLabel);
                 pcmCheckRow.Controls.Add(_pcmCheck);
                 pcmFlow.Controls.Add(pcmCheckRow);
+                RegisterPreview(pcmCheckRow, new PreviewBinding(PreviewRegions.Ids.PcmAll), null);
 
                 for (int i = 0; i < 8; i++)
                 {
@@ -505,6 +532,7 @@ public sealed class SkinEditForm : Form
                     var row = new PcmChannelRow(doc, i) { Width = RowWidthFor(pcmFlow) - Dpi.S(this, 24) };
                     _pcmRows.Add(row);
                     pcmFlow.Controls.Add(row);
+                    RegisterPreview(row, PreviewBindings.For("Status", "PcmX", i), null);
                 }
             }
 
@@ -530,6 +558,7 @@ public sealed class SkinEditForm : Form
                     var ctrl = new ColorFieldEditControl(doc, field) { Width = rowWidth };
                     _colorControls.Add(ctrl);
                     flow.Controls.Add(ctrl);
+                    RegisterPreview(ctrl, PreviewBindings.ForColorSection(colorSection.Title), null);
                 }
             }
 
@@ -537,12 +566,28 @@ public sealed class SkinEditForm : Form
             tabs.TabPages.Add(page);
         }
 
-        _preview.PartActivated += title =>
+        // プレビューのクリック。その点で拾えるアイテムを優先順位の高い順に
+        // 並べ、選択中のものが居ればその次へ、最後まで行ったら選択を外す
+        // （skineditor_hitcheck.md の「プレビュー画面での操作」）。
+        _preview.PreviewClicked += pt =>
         {
-            for (int i = 0; i < tabs.TabPages.Count; i++)
+            var regions = _preview.BuildRegions();
+            var candidates = _previewTargets
+                .Where(t => t.Binding.Hit > 0
+                            && regions.TryGetValue(t.Binding.Region, out var r) && r.Contains(pt))
+                // OrderByDescending は安定なので、H が同じものは登録順
+                // （＝仕様書の並び順）のまま残る。
+                .OrderByDescending(t => t.Binding.Hit)
+                .ToList();
+            if (candidates.Count == 0)
             {
-                if (tabs.TabPages[i].Text == title) { tabs.SelectedIndex = i; break; }
+                SelectTarget(null, moveFocus: false);
+                return;
             }
+            int cur = _selectedTarget == null ? -1 : candidates.IndexOf(_selectedTarget);
+            if (cur < 0) SelectTarget(candidates[0], moveFocus: true);
+            else if (cur + 1 < candidates.Count) SelectTarget(candidates[cur + 1], moveFocus: true);
+            else SelectTarget(null, moveFocus: false);
         };
 
         doc.Changed += RefreshAll;
@@ -551,6 +596,93 @@ public sealed class SkinEditForm : Form
         FormClosing += OnFormClosing;
 
         RefreshAll();
+    }
+
+    // ---- プレビューの選択（枠の表示とクリックでの行き来） --------------------
+
+    // 1 つのコントロール（またはその中の入力欄）にフォーカスが来たら、
+    // 対応するアイテムを選択中にする。binding.Region が空（対応アイテムが
+    // 無い項目。ミニフォントなど）のときは、逆に選択を外す。
+    private void RegisterPreview(Control host, PreviewBinding binding, Action<int, int>? move)
+    {
+        PreviewTarget? target = null;
+        if (!string.IsNullOrEmpty(binding.Region))
+        {
+            target = new PreviewTarget { Ctrl = host, Binding = binding, Move = move };
+            _previewTargets.Add(target);
+        }
+        HookEnter(host, target);
+    }
+
+    private void HookEnter(Control c, PreviewTarget? target)
+    {
+        c.Enter += (_, _) => SelectTarget(target, moveFocus: false);
+        foreach (Control child in c.Controls) HookEnter(child, target);
+    }
+
+    private void SelectTarget(PreviewTarget? target, bool moveFocus)
+    {
+        _selectedTarget = target;
+        _preview.SetSelection(target?.Binding.Region, target?.Move);
+        if (target == null || !moveFocus) return;
+        ShowControl(target.Ctrl);
+        FocusInto(target.Ctrl);
+    }
+
+    // そのコントロールが載っているタブページを（入れ子のサブタブも含めて）
+    // 手前に出す。
+    private static void ShowControl(Control c)
+    {
+        for (Control? p = c; p != null; p = p.Parent)
+        {
+            if (p is TabPage page && page.Parent is TabControl tc) tc.SelectedTab = page;
+        }
+    }
+
+    private static IEnumerable<Control> SelfAndChildren(Control c)
+    {
+        yield return c;
+        foreach (Control child in c.Controls)
+        {
+            foreach (var d in SelfAndChildren(child)) yield return d;
+        }
+    }
+
+    // 行そのもの（Panel）はフォーカスを取れないので、中の入力欄へ入れる。
+    // 優先順は 数値欄 -> チェックボックス -> その他。
+    // - 数値欄は Dock=Left の都合で **追加順が見た目と逆**（x の小さい順に
+    //   並べ直さないと、いきなり右端の値にカーソルが入る）。
+    // - ボタン（素材行の「インポート...」）を最後に回すのは、うっかり
+    //   スペースキーでファイル選択が開くのを避けるため。
+    private static bool FocusInto(Control host)
+    {
+        var numerics = SelfAndChildren(host).OfType<NumericUpDown>()
+            .Where(n => n.CanFocus && n.Enabled)
+            .OrderBy(n => n.Left)
+            .ToList();
+        if (numerics.Count > 0) return numerics[0].Focus();
+
+        foreach (var c in SelfAndChildren(host).OfType<CheckBox>())
+        {
+            if (c.CanFocus && c.TabStop && c.Enabled) return c.Focus();
+        }
+        foreach (var c in SelfAndChildren(host))
+        {
+            if (c.CanFocus && c.TabStop && c.Enabled) return c.Focus();
+        }
+        return false;
+    }
+
+    // ドラッグでの書き戻し。渡ってくるのはアイテムの左上の絶対座標 (skin px)。
+    // 値の作り方そのものは PreviewDragMath（テストで往復を確認している）。
+    private Action<int, int>? MoveActionFor(PreviewBinding b, string section, string key)
+    {
+        if (b.Drag == PreviewDrag.None) return null;
+        return (nx, ny) =>
+        {
+            var value = PreviewDragMath.ValueFor(b, _preview.BuildRegions(), nx, ny);
+            if (value != null) _doc.SetLayoutRaw(section, key, value);
+        };
     }
 
     private Panel BuildStateBar()

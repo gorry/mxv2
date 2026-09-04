@@ -72,6 +72,50 @@ public class SkinDocumentTests
         Assert.Equal("", phone.BaseRef);
     }
 
+    // [Status] と [PlayKey] の矩形（2026-09-04 に [Status] Pos/BackWidth/
+    // BackHeight と [PlayKey] Pos を Rect 1 つへまとめた）。**Phone の値を
+    // 見るのは、既定値と違う値だから**——Default の [Status] は既定値と
+    // 同じなので、キー名を間違えて既定値へ落ちていても気付けない。
+    [Fact]
+    public void Phone_ReadsStatusAndPlayKeyRects()
+    {
+        var root = TestPaths.FindDevRoot();
+        var e = SkinDocument.Open(root, "Phone").Effective;
+
+        // 使う 8 個のボタンを覆う大きさが Rect の w,h になっている。
+        Assert.Equal((168, 348, 304, 82), (e.playKeyX, e.playKeyY, e.playKeyW, e.playKeyH));
+        int coverW = 0, coverH = 0;
+        for (int i = 0; i < e.numPlayKeys; i++)
+        {
+            coverW = Math.Max(coverW, e.playKeyPos[i][0] + e.playKeyRect[i].W);
+            coverH = Math.Max(coverH, e.playKeyPos[i][1] + e.playKeyRect[i].H);
+        }
+        Assert.Equal((coverW, coverH), (e.playKeyW, e.playKeyH));
+
+        Assert.Equal((344, 4, 128, 35), (e.statusX, e.statusY, e.statusW, e.statusH));
+    }
+
+    // Rect のキー名が読み書きでずれていないこと（WriteAll は「参照 → 無参照」で
+    // 実効値を全キー書き出すときに通る道なので、ここがずれると値が既定値へ
+    // 化ける）。値は既定値と違うものを入れて確かめる。
+    [Fact]
+    public void WriteAll_ThenApplyLayout_RoundTripsRects()
+    {
+        var src = new SkinLayout
+        {
+            statusX = 11, statusY = 22, statusW = 33, statusH = 44,
+            playKeyX = 55, playKeyY = 66, playKeyW = 77, playKeyH = 88,
+        };
+        var ini = new IniDocument();
+        SkinLayoutIo.WriteAll(src, ini);
+
+        var dst = new SkinLayout();
+        SkinLayoutIo.ApplyLayout(ini, dst);
+
+        Assert.Equal((11, 22, 33, 44), (dst.statusX, dst.statusY, dst.statusW, dst.statusH));
+        Assert.Equal((55, 66, 77, 88), (dst.playKeyX, dst.playKeyY, dst.playKeyW, dst.playKeyH));
+    }
+
     [Fact]
     public void SwitchBaseOff_ThenOn_RoundTripsToEquivalentEffectiveValues()
     {

@@ -254,8 +254,8 @@ bool DrawScreen::StatusRect(int row, int *x, int *y, int *w, int *h) const {
 	if (row < 0 || row >= 9 || skin_ == 0) return false;
 	*x = skin_->statusX;
 	*y = skin_->statusY + skin_->chYOffset[row];
-	*w = skin_->statusBackW;
-	*h = skin_->statusBackH;
+	*w = skin_->statusW;
+	*h = skin_->statusH;
 	return true;
 }
 

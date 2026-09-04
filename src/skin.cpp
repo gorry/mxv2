@@ -114,8 +114,8 @@ Skin::Skin() {
 
 	statusX = 344;
 	statusY = 4;
-	statusBackW = 128;
-	statusBackH = 35;
+	statusW = 128;
+	statusH = 35;
 	{
 		static const int kX[8] = { 0, 0, 0, 0, 68, 68, 68, 68 };
 		static const int kY[8] = { 0, 9, 18, 27, 0, 9, 18, 27 };
@@ -234,6 +234,9 @@ Skin::Skin() {
 
 	playKeyX = 476;
 	playKeyY = 300;
+	// 下の kRect / kPos で使う 8 個（SHUFFLE を除く）を覆う大きさ。
+	playKeyW = 160;
+	playKeyH = 44;
 	numPlayKeys = 8;  // SHUFFLE は原典同様に対象外
 	{
 		static const Xywh kRect[9] = {
@@ -347,9 +350,14 @@ void Skin::ApplyLayout(const std::string &skinDir) {
 	miniFontH = ini.GetInt("MiniFont", "Height", miniFontH);
 	miniFontBitmap = ini.GetString("MiniFont", "ImgMiniFont", miniFontBitmap);
 
-	GetXy(ini, "Status", "Pos", &statusX, &statusY);
-	statusBackW = ini.GetInt("Status", "BackWidth", statusBackW);
-	statusBackH = ini.GetInt("Status", "BackHeight", statusBackH);
+	{
+		Xywh r = { statusX, statusY, statusW, statusH };
+		GetXywh(ini, "Status", "Rect", &r);
+		statusX = r.x;
+		statusY = r.y;
+		statusW = r.w;
+		statusH = r.h;
+	}
 	GetIntList(ini, "Status", "PcmX", pcmXOffset, 8);
 	GetIntList(ini, "Status", "PcmY", pcmYOffset, 8);
 	for (int i = 0; i < kNumStatusItems; i++) {
@@ -440,7 +448,14 @@ void Skin::ApplyLayout(const std::string &skinDir) {
 	GetXywh(ini, "VolumeBar", "SlideSrc", &volRect[1]);
 	volBarBitmap = ini.GetString("VolumeBar", "ImgVolumeBar", volBarBitmap);
 
-	GetXy(ini, "PlayKey", "Pos", &playKeyX, &playKeyY);
+	{
+		Xywh r = { playKeyX, playKeyY, playKeyW, playKeyH };
+		GetXywh(ini, "PlayKey", "Rect", &r);
+		playKeyX = r.x;
+		playKeyY = r.y;
+		playKeyW = r.w;
+		playKeyH = r.h;
+	}
 	numPlayKeys = ini.GetInt("PlayKey", "Count", numPlayKeys);
 	if (numPlayKeys < 0) numPlayKeys = 0;
 	if (numPlayKeys > 9) numPlayKeys = 9;

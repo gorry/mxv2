@@ -238,8 +238,8 @@ public sealed class DrawScreenPort
         if (row < 0 || row >= 9) return false;
         x = _skin.statusX;
         y = _skin.statusY + _skin.chYOffset[row];
-        w = _skin.statusBackW;
-        h = _skin.statusBackH;
+        w = _skin.statusW;
+        h = _skin.statusH;
         return true;
     }
 

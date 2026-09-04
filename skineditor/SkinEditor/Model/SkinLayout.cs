@@ -21,8 +21,9 @@ public sealed class SkinLayout
     public int miniFontW = 6, miniFontH = 8;
 
     // ---- ステータス ---------------------------------------------------
+    // [Status] Rect の x,y は 9 段全体の左上、w,h は 1 段ぶんの背景の大きさ。
     public int statusX = 344, statusY = 4;
-    public int statusBackW = 128, statusBackH = 35;
+    public int statusW = 128, statusH = 35;
     public int[] pcmXOffset = { 0, 0, 0, 0, 68, 68, 68, 68 };
     public int[] pcmYOffset = { 0, 9, 18, 27, 0, 9, 18, 27 };
     // 項目ごとの位置（StatusItem の並びで [x, y]）。
@@ -71,7 +72,10 @@ public sealed class SkinLayout
     public Xywh[] volRect = { new(0, 0, 8, 16), new(8, 0, 64, 16) };  // [0]=つまみ [1]=スライド
 
     // ---- 操作ボタン -----------------------------------------------------
+    // [PlayKey] Rect の x,y は Pos<n> の原点、w,h は使うボタン全体を覆う
+    // 大きさ（描画には使わない。掴む範囲などの目安）。
     public int playKeyX = 476, playKeyY = 300;
+    public int playKeyW = 160, playKeyH = 44;
     public int numPlayKeys = 8;
     public Xywh[] playKeyRect =
     {
