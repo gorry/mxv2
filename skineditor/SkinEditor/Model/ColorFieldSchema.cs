@@ -4,7 +4,7 @@
 
 namespace SkinEditor.Model;
 
-public enum ColorFieldKind { Color, Int }
+public enum ColorFieldKind { Color, Int, Bool }
 
 public sealed record ColorFieldDef(
     string Label, ColorFieldKind Kind,
@@ -18,6 +18,11 @@ public sealed record ColorFieldDef(
     public static ColorFieldDef Int(string label, Func<ColorsValues, int> get, Action<ColorsValues, int> set,
         int min = 0, int max = 100) =>
         new(label, ColorFieldKind.Int, null, null, get, set, min, max);
+
+    // 実体は 0/1 の int（colors.h 側の型は変えない）だが、数値欄ではなく
+    // 「使う」トグルボタンで編集させる（2026-09-04、ユーザー指示）。
+    public static ColorFieldDef Bool(string label, Func<ColorsValues, int> get, Action<ColorsValues, int> set) =>
+        new(label, ColorFieldKind.Bool, null, null, get, set, 0, 1);
 }
 
 public sealed record ColorSectionDef(string Title, IReadOnlyList<ColorFieldDef> Fields);
@@ -28,7 +33,7 @@ public static class ColorFieldSchema
     {
         new("背景 (Back)", new List<ColorFieldDef>
         {
-            ColorFieldDef.Int("背景ビットマップを使う (0/1)", c => c.back.bitmap, (c, v) => c.back.bitmap = v, 0, 1),
+            ColorFieldDef.Bool("背景ビットマップを使う", c => c.back.bitmap, (c, v) => c.back.bitmap = v),
             ColorFieldDef.Int("ビットマップの濃さ", c => c.back.bitmapBright, (c, v) => c.back.bitmapBright = v, 0, 100),
             ColorFieldDef.Color("色", c => c.back.color, (c, v) => c.back.color = v),
             ColorFieldDef.Int("色の濃さ", c => c.back.colorBright, (c, v) => c.back.colorBright = v, 0, 100),

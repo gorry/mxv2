@@ -605,9 +605,13 @@ public sealed class SkinEditForm : Form
                     // 上マージン 0 を明示した ledToggle と縦位置がずれる
                     // （実際に踏んだ不具合。FlowLayoutPanel は各コントロール
                     // 自身の上マージン分だけ行の上端から下げて配置するため）。
+                    // TextAlign を明示しないと CheckBox の既定 MiddleLeft の
+                    // ままで、Appearance.Button にしても文字が左に寄る
+                    // （2026-09-05、ユーザー指摘。この画面の Appearance.Button
+                    // な CheckBox 全部に同じ指定が要る）。
                     var pressToggle = new CheckBox
                     {
-                        Text = "押す", Appearance = Appearance.Button,
+                        Text = "押す", Appearance = Appearance.Button, TextAlign = System.Drawing.ContentAlignment.MiddleCenter,
                         AutoSize = true, MinimumSize = toggleSize,
                         Checked = _preview.GetButtonPressed(idx),
                         Margin = new Padding(0, 0, Dpi.S(this, 8), 0),
@@ -631,7 +635,7 @@ public sealed class SkinEditForm : Form
                     {
                         var ledToggle = new CheckBox
                         {
-                            Text = "LED", Appearance = Appearance.Button,
+                            Text = "LED", Appearance = Appearance.Button, TextAlign = System.Drawing.ContentAlignment.MiddleCenter,
                             AutoSize = true, MinimumSize = toggleSize,
                             // 左右の間隔は pressToggle の右マージンで確保済みなので、
                             // ここは上下だけ 0 にそろえる（左を空けると 2 重に空く）。
@@ -715,7 +719,7 @@ public sealed class SkinEditForm : Form
                 var arrowToggleSize = new System.Drawing.Size(Dpi.S(this, 72), Dpi.S(this, 28));
                 var upToggle = new CheckBox
                 {
-                    Text = "上矢印", Appearance = Appearance.Button,
+                    Text = "上矢印", Appearance = Appearance.Button, TextAlign = System.Drawing.ContentAlignment.MiddleCenter,
                     AutoSize = true, MinimumSize = arrowToggleSize,
                     Margin = new Padding(0, 0, Dpi.S(this, 8), 0),
                 };
@@ -726,7 +730,7 @@ public sealed class SkinEditForm : Form
                 };
                 var downToggle = new CheckBox
                 {
-                    Text = "下矢印", Appearance = Appearance.Button,
+                    Text = "下矢印", Appearance = Appearance.Button, TextAlign = System.Drawing.ContentAlignment.MiddleCenter,
                     AutoSize = true, MinimumSize = arrowToggleSize,
                     Margin = new Padding(0),
                 };
@@ -752,7 +756,7 @@ public sealed class SkinEditForm : Form
                 // 乱数を選び直す（PreviewCanvas.RandomizePressedKeys）。
                 var pressKeysToggle = new CheckBox
                 {
-                    Text = "押す", Appearance = Appearance.Button,
+                    Text = "押す", Appearance = Appearance.Button, TextAlign = System.Drawing.ContentAlignment.MiddleCenter,
                     AutoSize = true,
                     MinimumSize = new System.Drawing.Size(Dpi.S(this, 72), Dpi.S(this, 28)),
                     Margin = new Padding(0, Dpi.S(this, 12), 0, 0),
