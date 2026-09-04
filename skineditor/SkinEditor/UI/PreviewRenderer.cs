@@ -16,7 +16,7 @@ namespace SkinEditor.UI;
 // 各項目は対応するタブへ移した（2026-09-04、ユーザー指示）: 操作ボタンの
 // 各サブタブの「押す」「LED」トグル、[プログレスバー]の「プレイ時間」、
 // [音量バー]の「音量」、[スクロールバー]の「スクロール」「上矢印」「下矢印」、
-// [ステータス]の[レベルメータ]サブタブの「レベル」。
+// [ステータス]の[レベルメータ]サブタブの「レベル」、[鍵盤]の「押す」。
 public sealed class PreviewState
 {
     // 押されているボタン。並びは LayoutFieldSchema の playKey サブタブと同じ
@@ -33,6 +33,17 @@ public sealed class PreviewState
     public int Level;               // 0..100（レベルメータを左から何%点灯させるか）
     public int Volume;             // -100..100
     public double Progress = 0.4;  // 0..1
+
+    // [鍵盤]タブの「押す」トグル。ON にするたびに PreviewCanvas 側で
+    // 乱数を選び直し、ここへ書き込む（2026-09-04、ユーザー指示）。
+    // FM1-8ch: 主鍵＋そこから ±1-5 鍵離れたベンド鍵（同色、bendMode=1）。
+    // PCM ch : 独立に選んだ鍵 8 個（bendMode=0）。
+    public bool KeysPressed;
+    public readonly int[] FmKey = new int[8];
+    public readonly int[] FmColor = new int[8];
+    public readonly int[] FmBendKey = new int[8];
+    public readonly int[] PcmKey = new int[8];
+    public readonly int[] PcmColor = new int[8];
 }
 
 public sealed class PreviewRenderer : IDisposable
@@ -126,6 +137,23 @@ public sealed class PreviewRenderer : IDisposable
         if (state.LedCont) status |= DrawScreenPort.PlayKeyContLed;
         if (state.LedRepeat) status |= DrawScreenPort.PlayKeyRepeatLed;
         port.PutPlayKey(status);
+
+        // 鍵盤は CompositeBack が下地を敷くだけで、既定では何も押されていない。
+        // [鍵盤] タブの「押す」トグルが ON のときだけ、PreviewCanvas が選んだ
+        // 乱数の鍵を重ねる（2026-09-04、ユーザー指示）。値そのものの決め方は
+        // PreviewCanvas.RandomizePressedKeys を見ること。
+        if (state.KeysPressed)
+        {
+            for (int row = 0; row < 8; row++)
+            {
+                port.PutNoteOn(state.FmKey[row], row, state.FmColor[row], false);
+                port.PutNoteOn(state.FmBendKey[row], row, state.FmColor[row], true);
+            }
+            for (int i = 0; i < 8; i++)
+            {
+                port.PutNoteOn(state.PcmKey[i], 8, state.PcmColor[i], false);
+            }
+        }
 
         port.PutProgressBar((uint)(DummyPlayTimeMs * Math.Clamp(state.Progress, 0, 1)),
             DummyPlayTimeMs);

@@ -744,6 +744,27 @@ public sealed class SkinEditForm : Form
                 RegisterPreview(upToggle, new PreviewBinding(PreviewRegions.Ids.ScrollUpArrow), null);
                 RegisterPreview(downToggle, new PreviewBinding(PreviewRegions.Ids.ScrollDownArrow), null);
             }
+            if (section.Title == "鍵盤")
+            {
+                // ランダムに選んだ鍵を押している状態を確認するためのトグル
+                // ボタン。[配色] の直前に置く（2026-09-04、ユーザー指示）。
+                // layout.ini には何も書かない一時的な状態で、ON にするたびに
+                // 乱数を選び直す（PreviewCanvas.RandomizePressedKeys）。
+                var pressKeysToggle = new CheckBox
+                {
+                    Text = "押す", Appearance = Appearance.Button,
+                    AutoSize = true,
+                    MinimumSize = new System.Drawing.Size(Dpi.S(this, 72), Dpi.S(this, 28)),
+                    Margin = new Padding(0, Dpi.S(this, 12), 0, 0),
+                };
+                pressKeysToggle.CheckedChanged += (_, _) =>
+                {
+                    _preview.StateKeysPressed = pressKeysToggle.Checked;
+                    _preview.Invalidate();
+                };
+                flow.Controls.Add(pressKeysToggle);
+                RegisterPreview(pressKeysToggle, new PreviewBinding(PreviewRegions.Ids.KeyboardAll), null);
+            }
 
             // 「配色」単独タブは廃止したので、対応するセクションがあれば
             // このタブの末尾（レイアウト項目の後）へ続けて置く。

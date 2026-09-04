@@ -110,6 +110,58 @@ public sealed class PreviewCanvas : Panel
         set { _state.Level = value; _dirty = true; }
     }
 
+    // [鍵盤]タブの「押す」トグル。ON にした瞬間だけ乱数を選び直す
+    // （OFF にしても選んだ鍵は捨てず、次に ON にしたときにまた選び直す）。
+    public bool StateKeysPressed
+    {
+        get => _state.KeysPressed;
+        set
+        {
+            _state.KeysPressed = value;
+            if (value) RandomizePressedKeys();
+            _dirty = true;
+        }
+    }
+
+    private readonly Random _rng = new();
+
+    // [鍵盤]の「押す」トグル ON のたびに呼ぶ。仕様（2026-09-04、ユーザー指示）:
+    //   FM1-8ch: ランダムな鍵を12色のいずれかで bendMode=0、そこから ±1-5 鍵
+    //            離れた鍵を同じ色で bendMode=1。
+    //   PCM ch : ランダムな鍵を12色のいずれかで bendMode=0、を独立に8回。
+    // 鍵の範囲は、素材 (kb0.bmp) の幅に実際に収まるオクターブ数から決める
+    // （収まらない位置を選ぶと鍵盤の外や隣の段に描かれてしまうため）。
+    private void RandomizePressedKeys()
+    {
+        var skin = _doc.Effective;
+        int span = skin.kbXOffset[12];
+        int kb0Width = _renderer.FindAsset(skin.kb0Bitmap)?.Width ?? span;
+        int octaves = span > 0 ? Math.Max(1, kb0Width / span) : 1;
+        int totalKeys = octaves * 12;
+
+        // PutNoteOn は内部で key += keyOffset してからオクターブ/音名に割るので、
+        // 渡す値は「表示上の鍵番号 - keyOffset」にしておく。
+        int ToParam(int displayKey) => displayKey - skin.keyOffset;
+
+        for (int row = 0; row < 8; row++)
+        {
+            int baseKey = _rng.Next(totalKeys);
+            int color = _rng.Next(12);
+            int bendOffset = _rng.Next(1, 6) * (_rng.Next(2) == 0 ? -1 : 1);  // ±1..5
+            int bendKey = Math.Clamp(baseKey + bendOffset, 0, totalKeys - 1);
+
+            _state.FmKey[row] = ToParam(baseKey);
+            _state.FmColor[row] = color;
+            _state.FmBendKey[row] = ToParam(bendKey);
+        }
+
+        for (int i = 0; i < 8; i++)
+        {
+            _state.PcmKey[i] = ToParam(_rng.Next(totalKeys));
+            _state.PcmColor[i] = _rng.Next(12);
+        }
+    }
+
     public PreviewCanvas(SkinDocument doc)
     {
         _doc = doc;
