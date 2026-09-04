@@ -91,7 +91,9 @@ public sealed class SkinLayout
     };
 
     public int palPlayKeyKey = 6, palPlayLed = 7, palPauseLed = 8, palContLed = 9, palRepeatLed = 10;
-    public int palDark = 2, palRed = 16, palGreen = 17;
+    // palYellow / palBlue は素材のパレットにある色玉。今はどの LED にも
+    // 割り当てていないので描画には出てこない（2026-09-04 に追加）。
+    public int palDark = 2, palRed = 16, palGreen = 17, palYellow = 18, palBlue = 19;
 
     // ---- 素材のファイル名 ---------------------------------------------
     public string backBitmap = "back.bmp";

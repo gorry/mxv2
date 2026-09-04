@@ -1012,9 +1012,11 @@ void DrawScreen::PutPlayKey(uint32_t status, bool refresh) {
 		int pal;
 		int onPal;
 	};
+	// PAUSE だけ黄（2026-09-04、ユーザー指示。素材のパレットでも PAUSE の
+	// 玉 (palPauseLed) は元から黄色なので、点灯色と素材の色が揃った）。
 	const LedMap leds[4] = {
 		{ kPlayKeyPlayLed, skin_->palPlayLed, skin_->palGreen },
-		{ kPlayKeyPauseLed, skin_->palPauseLed, skin_->palGreen },
+		{ kPlayKeyPauseLed, skin_->palPauseLed, skin_->palYellow },
 		{ kPlayKeyContLed, skin_->palContLed, skin_->palRed },
 		{ kPlayKeyRepeatLed, skin_->palRepeatLed, skin_->palRed },
 	};

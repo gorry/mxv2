@@ -118,6 +118,10 @@ public class SkinDocumentTests
         {
             statusX = 11, statusY = 22, statusW = 33, statusH = 44,
             playKeyX = 55, playKeyY = 66, playKeyW = 77, playKeyH = 88,
+            // 素材のパレット番号（PalYellow / PalBlue は 2026-09-04 に追加）。
+            // 同梱スキンの値は既定値と同じなので、読み書きのキー名がずれても
+            // 実スキンでは気付けない。ここで既定値と違う値を往復させて見る。
+            palYellow = 111, palBlue = 122,
         };
         var ini = new IniDocument();
         SkinLayoutIo.WriteAll(src, ini);
@@ -127,6 +131,7 @@ public class SkinDocumentTests
 
         Assert.Equal((11, 22, 33, 44), (dst.statusX, dst.statusY, dst.statusW, dst.statusH));
         Assert.Equal((55, 66, 77, 88), (dst.playKeyX, dst.playKeyY, dst.playKeyW, dst.playKeyH));
+        Assert.Equal((111, 122), (dst.palYellow, dst.palBlue));
     }
 
     [Fact]

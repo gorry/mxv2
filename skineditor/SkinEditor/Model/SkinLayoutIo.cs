@@ -132,6 +132,8 @@ public static class SkinLayoutIo
         t.palDark = ini.GetInt("PlayKey", "PalDark", t.palDark);
         t.palRed = ini.GetInt("PlayKey", "PalRed", t.palRed);
         t.palGreen = ini.GetInt("PlayKey", "PalGreen", t.palGreen);
+        t.palYellow = ini.GetInt("PlayKey", "PalYellow", t.palYellow);
+        t.palBlue = ini.GetInt("PlayKey", "PalBlue", t.palBlue);
         t.playKeyBitmap = ini.GetString("PlayKey", "ImgPlayKey", t.playKeyBitmap);
     }
 
@@ -217,6 +219,8 @@ public static class SkinLayoutIo
         ini.SetInt("PlayKey", "PalDark", t.palDark);
         ini.SetInt("PlayKey", "PalRed", t.palRed);
         ini.SetInt("PlayKey", "PalGreen", t.palGreen);
+        ini.SetInt("PlayKey", "PalYellow", t.palYellow);
+        ini.SetInt("PlayKey", "PalBlue", t.palBlue);
         ini.SetString("PlayKey", "ImgPlayKey", t.playKeyBitmap);
     }
 

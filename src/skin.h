@@ -165,9 +165,11 @@ struct Skin {
 	Xywh playKeyRect[9];     // playkey.bmp 内の位置と大きさ
 	int playKeyPos[9][2];    // 画面上の配置（playKeyX/Y からの相対）
 
-	// playkey.bmp のパレット番号
+	// playkey.bmp のパレット番号。palRed 以降は LED の点灯色に使う色玉で、
+	// 黄 (Yellow) と青 (Blue) は 2026-09-04 に足した（素材のパレットには
+	// 色が入っているが、今どの LED にも割り当てていないので描画では使わない）。
 	int palPlayKeyKey, palPlayLed, palPauseLed, palContLed, palRepeatLed;
-	int palDark, palRed, palGreen;
+	int palDark, palRed, palGreen, palYellow, palBlue;
 
 	// ---- 素材のファイル名 ---------------------------------------------
 	// layout.ini では表示部品ごとのセクションに Img<名前> のキーで書く

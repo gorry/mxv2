@@ -269,6 +269,8 @@ Skin::Skin() {
 	palDark = 2;
 	palRed = 16;
 	palGreen = 17;
+	palYellow = 18;
+	palBlue = 19;
 
 	backBitmap = "back.bmp";
 	kb0Bitmap = "kb0.bmp";
@@ -469,6 +471,8 @@ void Skin::ApplyLayout(const std::string &skinDir) {
 	palDark = ini.GetInt("PlayKey", "PalDark", palDark);
 	palRed = ini.GetInt("PlayKey", "PalRed", palRed);
 	palGreen = ini.GetInt("PlayKey", "PalGreen", palGreen);
+	palYellow = ini.GetInt("PlayKey", "PalYellow", palYellow);
+	palBlue = ini.GetInt("PlayKey", "PalBlue", palBlue);
 	playKeyBitmap = ini.GetString("PlayKey", "ImgPlayKey", playKeyBitmap);
 }
 

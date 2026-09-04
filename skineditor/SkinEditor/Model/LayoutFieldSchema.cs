@@ -265,10 +265,23 @@ public static class LayoutFieldSchema
                     break;
             }
         }
-        playKey.Add(new FieldDef("PlayKey", "PalKey", "パレット: ボタンの色", FieldKind.Int, e => $"{e.palPlayKeyKey}"));
-        playKey.Add(new FieldDef("PlayKey", "PalDark", "パレット: 消灯", FieldKind.Int, e => $"{e.palDark}"));
-        playKey.Add(new FieldDef("PlayKey", "PalRed", "パレット: 赤", FieldKind.Int, e => $"{e.palRed}"));
-        playKey.Add(new FieldDef("PlayKey", "PalGreen", "パレット: 緑", FieldKind.Int, e => $"{e.palGreen}"));
+        // 素材全体のパレット番号（ボタンごとの LED ではなく playkey.bmp の
+        // 色玉そのもの）は、ボタン名のサブタブと並ぶ「パレット」サブタブへ
+        // まとめる（2026-09-04、ユーザー指示。以前はここだけフラットに
+        // 残っていた）。ラベルも「パレット: ...」の接頭辞をやめて短くした
+        // （サブタブ名で分かるので、他のサブタブと同じ扱い）。
+        playKey.Add(new FieldDef("PlayKey", "PalKey", "ボタンの色", FieldKind.Int, e => $"{e.palPlayKeyKey}",
+            SubTab: "パレット"));
+        playKey.Add(new FieldDef("PlayKey", "PalDark", "LED: 消灯", FieldKind.Int, e => $"{e.palDark}",
+            SubTab: "パレット"));
+        playKey.Add(new FieldDef("PlayKey", "PalRed", "LED: 赤", FieldKind.Int, e => $"{e.palRed}",
+            SubTab: "パレット"));
+        playKey.Add(new FieldDef("PlayKey", "PalGreen", "LED: 緑", FieldKind.Int, e => $"{e.palGreen}",
+            SubTab: "パレット"));
+        playKey.Add(new FieldDef("PlayKey", "PalYellow", "LED: 黄", FieldKind.Int, e => $"{e.palYellow}",
+            SubTab: "パレット"));
+        playKey.Add(new FieldDef("PlayKey", "PalBlue", "LED: 青", FieldKind.Int, e => $"{e.palBlue}",
+            SubTab: "パレット"));
         list.Add(new FieldSectionDef("操作ボタン", playKey));
 
         return list;

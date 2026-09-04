@@ -753,7 +753,8 @@ public sealed class DrawScreenPort
         (uint bit, int pal, int onPal)[] leds =
         {
             (PlayKeyPlayLed, _skin.palPlayLed, _skin.palGreen),
-            (PlayKeyPauseLed, _skin.palPauseLed, _skin.palGreen),
+            // PAUSE だけ黄（2026-09-04、ユーザー指示）。
+            (PlayKeyPauseLed, _skin.palPauseLed, _skin.palYellow),
             (PlayKeyContLed, _skin.palContLed, _skin.palRed),
             (PlayKeyRepeatLed, _skin.palRepeatLed, _skin.palRed),
         };
