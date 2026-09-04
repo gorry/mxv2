@@ -215,15 +215,15 @@ Skin::Skin() {
 	progY = 270;
 	progW = 160;
 	progH = 6;
-	progTimeXOfs = 16;
-	progTimeYOfs = 8;
+	progTimePos[0] = 16;
+	progTimePos[1] = 8;
 
 	volX = 476;
 	volY = 300;
 	volW = 64;
 	volH = 16;
-	volTimeXOfs = 64;
-	volTimeYOfs = 6;
+	volTimePos[0] = 64;
+	volTimePos[1] = 6;
 	volNobW = 8;
 	{
 		const Xywh nob = { 0, 0, 8, 16 };
@@ -429,8 +429,7 @@ void Skin::ApplyLayout(const std::string &skinDir) {
 		progW = r.w;
 		progH = r.h;
 	}
-	progTimeXOfs = ini.GetInt("ProgressBar", "TimeX", progTimeXOfs);
-	progTimeYOfs = ini.GetInt("ProgressBar", "TimeY", progTimeYOfs);
+	GetIntList(ini, "ProgressBar", "TimePos", progTimePos, 2);
 	progressBarBitmap = ini.GetString("ProgressBar", "ImgProgressBar", progressBarBitmap);
 
 	{
@@ -441,8 +440,7 @@ void Skin::ApplyLayout(const std::string &skinDir) {
 		volW = r.w;
 		volH = r.h;
 	}
-	volTimeXOfs = ini.GetInt("VolumeBar", "TimeX", volTimeXOfs);
-	volTimeYOfs = ini.GetInt("VolumeBar", "TimeY", volTimeYOfs);
+	GetIntList(ini, "VolumeBar", "TimePos", volTimePos, 2);
 	volNobW = ini.GetInt("VolumeBar", "NobWidth", volNobW);
 	GetXywh(ini, "VolumeBar", "NobSrc", &volRect[0]);
 	GetXywh(ini, "VolumeBar", "SlideSrc", &volRect[1]);

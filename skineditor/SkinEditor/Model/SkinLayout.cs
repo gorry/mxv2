@@ -62,12 +62,13 @@ public sealed class SkinLayout
     public int[] scrollPosDownArrow = { 0, 98 };
 
     // ---- プログレスバー -----------------------------------------------
+    // TimePos は時刻表示の位置（Rect の左上からの相対）。
     public int progX = 476, progY = 270, progW = 160, progH = 6;
-    public int progTimeXOfs = 16, progTimeYOfs = 8;
+    public int[] progTimePos = { 16, 8 };
 
     // ---- 音量バー -----------------------------------------------------
     public int volX = 476, volY = 300, volW = 64, volH = 16;
-    public int volTimeXOfs = 64, volTimeYOfs = 6;
+    public int[] volTimePos = { 64, 6 };
     public int volNobW = 8;
     public Xywh[] volRect = { new(0, 0, 8, 16), new(8, 0, 64, 16) };  // [0]=つまみ [1]=スライド
 

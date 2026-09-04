@@ -158,7 +158,8 @@ public static class PreviewBindings
                 return key switch
                 {
                     "Rect" => new PreviewBinding(PreviewRegions.Ids.ProgressBar, 20, PreviewDrag.Rect),
-                    "TimeX" or "TimeY" => new PreviewBinding(PreviewRegions.Ids.ProgressTime),
+                    "TimePos" => new PreviewBinding(PreviewRegions.Ids.ProgressTime, 21,
+                        PreviewDrag.Xy, PreviewRegions.Ids.ProgressBar),
                     _ => new PreviewBinding(PreviewRegions.Ids.ProgressBar),
                 };
 
@@ -166,7 +167,8 @@ public static class PreviewBindings
                 return key switch
                 {
                     "Rect" => new PreviewBinding(PreviewRegions.Ids.VolumeBar, 20, PreviewDrag.Rect),
-                    "TimeX" or "TimeY" => new PreviewBinding(PreviewRegions.Ids.VolumeTime),
+                    "TimePos" => new PreviewBinding(PreviewRegions.Ids.VolumeTime, 21,
+                        PreviewDrag.Xy, PreviewRegions.Ids.VolumeBar),
                     "NobWidth" or "NobSrc" => new PreviewBinding(PreviewRegions.Ids.VolumeNob),
                     _ => new PreviewBinding(PreviewRegions.Ids.VolumeBar),
                 };

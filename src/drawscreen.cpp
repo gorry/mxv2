@@ -949,7 +949,7 @@ void DrawScreen::PutProgressBar(uint32_t nowTimeMs, uint32_t playTimeMs, bool re
 		char s[128];
 		snprintf(s, sizeof(s), "PLAY TIME: %02d:%02d / %02d:%02d", t / 60, t % 60, t2 / 60,
 		         t2 % 60);
-		PrintMiniCompose(skin_->progX + skin_->progTimeXOfs, skin_->progY + skin_->progTimeYOfs, s,
+		PrintMiniCompose(skin_->progX + skin_->progTimePos[0], skin_->progY + skin_->progTimePos[1], s,
 		                 colors_.playKey.color, colors_.playKey.colorBright);
 	}
 }
@@ -993,7 +993,7 @@ void DrawScreen::PutTotalVolBar(int volume, bool refresh) {
 	// 桁数は固定にする。短い文字列を書くと前の表示の末尾が残る。
 	char s[64];
 	snprintf(s, sizeof(s), "%c%03d", (volume >= 0) ? '+' : '-', abs(volume));
-	PrintMiniCompose(skin_->volX + skin_->volTimeXOfs, skin_->volY + skin_->volTimeYOfs, s,
+	PrintMiniCompose(skin_->volX + skin_->volTimePos[0], skin_->volY + skin_->volTimePos[1], s,
 	                 colors_.playKey.color, colors_.playKey.colorBright);
 }
 

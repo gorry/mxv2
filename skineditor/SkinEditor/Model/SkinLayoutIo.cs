@@ -91,8 +91,7 @@ public static class SkinLayoutIo
             GetXywh(ini, "ProgressBar", "Rect", ref r);
             t.progX = r.X; t.progY = r.Y; t.progW = r.W; t.progH = r.H;
         }
-        t.progTimeXOfs = ini.GetInt("ProgressBar", "TimeX", t.progTimeXOfs);
-        t.progTimeYOfs = ini.GetInt("ProgressBar", "TimeY", t.progTimeYOfs);
+        GetIntList(ini, "ProgressBar", "TimePos", t.progTimePos, 2);
         t.progressBarBitmap = ini.GetString("ProgressBar", "ImgProgressBar", t.progressBarBitmap);
 
         {
@@ -100,8 +99,7 @@ public static class SkinLayoutIo
             GetXywh(ini, "VolumeBar", "Rect", ref r);
             t.volX = r.X; t.volY = r.Y; t.volW = r.W; t.volH = r.H;
         }
-        t.volTimeXOfs = ini.GetInt("VolumeBar", "TimeX", t.volTimeXOfs);
-        t.volTimeYOfs = ini.GetInt("VolumeBar", "TimeY", t.volTimeYOfs);
+        GetIntList(ini, "VolumeBar", "TimePos", t.volTimePos, 2);
         t.volNobW = ini.GetInt("VolumeBar", "NobWidth", t.volNobW);
         {
             var nob = t.volRect[0];
@@ -194,13 +192,11 @@ public static class SkinLayoutIo
         ini.SetString("ScrollBar", "ImgScrollBar", t.scrollBarBitmap);
 
         ini.SetString("ProgressBar", "Rect", $"{t.progX},{t.progY},{t.progW},{t.progH}");
-        ini.SetInt("ProgressBar", "TimeX", t.progTimeXOfs);
-        ini.SetInt("ProgressBar", "TimeY", t.progTimeYOfs);
+        ini.SetString("ProgressBar", "TimePos", Join(t.progTimePos));
         ini.SetString("ProgressBar", "ImgProgressBar", t.progressBarBitmap);
 
         ini.SetString("VolumeBar", "Rect", $"{t.volX},{t.volY},{t.volW},{t.volH}");
-        ini.SetInt("VolumeBar", "TimeX", t.volTimeXOfs);
-        ini.SetInt("VolumeBar", "TimeY", t.volTimeYOfs);
+        ini.SetString("VolumeBar", "TimePos", Join(t.volTimePos));
         ini.SetInt("VolumeBar", "NobWidth", t.volNobW);
         ini.SetString("VolumeBar", "NobSrc", t.volRect[0].ToString());
         ini.SetString("VolumeBar", "SlideSrc", t.volRect[1].ToString());

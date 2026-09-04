@@ -204,11 +204,11 @@ public static class PreviewRegions
         int glyphH = mini != null ? mini.Value.Height / 5 : e.miniFontH;
 
         r[Ids.ProgressBar] = new Rectangle(e.progX, e.progY, e.progW, e.progH);
-        r[Ids.ProgressTime] = new Rectangle(e.progX + e.progTimeXOfs, e.progY + e.progTimeYOfs,
+        r[Ids.ProgressTime] = new Rectangle(e.progX + e.progTimePos[0], e.progY + e.progTimePos[1],
             TextWidth(ProgressTimeDigits, e.miniFontW, glyphW), glyphH);
 
         r[Ids.VolumeBar] = new Rectangle(e.volX, e.volY, e.volW, e.volH);
-        r[Ids.VolumeTime] = new Rectangle(e.volX + e.volTimeXOfs, e.volY + e.volTimeYOfs,
+        r[Ids.VolumeTime] = new Rectangle(e.volX + e.volTimePos[0], e.volY + e.volTimePos[1],
             TextWidth(VolumeTimeDigits, e.miniFontW, glyphW), glyphH);
 
         // つまみは音量で左右に動く。プレビューが今出している音量に合わせる。

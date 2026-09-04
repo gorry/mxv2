@@ -142,12 +142,16 @@ struct Skin {
 	int scrollPosDownArrow[2];
 
 	// ---- プログレスバー -----------------------------------------------
+	// 時刻表示は Rect の左上からの相対位置。layout.ini では [ProgressBar]
+	// TimePos に "x,y" で書く（2026-09-04 に TimeX / TimeY をまとめた）。
 	int progX, progY, progW, progH;
-	int progTimeXOfs, progTimeYOfs;
+	int progTimePos[2];
 
 	// ---- 音量バー -----------------------------------------------------
+	// TimePos はプログレスバーと同じ（こちらに出るのは時刻ではなく音量値だが、
+	// 原典からのキー名をそのまま引き継いでいる）。
 	int volX, volY, volW, volH;
-	int volTimeXOfs, volTimeYOfs;
+	int volTimePos[2];
 	int volNobW;
 	Xywh volRect[2];  // volbar.bmp 内の つまみ / スライド
 

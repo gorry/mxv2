@@ -709,7 +709,7 @@ public sealed class DrawScreenPort
         int t = Math.Min(nowSec, 99 * 60 + 59);
         int t2 = Math.Min((int)(playTimeMs / 1000), 99 * 60 + 59);
         string s = $"PLAY TIME: {t / 60:D2}:{t % 60:D2} / {t2 / 60:D2}:{t2 % 60:D2}";
-        PrintMiniCompose(_skin.progX + _skin.progTimeXOfs, _skin.progY + _skin.progTimeYOfs, s,
+        PrintMiniCompose(_skin.progX + _skin.progTimePos[0], _skin.progY + _skin.progTimePos[1], s,
             _colors.playKey.color, _colors.playKey.colorBright);
     }
 
@@ -736,7 +736,7 @@ public sealed class DrawScreenPort
 
         // 桁数は固定にする。短い文字列を書くと前の表示の末尾が残る。
         string s = $"{(volume >= 0 ? '+' : '-')}{Math.Abs(volume):D3}";
-        PrintMiniCompose(_skin.volX + _skin.volTimeXOfs, _skin.volY + _skin.volTimeYOfs, s,
+        PrintMiniCompose(_skin.volX + _skin.volTimePos[0], _skin.volY + _skin.volTimePos[1], s,
             _colors.playKey.color, _colors.playKey.colorBright);
     }
 

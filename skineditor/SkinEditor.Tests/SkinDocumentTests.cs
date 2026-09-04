@@ -95,6 +95,19 @@ public class SkinDocumentTests
         Assert.Equal((344, 4, 128, 35), (e.statusX, e.statusY, e.statusW, e.statusH));
     }
 
+    // [ProgressBar] / [VolumeBar] の TimePos（2026-09-04 に TimeX / TimeY を
+    // 1 つにまとめた）。**音量バーのほうを見るのは、既定値 (64,6) と違う値だから**
+    // ——プログレスバーの Phone の値は既定値と同じなので、キー名を間違えて
+    // 既定値へ落ちていても気付けない。
+    [Fact]
+    public void Phone_ReadsTimePos()
+    {
+        var e = SkinDocument.Open(TestPaths.FindDevRoot(), "Phone").Effective;
+
+        Assert.Equal(new[] { 128, 8 }, e.volTimePos);
+        Assert.Equal(new[] { 16, 8 }, e.progTimePos);
+    }
+
     // Rect のキー名が読み書きでずれていないこと（WriteAll は「参照 → 無参照」で
     // 実効値を全キー書き出すときに通る道なので、ここがずれると値が既定値へ
     // 化ける）。値は既定値と違うものを入れて確かめる。
