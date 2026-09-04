@@ -53,6 +53,8 @@ const int kVolumeNever = -1000;
 // **0 を使ってはいけない**。全ボタンが上がっていて LED も消えている状態が
 // ちょうど 0 なので、背景を描き直した直後（演奏前など）に PutPlayKey を
 // 呼んでも「前回と同じ」と見なされ、ボタンが消えたままになる。
+// これは**ボタンの押下表示にだけ効く印**で、LED は使わない（LED はこの印を
+// 「全部点いている」と読んでしまうため。PutPlayKey のコメントを見ること）。
 const uint32_t kPlayKeyStatusNever = 0xffffffffu;
 
 // スクロールバーの部品の当たり判定。pos は {x, y}、src の w/h を大きさに使う。
@@ -1017,11 +1019,21 @@ void DrawScreen::PutPlayKey(uint32_t status, bool refresh) {
 		{ kPlayKeyRepeatLed, skin_->palRepeatLed, skin_->palRed },
 	};
 
+	// LED は「前回の status」ではなく **今パレットに入っている色**と見比べる。
+	// playKeyStatusLast_ の「まだ描いていない」印 (0xffffffff) は全 LED が
+	// 点いている状態とちょうど同じ値なので、**点いた状態で始まる LED を
+	// 「前回と同じ」と見なして塗り替えそこねる**。曲を始めると PollSong が
+	// PlaySong の直後に Reload()（＝この印に戻す）を呼ぶので、PLAY の LED は
+	// 演奏中ずっと消灯色のままだった。ほかに起動直後から演奏している場合や、
+	// LoadAssets がパレットを消灯色へ戻すスキン切り替えでも同じことが起きる。
+	// パレットと見比べれば、印が何であっても今の状態に合う色へ必ず直る。
 	bool ledChanged = false;
 	for (int i = 0; i < 4; i++) {
 		const uint32_t now = status & leds[i].bit;
-		if (now == (playKeyStatusLast_ & leds[i].bit)) continue;
-		playKey_.palette()[leds[i].pal] = playKey_.palette()[now ? leds[i].onPal : skin_->palDark];
+		const Rgb want = playKey_.palette()[now ? leds[i].onPal : skin_->palDark];
+		Rgb &cur = playKey_.palette()[leds[i].pal];
+		if (cur.r == want.r && cur.g == want.g && cur.b == want.b) continue;
+		cur = want;
 		ledChanged = true;
 	}
 
