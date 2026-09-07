@@ -32,6 +32,7 @@ enum MouseRequest {
 	kMouseRequestToggleCont,
 	kMouseRequestToggleRepeat,
 	kMouseRequestContextMenu,  // バナーを押した (右クリックの代わり)
+	kMouseRequestGoParent,     // ファイラーで左へはじいた (BACKSPACE と同じ)
 };
 
 class MouseInput {
@@ -73,6 +74,13 @@ public:
 	// 指が止まってからこれだけ経って離したら、滑らせない（置いただけ）。
 	static const uint32_t kVelocityStaleMs = 80;
 
+	// ファイラーの横スワイプ。**はじく**操作にだけ反応させたいので、
+	// 速さと動いた距離の両方で見る（ゆっくり横へずらしただけでは効かない）。
+	// 右へはじくと ENTER（カーソルの項目を開く）、左へはじくと BACKSPACE
+	// （親フォルダへ）。速度は論理 px / 秒、距離は論理 px。
+	static const int kSwipeVelocityPxPerSec = 400;
+	static const int kSwipeMinPx = 40;
+
 private:
 	enum Captured {
 		kCapturedNone = 0,
@@ -112,6 +120,7 @@ private:
 	uint32_t pressMask_;
 
 	int lastX_, lastY_;      // 直近のマウス位置（オートリピート用）
+	int dragOriginX_;        // 掴んだ時のマウス x（横スワイプの判定用）
 	int dragOriginY_;        // 掴んだ時のマウス y（つまみ / ファイラー共用）
 	int dragOriginThumb_;    // つまみを掴んだ時のつまみ位置
 	uint32_t nextRepeatMs_;  // 次のオートリピート時刻
@@ -123,6 +132,7 @@ private:
 	int dragOriginTopPx_;  // 掴んだ時の Filer::topPx()
 	int pendingCursor_;    // 離したときに合わせる項目。-1 なら合わせない
 	bool pendingOpen_;     // W クリックの 2 回目。離したときに開く印
+	bool swipeArmed_;      // 横スワイプを見てよい押下か（ブレーキでは見ない）
 	bool dragMoved_;       // ドラッグ扱いになったか
 
 	// シークバーのドラッグ。シーク (MXDRV_PlayAt) は曲の頭から空回しする
@@ -133,9 +143,12 @@ private:
 	uint32_t seekDragMs_;  // 指の位置が指す演奏位置
 
 	// 指の速度。直近の動きを平滑化したもの (論理 px / 秒、画面座標)。
+	// 縦は慣性スクロール、横はスワイプ（ENTER / BACKSPACE）の判定に使う。
+	int lastMoveX_;
 	int lastMoveY_;
 	uint32_t lastMoveMs_;
 	float dragVelocity_;
+	float dragVelocityX_;
 
 	// 慣性で滑っている間の状態。
 	bool flingActive_;

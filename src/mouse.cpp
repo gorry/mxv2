@@ -33,19 +33,23 @@ MouseInput::MouseInput(DrawScreen *draw, Filer *filer, Player *player)
       pressMask_(0),
       lastX_(0),
       lastY_(0),
+      dragOriginX_(0),
       dragOriginY_(0),
       dragOriginThumb_(0),
       nextRepeatMs_(0),
       dragOriginTopPx_(0),
       pendingCursor_(-1),
       pendingOpen_(false),
+      swipeArmed_(false),
       dragMoved_(false),
       seekDragging_(false),
       seekWasPaused_(false),
       seekDragMs_(0),
+      lastMoveX_(0),
       lastMoveY_(0),
       lastMoveMs_(0),
       dragVelocity_(0.0f),
+      dragVelocityX_(0.0f),
       flingActive_(false),
       flingVelocity_(0.0f),
       flingPos_(0.0f),
@@ -121,17 +125,23 @@ MouseRequest MouseInput::OnButtonDown(int x, int y, int clicks) {
 		if (row >= 0) {
 			const int index = filer_->top() + row;
 			captured_ = kCapturedFileList;
+			dragOriginX_ = x;
 			dragOriginY_ = y;
 			dragOriginTopPx_ = filer_->topPx();
 			dragMoved_ = false;
+			lastMoveX_ = x;
 			lastMoveY_ = y;
 			lastMoveMs_ = SDL_GetTicks();
 			dragVelocity_ = 0.0f;
+			dragVelocityX_ = 0.0f;
 			// 空行 (項目より下) からでも掴めるようにする。指で送るときに
 			// 「下の余白は掴めない」となると使いにくい。選ぶものは無い。
 			// ブレーキで触ったときは選ばない。
 			pendingCursor_ =
 			    (!braking && index < filer_->itemCount()) ? index : -1;
+			// 滑っているのを止めるための押下では、横スワイプも見ない
+			// （止めるつもりの操作で開いたり親へ上がったりしないように）。
+			swipeArmed_ = !braking;
 
 			// W クリックは**2 回目を離したとき**に開く（印だけ立てる）。
 			// 押した時点で開くと、その直後に届く「離した」がその場所の
@@ -246,6 +256,11 @@ void MouseInput::OnMotion(int x, int y) {
 					const float v = (float)(y - lastMoveY_) * 1000.0f / (float)dtMs;
 					dragVelocity_ = dragVelocity_ * (1.0f - kVelocityBlend) +
 					                v * kVelocityBlend;
+					// 横も同じように控える（はじいたかの判定に使う）。
+					const float vx = (float)(x - lastMoveX_) * 1000.0f / (float)dtMs;
+					dragVelocityX_ = dragVelocityX_ * (1.0f - kVelocityBlend) +
+					                 vx * kVelocityBlend;
+					lastMoveX_ = x;
 					lastMoveY_ = y;
 					lastMoveMs_ = now;
 				}
@@ -294,6 +309,24 @@ MouseRequest MouseInput::OnButtonUp(int x, int y) {
 	const int pending = pendingCursor_;
 	const bool open = pendingOpen_;
 	const bool moved = dragMoved_;
+
+	// ファイラーを横へ**はじいた**か。速さ・動いた距離・向きの 3 つが
+	// そろったときだけ。ゆっくり横へずらしただけ、縦に振ったついでに
+	// 横がぶれただけ、指を止めてから離した、のどれでも効かない。
+	//   右 … ENTER（カーソルの項目を開く）
+	//   左 … BACKSPACE（親フォルダへ）
+	int swipe = 0;
+	if (captured_ == kCapturedFileList && swipeArmed_ &&
+	    SDL_GetTicks() - lastMoveMs_ <= kVelocityStaleMs) {
+		const int dx = x - dragOriginX_;
+		const int dy = y - dragOriginY_;
+		const int absDx = (dx < 0) ? -dx : dx;
+		const int absDy = (dy < 0) ? -dy : dy;
+		if (absDx >= kSwipeMinPx && absDx > absDy) {
+			if (dx > 0 && dragVelocityX_ >= (float)kSwipeVelocityPxPerSec) swipe = 1;
+			if (dx < 0 && dragVelocityX_ <= -(float)kSwipeVelocityPxPerSec) swipe = -1;
+		}
+	}
 	const bool seeking = seekDragging_;
 	const bool wasPaused = seekWasPaused_;
 	const uint32_t seekMs = seekDragMs_;
@@ -313,6 +346,13 @@ MouseRequest MouseInput::OnButtonUp(int x, int y) {
 	// ファイラーは、ドラッグせずに離したときだけカーソルを合わせる。
 	// W クリックの 2 回目なら、合わせたうえで開く。
 	if (captured == kCapturedFileList) {
+		// 横へはじいたときは、縦の慣性も選択も行わない。
+		// **カーソルは動かさない**——キーボードの ENTER / BACKSPACE を
+		// 指で行うための操作なので、指を置いた行ではなく今のカーソルが
+		// 対象になる（触った拍子にカーソルが飛ばない）。
+		if (swipe > 0) return kMouseRequestOpenCursor;
+		if (swipe < 0) return kMouseRequestGoParent;
+
 		if (!moved) {
 			if (pending >= 0) filer_->SetCursor(pending);
 			if (open && pending >= 0) return kMouseRequestOpenCursor;
@@ -503,6 +543,7 @@ void MouseInput::ReleaseAll() {
 	pressMask_ = 0;
 	pendingCursor_ = -1;
 	pendingOpen_ = false;
+	swipeArmed_ = false;
 	dragMoved_ = false;
 	seekDragging_ = false;
 	draw_->SetScrollBarFlags(0);

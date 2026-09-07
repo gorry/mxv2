@@ -1373,6 +1373,11 @@ int main(int argc, char **argv) {
 					autoRepeat = !autoRepeat;
 					chromeRefresh = true;
 					break;
+				case mxv2::kMouseRequestGoParent:
+					// ファイラーで左へはじいた。BACKSPACE と同じ。
+					filer.GoParent();
+					fileListRefresh = true;
+					break;
 				case mxv2::kMouseRequestContextMenu:
 					ui.OpenContextMenu();
 					break;
