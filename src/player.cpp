@@ -49,7 +49,6 @@ Player::Player()
       contextReady_(false),
       mxdrvStarted_(false),
       audioDevice_(0),
-      audioSuspended_(false),
       readableSem_(0),
       writableSem_(0),
       readBlock_(0),
@@ -315,24 +314,11 @@ bool Player::PlaySong(const MdxSong &song, std::string *err) {
 	return true;
 }
 
-// オーディオ装置を動かす。バックグラウンドへ回っているあいだは止めたまま
-// にする（復帰したときに SetAudioSuspended が動かす）。
+// オーディオ装置を動かす。**Android でバックグラウンドへ回っても止めない**
+// （演奏はそのまま続ける。前面サービスが立っているあいだは OS も止めない）。
 void Player::ResumeAudioDevice() {
-	if (audioDevice_ == 0 || audioSuspended_) return;
+	if (audioDevice_ == 0) return;
 	SDL_PauseAudioDevice(audioDevice_, 0);
-}
-
-void Player::SetAudioSuspended(bool suspended) {
-	if (audioSuspended_ == suspended) return;
-	audioSuspended_ = suspended;
-	if (!opened_ || audioDevice_ == 0) return;
-	if (suspended) {
-		SDL_PauseAudioDevice(audioDevice_, 1);
-	} else if (playing_) {
-		// 何も掛かっていないのに動かすと、空のキューを読んで
-		// アンダーランに数えられてしまう。
-		SDL_PauseAudioDevice(audioDevice_, 0);
-	}
 }
 
 // 停止。**曲の頭へ戻す**（PLAY TIME は 00:00 に戻り、そこで止まる）。

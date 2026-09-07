@@ -166,6 +166,7 @@ set(MXV2_SOURCES
 	src/mdxsong.cpp
 	src/message.cpp
 	src/mouse.cpp
+	src/nowplaying.cpp
 	src/player.cpp
 	src/safaccess.cpp
 	src/screen.cpp
@@ -194,6 +195,7 @@ set(MXV2_SOURCES
 	src/message.h
 	src/mouse.h
 	src/mxdrvptr.h
+	src/nowplaying.h
 	src/safaccess.h
 	src/player.h
 	src/screen.h

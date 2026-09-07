@@ -13,6 +13,16 @@
 		android:name="android.hardware.type.pc"
 		android:required="false" />
 
+	<!-- バックグラウンドでも演奏を続けるための前面サービス（PlaybackService）。
+	     FOREGROUND_SERVICE_MEDIA_PLAYBACK は Android 14 以降で、
+	     foregroundServiceType="mediaPlayback" を名乗るのに要る。 -->
+	<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+	<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+	<!-- 演奏中の通知。Android 13 以降は実行時にも尋ねる（MainActivity）。 -->
+	<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+	<!-- 画面が消えてもデコードスレッドを回し続ける。 -->
+	<uses-permission android:name="android.permission.WAKE_LOCK" />
+
 	<application android:label="@string/app_name"
 		android:icon="@mipmap/ic_launcher"
 		android:allowBackup="true"
@@ -31,6 +41,12 @@
 				<category android:name="android.intent.category.LAUNCHER" />
 			</intent-filter>
 		</activity>
+
+		<!-- 演奏中の通知。実体は PlaybackService、窓口は PlaybackBridge。
+		     アプリの中からしか起こさないので exported は false。 -->
+		<service android:name=".PlaybackService"
+			android:exported="false"
+			android:foregroundServiceType="mediaPlayback" />
 	</application>
 
 </manifest>

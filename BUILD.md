@@ -240,6 +240,18 @@ adb shell am start -n net.gorry.mxv2/.MainActivity
 - 設定と展開した素材は `/data/data/net.gorry.mxv2/files/` の下。debug ビルド
   なら `adb shell run-as net.gorry.mxv2 ls files/` で覗ける。作り直したい
   ときは `run-as net.gorry.mxv2 rm files/mxv2.ini`。
+- **バックグラウンドでも演奏を続ける。** 演奏しているあいだは前面サービス
+  (`PlaybackService`) が通知を出す。初回起動時に通知の許可を尋ねる
+  （Android 13 以降）。断っても演奏はできるが通知は出ない。あとから
+  `adb shell pm grant net.gorry.mxv2 android.permission.POST_NOTIFICATIONS`
+  でも与えられる。動きの確認に使ったもの:
+
+  ```sh
+  adb shell dumpsys activity services net.gorry.mxv2   # 前面サービス
+  adb shell dumpsys notification --noredact            # 通知の中身
+  adb shell dumpsys audio | grep net.gorry.mxv2        # 鳴っているか
+  adb shell input keyevent KEYCODE_MEDIA_NEXT          # 通知と同じ操作
+  ```
 
 ### 素材の届き方
 
