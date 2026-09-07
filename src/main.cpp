@@ -1125,6 +1125,7 @@ int main(int argc, char **argv) {
 			}
 		}
 		draw.SetFileListFontSize(settings.fileListFontSize);
+		draw.SetFileListScroll(settings.fileListScroll);
 	}
 
 	mxv2::Player player;
@@ -1822,8 +1823,10 @@ int main(int argc, char **argv) {
 		    mouse.seekDragging() ? mouse.seekDragMs() : player.nowTimeMs();
 		visualizer.UpdateChrome(player, chromeNowMs, chromeRefresh, autoNext, autoRepeat,
 		                        mouse.playKeyPressMask());
-		draw.PutFileList(filer, fileListRefresh);
+		draw.PutFileList(filer, fileListRefresh, SDL_GetTicks());
 		draw.PutScrollBar(filer.topPx(), filer.maxTopPx());
+		// 曲名が枠に収まらないときの横スクロール。収まっていれば何もしない。
+		draw.UpdateTitleScroll(SDL_GetTicks());
 		chromeRefresh = false;
 		fileListRefresh = false;
 

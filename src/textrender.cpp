@@ -57,7 +57,8 @@ const uint8_t *CoverageTable() {
 class NullTextRenderer : public TextRenderer {
 public:
 	virtual bool available() const { return false; }
-	virtual void Draw(Bitmap *, int, int, int, float, const std::string &) {}
+	virtual void Draw(Bitmap *, int, int, int, float, const std::string &, int, bool) {}
+	virtual int Measure(float, const std::string &) { return 0; }
 };
 
 // UTF-8 を 1 文字取り出す。壊れていたら U+FFFD を返して 1 バイト進める。
@@ -126,7 +127,7 @@ public:
 	virtual bool available() const { return ready_; }
 
 	virtual void Draw(Bitmap *dst, int x, int y, int maxWidth, float cellHeight,
-	                  const std::string &utf8) {
+	                  const std::string &utf8, int offsetX, bool allowPartial) {
 		if (!ready_ || dst == 0 || !dst->valid() || dst->bitCount() != 8) return;
 		if (utf8.empty() || cellHeight <= 0.0f) return;
 
@@ -136,17 +137,39 @@ public:
 		if (maxWidth > 0 && maxWidth < limit) limit = maxWidth;
 		if (limit <= 0) return;
 
-		int penX = 0;
+		// 左へずらすぶん、ペンは枠の外から始まる。
+		int penX = -offsetX;
 		size_t pos = 0;
 		while (pos < utf8.size()) {
 			const uint32_t cp = NextCodepoint(utf8, &pos);
 			const Glyph *g = GetGlyph(cp);
 			if (g == 0) continue;
-			if (penX + g->advance > limit && penX > 0) break;
+			if (penX >= limit) break;
+			// まだ枠の左側にいる字は飛ばす（スクロールしたぶん）。
+			if (penX + g->advance <= 0) {
+				penX += g->advance;
+				continue;
+			}
+			// 入りきらない字を出さない指定のときは、そこで打ち切る。
+			if (!allowPartial && penX + g->advance > limit && penX > 0) break;
 			BlitGlyph(dst, x + penX, y, limit - penX, *g);
 			penX += g->advance;
-			if (penX >= limit) break;
 		}
+	}
+
+	virtual int Measure(float cellHeight, const std::string &utf8) {
+		if (!ready_ || utf8.empty() || cellHeight <= 0.0f) return 0;
+		SetSize(cellHeight);
+
+		int w = 0;
+		size_t pos = 0;
+		while (pos < utf8.size()) {
+			const uint32_t cp = NextCodepoint(utf8, &pos);
+			const Glyph *g = GetGlyph(cp);
+			if (g == 0) continue;
+			w += g->advance;
+		}
+		return w;
 	}
 
 private:

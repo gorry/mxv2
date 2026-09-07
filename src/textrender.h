@@ -38,8 +38,19 @@ public:
 	// (0=透明 .. 255=不透明) が入る。既にある値より大きいときだけ書く。
 	// maxWidth を超える分は切り捨てる。cellHeight は 1 行の高さ (px)。
 	// 出力解像度へ拡大して描くため、cellHeight は実数で受ける。
+	//
+	// offsetX … 文字列をこれだけ左へずらして描く（曲名の横スクロール）。
+	//           先頭のはみ出した分は自動で切られる。
+	// allowPartial … 右端で文字が途中まで描かれるのを許すか。ファイラーは
+	//           「入りきらない文字は出さない」ので false、スクロールする
+	//           曲名は途中で切れてよいので true。
 	virtual void Draw(Bitmap *dst, int x, int y, int maxWidth, float cellHeight,
-	                  const std::string &utf8) = 0;
+	                  const std::string &utf8, int offsetX = 0,
+	                  bool allowPartial = false) = 0;
+
+	// 文字列をすべて描くのに要る幅 (px)。maxWidth に収まるかどうかの判断と、
+	// スクロールの送り幅を決めるのに使う。
+	virtual int Measure(float cellHeight, const std::string &utf8) = 0;
 };
 
 // 実装を作る。searchDirs を順に見て font.ttf を探し、どこにも無ければ

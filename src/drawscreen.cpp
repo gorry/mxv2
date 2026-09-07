@@ -9,6 +9,7 @@
 #include "bmpfile.h"
 #include "fileutil.h"
 #include "message.h"
+#include "settings.h"
 
 namespace mxv2 {
 
@@ -22,6 +23,37 @@ int Max(int a, int b) { return a > b ? a : b; }
 // ミニフォントでの退避描画に流す最大文字数。はみ出した分はブリッタ側で
 // クリップされるので、画面幅を越えられる長さがあれば十分。
 const size_t kMaxAsciiChars = 128;
+
+// 曲名の左右の余白 (px)。
+const int kTitleMarginX = 4;
+
+// 曲名が枠に収まらないときのスクロール。
+//   先頭で止まる → kScrollPxPerSec で末尾まで送る → 末尾で止まる →
+//   先頭へ戻る、の繰り返し。止まる長さは曲名欄とファイラーで別。
+// 速さは仕様に無いので、Phone (480px) の曲名を無理なく読める速さにした。
+const float kScrollPxPerSec = 40.0f;
+const uint32_t kTitleScrollHoldMs = 3000;     // 画面下の曲名欄
+const uint32_t kFileListScrollHoldMs = 1000;  // ファイラーの曲名（短めに）
+// 幅の測り方（切り上げ）と字の置き方の端数で、収まっているのに 1〜2px だけ
+// はみ出したことになる場合がある。そのぶんで動き出すと、止まるたびにわずかに
+// 震えて見えるので、これ以下のはみ出しは無視する。
+const int kTitleScrollSlack = 2;
+
+// 周期の先頭から t ミリ秒経ったときの送り量 (px)。
+//   0..hold          … 先頭のまま
+//   hold..hold+移動  … 一定の速さで送る
+//   その後 hold      … 末尾のまま
+// を繰り返す。
+float ScrollOffsetAt(uint32_t t, float maxPx, uint32_t holdMs) {
+	if (maxPx <= 0.0f) return 0.0f;
+	const uint32_t moveMs = (uint32_t)(maxPx * 1000.0f / kScrollPxPerSec + 0.5f);
+	const uint32_t cycleMs = holdMs * 2 + moveMs;
+	const uint32_t u = t % cycleMs;
+	if (u < holdMs) return 0.0f;
+	if (u >= holdMs + moveMs) return maxPx;
+	const float off = (u - holdMs) * kScrollPxPerSec / 1000.0f;
+	return (off > maxPx) ? maxPx : off;
+}
 
 // ミニフォントの素材は ASCII 0x20〜0x6F を 16 列 x 5 行に並べたグリフ表。
 // **1 文字の大きさは素材の大きさ ÷ この並びで決まる**ので、素材を大きく
@@ -94,6 +126,13 @@ DrawScreen::DrawScreen()
       scrollBarThumb_(0),
       miniGlyphW_(0),
       miniGlyphH_(0),
+      titleScrollMax_(0.0f),
+      titleScrollShown_(0.0f),
+      titleScrollBaseMs_(0),
+      titleScrollStarted_(false),
+      fileListScroll_(0),
+      fileListPhaseTickMs_(0),
+      fileListFsLast_(-1),
       playKeyStatusLast_(kPlayKeyStatusNever),
       progressBarLenLast_(-1),
       progressNowSecLast_(-1),
@@ -299,6 +338,10 @@ void DrawScreen::Reload() {
 	totalVolBarLast_ = kVolumeNever;
 	fileListLast_.clear();
 	fileListCursorLast_ = -1;
+	// 曲名の幅はスキンの桁と文字の大きさで変わるので、測り直させる。
+	fileListScrollLast_.clear();
+	fileListTitleW_.clear();
+	fileListFsLast_ = -1;
 
 	// 演奏中ならこの後ポーリングが本当の値を積み直す（Player::
 	// RequestStatusRefresh）。始まる前と止まっている間は 0 のまま。
@@ -665,26 +708,70 @@ void DrawScreen::PutStatusZero() {
 void DrawScreen::PutMDXTitle(const std::string &titleUtf8) {
 	mdxTitle_ = titleUtf8;
 
+	// 枠に収まらないぶんはスクロールで見せる。曲が変わるたびに測り直し、
+	// 周期も先頭からやり直す。
+	titleScrollMax_ = 0.0f;
+	titleScrollShown_ = 0.0f;
+	titleScrollStarted_ = false;
+	if (!titleUtf8.empty() && textLayer_ != 0 && textLayer_->available()) {
+		const int inner = skin_->titleW - kTitleMarginX * 2;
+		const int need = textLayer_->MeasureWidth(skin_->titleH, titleUtf8);
+		if (need > inner + kTitleScrollSlack) titleScrollMax_ = (float)(need - inner);
+	}
+
+	DrawMDXTitle(0.0f);
+}
+
+// 曲名を送り量 scrollX（論理px）で描く。**枠の下地から描き直す**ので、
+// スクロール中は毎フレームここを通る。
+void DrawScreen::DrawMDXTitle(float scrollX) {
+	titleScrollShown_ = scrollX;
+
 	// 背景を戻してからタイトル欄の下地を敷く
 	BmpCopy(&screen_, skin_->titleX, skin_->titleY, skin_->titleW, skin_->titleH, &back_, skin_->titleX, skin_->titleY, 100);
 	BmpFill(&screen_, skin_->titleX, skin_->titleY, skin_->titleW, skin_->titleH, colors_.mdxTitle.backColor.r,
 	        colors_.mdxTitle.backColor.g, colors_.mdxTitle.backColor.b,
 	        colors_.mdxTitle.backColorBright);
 
-	if (titleUtf8.empty()) return;
+	if (mdxTitle_.empty()) return;
 
 	if (textLayer_ != 0 && textLayer_->available()) {
 		// 文字はキャンバスではなく出力解像度のレイヤーへ描く。
+		// スクロールするときは端で字が切れてよい（切れる手前で止めると、
+		// 送るたびに 1 文字ぶん飛んで見える）。
 		textLayer_->ClearRect(skin_->titleX, skin_->titleY, skin_->titleW, skin_->titleH);
-		textLayer_->DrawText(skin_->titleX + 4, skin_->titleY, skin_->titleW - 8, skin_->titleH, titleUtf8,
-		                     colors_.mdxTitle.color, colors_.mdxTitle.colorBright);
+		textLayer_->DrawText(skin_->titleX + kTitleMarginX, skin_->titleY,
+		                     skin_->titleW - kTitleMarginX * 2, skin_->titleH, mdxTitle_,
+		                     colors_.mdxTitle.color, colors_.mdxTitle.colorBright, 0, 0,
+		                     scrollX, true);
 		return;
 	}
 
 	// フォントが読めなかったときの非常用。ミニフォントは本来ステータス欄などの
 	// 数字用なので、ここへ落ちている時点で assets の同梱フォントが失われている。
-	PrintMini(skin_->titleX + 4, skin_->titleY + 3, ToAscii(titleUtf8, kMaxAsciiChars).c_str(),
-	          colors_.mdxTitle.color, colors_.mdxTitle.colorBright);
+	// こちらはスクロールしない（非常用なので凝らない）。
+	PrintMini(skin_->titleX + kTitleMarginX, skin_->titleY + 3,
+	          ToAscii(mdxTitle_, kMaxAsciiChars).c_str(), colors_.mdxTitle.color,
+	          colors_.mdxTitle.colorBright);
+}
+
+// 曲名のスクロール。左端で止まる → 右端まで送る → 右端で止まる → 先頭へ戻る、
+// の繰り返し。Phone のような横幅の狭いスキンでも曲名を最後まで読めるようにする。
+void DrawScreen::UpdateTitleScroll(uint32_t nowMs) {
+	if (titleScrollMax_ <= 0.0f) return;  // 枠に収まっている
+
+	if (!titleScrollStarted_) {
+		titleScrollStarted_ = true;
+		titleScrollBaseMs_ = nowMs;
+	}
+
+	const float scrollX =
+	    ScrollOffsetAt(nowMs - titleScrollBaseMs_, titleScrollMax_, kTitleScrollHoldMs);
+
+	// 変わっていなければ描き直さない（止まっている間は何もしない）。
+	const float diff = scrollX - titleScrollShown_;
+	if (diff > -0.25f && diff < 0.25f) return;
+	DrawMDXTitle(scrollX);
 }
 
 // ---------------------------------------------------------------------------
@@ -705,7 +792,7 @@ void DrawScreen::SetFileListFontSize(int size) {
 	fileListCursorLast_ = -1;
 }
 
-void DrawScreen::PutFileList(const Filer &filer, bool refresh) {
+void DrawScreen::PutFileList(const Filer &filer, bool refresh, uint32_t nowMs) {
 	const int rows = fileListRows();
 	const int fs = fileListFontSize_ & 1;  // 0=小さい文字 / 1=大きい文字
 	const int itemH = skin_->fileListItemH[fs];
@@ -727,9 +814,48 @@ void DrawScreen::PutFileList(const Filer &filer, bool refresh) {
 		fileListOffsetLast_ = offset;
 		refresh = true;
 	}
+	if (fileListFsLast_ != fs) {
+		fileListFsLast_ = fs;
+		// 幅は文字の大きさで変わる。測り直させる。
+		fileListTitleW_.clear();
+		refresh = true;
+	}
 	if ((int)fileListLast_.size() != rows + 1) {
 		fileListLast_.assign(rows + 1, FileItem());
 		refresh = true;
+	}
+	if ((int)fileListScrollLast_.size() != rows + 1 ||
+	    (int)fileListTitleW_.size() != rows + 1) {
+		fileListScrollLast_.assign(rows + 1, 0.0f);
+		fileListTitleW_.assign(rows + 1, -1);
+	}
+
+	// 横スクロールの進み具合は**項目ごと**に持つ。フォルダが変わったら作り直す
+	// （中身が総入れ替えになるので、前の値には意味が無い）。
+	const int itemCount = filer.itemCount();
+	if (fileListRefLast_ != filer.currentRef() || (int)fileListPhaseMs_.size() != itemCount) {
+		fileListRefLast_ = filer.currentRef();
+		fileListPhaseMs_.assign(itemCount, 0);
+	}
+
+	// **見えている行だけ**時間を進める。画面から外れている行は、そのときの
+	// 位置のまま待つ（縦にスクロールしても横位置が飛ばない）。
+	{
+		uint32_t dt = nowMs - fileListPhaseTickMs_;
+		fileListPhaseTickMs_ = nowMs;
+		// 長く描いていなかったとき（バックグラウンドなど）は進めない。
+		if (dt > 500) dt = 0;
+		if (dt > 0) {
+			for (int i = 0; i < drawRows; i++) {
+				const int j = top + i;
+				if (j >= 0 && j < itemCount) fileListPhaseMs_[j] += dt;
+			}
+		}
+	}
+
+	// カーソルが来た行だけ先頭へ戻す。
+	if (cursor != fileListCursorLast_ && cursor >= 0 && cursor < itemCount) {
+		fileListPhaseMs_[cursor] = 0;
 	}
 
 	for (int i = 0; i < drawRows; i++) {
@@ -742,13 +868,40 @@ void DrawScreen::PutFileList(const Filer &filer, bool refresh) {
 		if (fileListLast_[i].baseName != shown.baseName ||
 		    fileListLast_[i].title != shown.title || fileListLast_[i].type != shown.type) {
 			fileListLast_[i] = shown;
+			fileListTitleW_[i] = -1;  // 幅は測り直す
 			redraw = true;
 		}
 		// カーソルが出入りした行は描き直す
 		if (fileListCursorLast_ != cursor && (j == fileListCursorLast_ || j == cursor)) {
 			redraw = true;
 		}
+
+		// 曲名が桁に収まらない行は横へ送る。対象は設定しだいで
+		// 「カーソル行だけ」か「全て」。送り量が変わった行は描き直す。
+		float scrollX = 0.0f;
+		bool titlePartial = false;
+		const bool scrollRow =
+		    (fileListScroll_ == Settings::kScrollAll) ||
+		    (fileListScroll_ == Settings::kScrollCursor && j == cursor);
+		if (scrollRow && !shown.title.empty() && textLayer_ != 0 && textLayer_->available()) {
+			if (fileListTitleW_[i] < 0) {
+				fileListTitleW_[i] = textLayer_->MeasureWidth(itemH, shown.title);
+			}
+			const int inner = skin_->fileListTitleW[fs];
+			if (fileListTitleW_[i] > inner + kTitleScrollSlack) {
+				titlePartial = true;
+				const uint32_t phase =
+				    (j >= 0 && j < itemCount) ? fileListPhaseMs_[j] : 0;
+				scrollX = ScrollOffsetAt(phase, (float)(fileListTitleW_[i] - inner),
+				                         kFileListScrollHoldMs);
+			}
+		}
+		if (!redraw) {
+			const float diff = scrollX - fileListScrollLast_[i];
+			if (diff > 0.25f || diff < -0.25f) redraw = true;
+		}
 		if (!redraw) continue;
+		fileListScrollLast_[i] = scrollX;
 
 		const int x = skin_->fileListX;
 		// 文字を置く基準は切る前の行の上辺。ここを動かすと字が縦に潰れる。
@@ -791,7 +944,7 @@ void DrawScreen::PutFileList(const Filer &filer, bool refresh) {
 			if (!shown.title.empty()) {
 				textLayer_->DrawText(x + skin_->fileListTitleX[fs], rowY,
 				                     skin_->fileListTitleW[fs], itemH, shown.title, color,
-				                     colors_.filer.colorBright, y, h);
+				                     colors_.filer.colorBright, y, h, scrollX, titlePartial);
 			}
 		} else {
 			// フォントが読めなかったときの非常用（ミニフォントは本来

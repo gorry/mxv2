@@ -34,6 +34,13 @@ struct Settings {
 	// [Filer]
 	int fileListFontSize;  // 0 = 小 / 1 = 大 (旧 mxv の FontSize)
 	bool folderFirst;
+	// ファイラーの曲名が桁に収まらないときの横スクロール。
+	int fileListScroll;
+	enum FileListScroll {
+		kScrollNone = 0,    // しない
+		kScrollCursor = 1,  // カーソル行だけ
+		kScrollAll = 2,     // 全て
+	};
 	std::string lastDir;  // 最後に開いていたディレクトリ
 
 	// [Play]
@@ -95,6 +102,7 @@ struct Settings {
 		kFieldSampleRate = 1 << 13,
 		kFieldBookmarks = 1 << 14,
 		kFieldTouchUi = 1 << 15,
+		kFieldFileListScroll = 1 << 16,
 	};
 
 	Settings();

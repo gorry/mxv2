@@ -914,6 +914,29 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 			filer->SetFolderFirst(folderFirst);
 			filer->Refresh();
 		}
+
+		// 曲名が桁に収まらない行を横へ送るか。
+		{
+			static const char *kKeys[] = {
+			    "Settings.TitleScrollNone",
+			    "Settings.TitleScrollCursor",
+			    "Settings.TitleScrollAll",
+			};
+			int mode = settings->fileListScroll;
+			if (mode < 0 || mode > 2) mode = Settings::kScrollCursor;
+			if (ImGui::BeginCombo(Msg("Settings.TitleScroll"), Msg(kKeys[mode]))) {
+				for (int i = 0; i < 3; i++) {
+					const bool selected = (i == mode);
+					if (ImGui::Selectable(Msg(kKeys[i]), selected)) {
+						settings->fileListScroll = i;
+						changedFields_ |= Settings::kFieldFileListScroll;
+						draw->SetFileListScroll(i);
+					}
+					if (selected) ImGui::SetItemDefaultFocus();
+				}
+				ImGui::EndCombo();
+			}
+		}
 	}
 
 	// ---- 演奏 ----------------------------------------------------------

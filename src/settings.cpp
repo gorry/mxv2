@@ -25,6 +25,7 @@ Settings::Settings()
       touchUi(kTouchAuto),
       fileListFontSize(0),
       folderFirst(false),
+      fileListScroll(kScrollCursor),
       sampleRate(48000),
       loops(2),
       fadeout(true),
@@ -53,6 +54,10 @@ bool Settings::Load(const std::string &path) {
 
 	fileListFontSize = ini.GetInt("Filer", "FontSize", fileListFontSize) ? 1 : 0;
 	folderFirst = ini.GetInt("Filer", "FolderFirst", folderFirst ? 1 : 0) != 0;
+	fileListScroll = ini.GetInt("Filer", "TitleScroll", fileListScroll);
+	if (fileListScroll < kScrollNone || fileListScroll > kScrollAll) {
+		fileListScroll = kScrollCursor;
+	}
 	lastDir = ini.GetString("Filer", "LastDir", lastDir);
 
 	sampleRate = ini.GetInt("Play", "SampleRate", sampleRate);
@@ -116,6 +121,7 @@ bool Settings::Save(const std::string &path) const {
 
 	ini.SetInt("Filer", "FontSize", fileListFontSize ? 1 : 0);
 	ini.SetInt("Filer", "FolderFirst", folderFirst ? 1 : 0);
+	ini.SetInt("Filer", "TitleScroll", fileListScroll);
 	ini.SetString("Filer", "LastDir", lastDir);
 
 	ini.SetInt("Play", "SampleRate", sampleRate);
@@ -182,6 +188,7 @@ bool Settings::SaveFields(const std::string &path, unsigned fields) const {
 	if (fields & kFieldTouchUi) out.touchUi = touchUi;
 	if (fields & kFieldFontSize) out.fileListFontSize = fileListFontSize;
 	if (fields & kFieldFolderFirst) out.folderFirst = folderFirst;
+	if (fields & kFieldFileListScroll) out.fileListScroll = fileListScroll;
 	if (fields & kFieldLastDir) out.lastDir = lastDir;
 	if (fields & kFieldSampleRate) out.sampleRate = sampleRate;
 	if (fields & kFieldLoops) out.loops = loops;

@@ -58,8 +58,15 @@ public:
 	// clipY / clipH は書き込んでよい縦の範囲（論理座標）。ファイラーを画素単位で
 	// スクロールすると上下の端に半端な行が出るので、字の位置 (y) は動かさずに
 	// 出力側だけを切る必要がある。clipH <= 0 なら y..y+cellHeight を使う。
+	//
+	// scrollX は文字列を左へずらす量（論理座標。曲名の横スクロール）。
+	// allowPartial は右端で文字が途中まで出るのを許すか（同上）。
 	void DrawText(int x, int y, int maxWidth, int cellHeight, const std::string &utf8,
-	              const Rgb &color, int bright, int clipY = 0, int clipH = 0);
+	              const Rgb &color, int bright, int clipY = 0, int clipH = 0,
+	              float scrollX = 0.0f, bool allowPartial = false);
+
+	// 文字列をすべて描くのに要る幅（論理座標）。収まらないかどうかの判断に使う。
+	int MeasureWidth(int cellHeight, const std::string &utf8);
 
 	// キャンバスの上へ重ねる。Screen::Draw と Present の間で毎フレーム呼ぶ。
 	void Render(Screen *screen);

@@ -143,8 +143,17 @@ void TextLayer::ClearRect(int x, int y, int width, int height) {
 	dirty_ = true;
 }
 
+int TextLayer::MeasureWidth(int cellHeight, const std::string &utf8) {
+	if (!available() || utf8.empty() || cellHeight <= 0) return 0;
+	const int ow = text_->Measure(cellHeight * scaleY_, utf8);
+	if (ow <= 0) return 0;
+	// 出力解像度から論理座標へ戻す。足りないより余る方が安全なので切り上げ。
+	return (int)(ow / scaleX_ + 0.999f);
+}
+
 void TextLayer::DrawText(int x, int y, int maxWidth, int cellHeight, const std::string &utf8,
-                         const Rgb &color, int bright, int clipY, int clipH) {
+                         const Rgb &color, int bright, int clipY, int clipH, float scrollX,
+                         bool allowPartial) {
 	if (!available() || utf8.empty() || cellHeight <= 0) return;
 
 	// 書き込んでよい縦の範囲。指定が無ければ 1 行ぶん。
@@ -171,7 +180,8 @@ void TextLayer::DrawText(int x, int y, int maxWidth, int cellHeight, const std::
 	for (int yy = 0; yy < rows; yy++) {
 		memset(scratch_.RowFromTop(yy), 0, (size_t)scratch_.width());
 	}
-	text_->Draw(&scratch_, 0, 0, clip, oh, utf8);
+	const int scrollOut = (scrollX > 0.0f) ? (int)(scrollX * scaleX_ + 0.5f) : 0;
+	text_->Draw(&scratch_, 0, 0, clip, oh, utf8, scrollOut, allowPartial);
 
 	if (bright < 0) bright = 0;
 	if (bright > 100) bright = 100;

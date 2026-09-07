@@ -100,6 +100,14 @@ public:
 	void PutMDXTitle(const std::string &titleUtf8);
 	// 今出している曲名。読み込み中の知らせを出す前に控えておくのに使う。
 	const std::string &mdxTitle() const { return mdxTitle_; }
+	// 曲名が枠に収まらないときだけ横へスクロールさせる。**毎フレーム呼ぶこと**
+	// （収まっているときと、動きが無いときは何もしない）。
+	// nowMs は SDL_GetTicks の値。
+	void UpdateTitleScroll(uint32_t nowMs);
+
+	// ファイラーの曲名スクロール。値は Settings::FileListScroll
+	// （0=しない / 1=カーソル行だけ / 2=全て）。
+	void SetFileListScroll(int mode) { fileListScroll_ = mode; }
 	void PutProgressBar(uint32_t nowTimeMs, uint32_t playTimeMs, bool refresh);
 	// 音量は -100..+100（0 が中央）。つまみの画素位置は中で計算する。
 	void PutTotalVolBar(int volume, bool refresh);
@@ -110,7 +118,8 @@ public:
 	int fileListRows() const;
 	// 1 行の高さ (px)。Filer::SetViewMetrics へ渡す（画素スクロールに要る）。
 	int fileListItemH() const;
-	void PutFileList(const Filer &filer, bool refresh);
+	// nowMs は SDL_GetTicks の値（曲名スクロールに使う）。
+	void PutFileList(const Filer &filer, bool refresh, uint32_t nowMs);
 	void PutScrollBar(int topPx, int maxTopPx);
 
 	// ---- ヒットチェック (旧 mxv の Screen_HitCheck_*) ----------------
@@ -270,6 +279,13 @@ private:
 
 	std::string mdxTitle_;
 
+	// 曲名の横スクロール。枠に収まらない曲名だけが対象。
+	void DrawMDXTitle(float scrollX);
+	float titleScrollMax_;       // 右端まで送る量（論理px）。0 なら収まっている
+	float titleScrollShown_;     // いま描いてある送り量
+	uint32_t titleScrollBaseMs_; // 今の周期が始まった時刻
+	bool titleScrollStarted_;    // 起点を決めたか（最初の UpdateTitleScroll で決まる）
+
 	// 差分更新用の前回値
 	uint32_t playKeyStatusLast_;
 	int progressBarLenLast_;
@@ -278,6 +294,19 @@ private:
 	std::vector<FileItem> fileListLast_;
 	int fileListCursorLast_;
 	int fileListOffsetLast_;  // 前回のスクロール端数 (px)
+
+	// ファイラーの曲名スクロール（Settings::FileListScroll）。
+	int fileListScroll_;
+	std::vector<float> fileListScrollLast_;  // 行ごとの、いま描いてある送り量
+	std::vector<int> fileListTitleW_;        // 行ごとの曲名の幅（-1 は未計測）
+	// 横スクロールの進み具合 (ms)。**一覧の項目ごとに、並び順で持つ**。
+	// 縦にスクロールしても値を見失わないようにするため（行の位置ではなく
+	// 項目に付いている）。**進めるのは見えている行だけ**で、画面から外れた
+	// 行はその場の位置で止まったまま待つ。カーソルが来た行だけ 0 へ戻す。
+	std::vector<uint32_t> fileListPhaseMs_;
+	std::string fileListRefLast_;      // 前回のフォルダ（変わったら作り直す）
+	uint32_t fileListPhaseTickMs_;     // 前回進めた時刻
+	int fileListFsLast_;               // 前回の文字の大きさ（幅を測り直す印）
 
 	DrawScreen(const DrawScreen &);
 	DrawScreen &operator=(const DrawScreen &);
