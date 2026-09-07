@@ -6,6 +6,10 @@
 #include <cstdio>
 #include <cstring>
 
+#ifdef __ANDROID__
+#include <sys/resource.h>
+#endif
+
 #include "message.h"
 
 namespace mxv2 {
@@ -28,11 +32,37 @@ int MxdrvVolumeFromNormalized(int volume) {
 	return (int)(192 + t * t * 4096);
 }
 
+// 鳴らし始める前にリングが溜まるのを待つ上限 (ms)。溜まらなくても
+// これで諦めて動かす（頭が少し途切れるだけで、止まるよりはよい）。
+const uint32_t kPrefillWaitMs = 300;
+
+// リングバッファに溜めておく長さ (ms)。Open() がこれと出力レートから
+// ブロック数を決める。0 なら Config::numAudioBlocks のまま。
+#ifdef __ANDROID__
+const int kRingMs = 250;
+#else
+// パソコンでは今までどおり浅いまま（4 ブロック＝48kHz で約 43ms）。
+// 深くすると音の途切れには強くなるが、音量・チャンネルマスク・一時停止が
+// **音に届くのがそのぶん遅れる**。掴んで動かす音量バーがあるので、
+// 途切れる理由が無いところでは浅いほうがよい。
+const int kRingMs = 0;
+#endif
+
 }  // namespace
 
 Player::Config::Config()
     : sampleRate(kDefaultSampleRate),
+#ifdef __ANDROID__
+      // 端末では**装置のバッファも厚めに取る**。前面にいないアプリの
+      // スレッドは後回しにされるので、10ms ほどしか猶予が無いと、
+      // オーディオスレッドが少し待たされただけで音が途切れる。
+      // リングバッファ (kRingMs) が守るのはデコードの遅れだけで、
+      // ここが守るのは「装置へ渡すのが遅れたとき」——別の話なので両方要る。
+      // 表示の遅れは自動でこの長さに合わせるため、音と画面はずれない。
+      audioBlockFrames(2048),
+#else
       audioBlockFrames(512),
+#endif
       numAudioBlocks(4),
       memoryPoolBytes(8 * 1024 * 1024),
       mdxBufferBytes(1 * 1024 * 1024),
@@ -133,7 +163,21 @@ bool Player::Open(const Config &config, std::string *err) {
 	watch_.Bind(&context_);
 	watch_.Reset();
 
-	// オーディオリングバッファ
+	// オーディオリングバッファ。**深さは時間で決める**（ブロック数のままだと
+	// 出力レートを変えたときに長さが変わってしまう）。
+	//
+	// ここが浅いと、デコードスレッドが少しでも待たされただけで音が途切れる
+	// （足りないぶんは無音を差し込むので、雑音とテンポの乱れとして聞こえる）。
+	// **Android でバックグラウンドへ回るとアプリのスレッドは前面のときほど
+	// 優先されない**ので、余裕は厚めに取る。厚くしたぶん、一時停止・音量・
+	// チャンネルマスクが音に届くのはその時間だけ遅れる（曲の切り替えと
+	// シークはリングごと捨てるので影響しない）。
+	{
+		const int frames = kRingMs * config_.sampleRate / 1000;
+		const int blocks =
+		    (frames + config_.audioBlockFrames - 1) / config_.audioBlockFrames;
+		if (config_.numAudioBlocks < blocks) config_.numAudioBlocks = blocks;
+	}
 	ring_.assign((size_t)config_.numAudioBlocks * config_.audioBlockFrames * 2, 0);
 	readableSem_ = SDL_CreateSemaphore(0);
 	writableSem_ = SDL_CreateSemaphore((Uint32)config_.numAudioBlocks);
@@ -310,8 +354,30 @@ bool Player::PlaySong(const MdxSong &song, std::string *err) {
 	MXDRV_Play2(&context_);
 
 	StartDecodeThread();
+	WaitForPrefill();
 	ResumeAudioDevice();
 	return true;
+}
+
+// リングバッファにいくらか溜まるまで待つ。**装置を動かす前に呼ぶこと。**
+// これが無いと、鳴らし始めた瞬間はまだ 1 ブロックも無いので、装置は空の
+// キューを読んで無音を差し込む（曲を替えるたびに頭で 1 回途切れ、
+// アンダーランにも数えられる）。
+//
+// 待つのはメインスレッドなので、溜まらなくても kPrefillWaitMs で諦める
+// （遅い端末で固まらせない）。
+void Player::WaitForPrefill() {
+	if (readableSem_ == 0) return;
+
+	// 欲しいのはリングの半分ほど。深さは出力レートで変わるので割合で決める。
+	Uint32 want = (Uint32)(config_.numAudioBlocks / 2);
+	if (want < 1) want = 1;
+
+	const uint32_t until = SDL_GetTicks() + kPrefillWaitMs;
+	while (SDL_SemValue(readableSem_) < want) {
+		if ((int32_t)(SDL_GetTicks() - until) >= 0) break;
+		SDL_Delay(1);
+	}
 }
 
 // オーディオ装置を動かす。**Android でバックグラウンドへ回っても止めない**
@@ -418,6 +484,7 @@ bool Player::SeekMs(uint32_t ms) {
 	if (wasPaused) Pause();
 
 	StartDecodeThread();
+	WaitForPrefill();
 	ResumeAudioDevice();
 	return true;
 }
@@ -595,6 +662,22 @@ int Player::DecodeThreadTrampoline(void *arg) {
 
 int Player::DecodeThreadMain() {
 	const int blockFrames = config_.audioBlockFrames;
+
+#ifdef __ANDROID__
+	// デコードが遅れるとそのまま音の途切れになるので、優先度を上げておく。
+	// **ただしオーディオのスレッドより下にすること。** SDL のオーディオ
+	// スレッドと OpenSL/AAudio の受け渡しスレッドは -16
+	// (THREAD_PRIORITY_AUDIO) で走っていて、こちらは**動けるかぎりずっと
+	// CPU を使う**ので、同じ値にするとそちらの番を奪いかねない。
+	// -10 は Android の THREAD_PRIORITY_URGENT_DISPLAY (-8) と AUDIO (-16) の
+	// 間で、ふつうのスレッド (0) よりは確実に先に走る。
+	// **`SDL_SetThreadPriority` は Android では何も変えない**——SCHED_OTHER の
+	// まま `pthread_setschedparam` を呼ぶだけなので、こちらを直に呼ぶ。
+	if (setpriority(PRIO_PROCESS, 0, -10) != 0) {
+		printf("warning  : cannot raise the decode thread priority\n");
+		fflush(stdout);
+	}
+#endif
 
 	while (decodeRunning_.load(std::memory_order_acquire)) {
 		SDL_SemWait(writableSem_);

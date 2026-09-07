@@ -170,7 +170,7 @@ mxv2 [options] [<mdxfile> | <dir>]
     -zoom <percent> 表示倍率 % (100 でドット等倍)
     -userdir <dir>  設定とユーザー素材の場所
     -locale <name>  文言の言語 (assets/locale/<name>/message.ini)
-    -noquit         演奏終了後も閉じない
+    -quit           演奏し終えたら終了する (デバッグ用)
 ```
 
 `mxv2 -h` で全オプションとキー割り当てが出る。
@@ -227,7 +227,10 @@ adb shell am start -n net.gorry.mxv2/.MainActivity
 ```
 
 生成物は `app/build/outputs/apk/debug/app-debug.apk`。ABI は
-`gradle.properties` の `mxv2.abiFilters`（既定は `arm64-v8a` だけ）。
+`gradle.properties` の `mxv2.abiFilters`（既定は `arm64-v8a,armeabi-v7a`。
+32bit の実機で確認するために後者を足した。**32bit ビルドでは
+third_party/portable_mdx が「常に真の比較」の警告を出すが、third_party は
+無改変で置く方針なのでそのままにしてある**）。
 
 - **ログは logcat へ出る。** mxv2 の `printf` はタグ `mxv2`、SDL 自身のログは
   `SDL` / `SDL/APP`。`adb logcat -s mxv2 SDL` で読める。

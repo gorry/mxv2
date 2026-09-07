@@ -64,7 +64,9 @@ public:
 		// 出力サンプリングレート。既定は kDefaultSampleRate。
 		int sampleRate;
 		int audioBlockFrames;   // SDL コールバック 1 回分のフレーム数
-		int numAudioBlocks;     // リングバッファのブロック数
+		// リングバッファのブロック数。**下限**で、Open() が出力レートから
+		// 「一定の長さ (kRingMs) ぶん溜まる深さ」を計算して必要なら増やす。
+		int numAudioBlocks;
 		int memoryPoolBytes;    // MxdrvContext のメモリプール
 		int mdxBufferBytes;
 		int pdxBufferBytes;
@@ -188,6 +190,7 @@ public:
 	const MdxSong &song() const { return song_; }
 
 private:
+	void WaitForPrefill();
 	void ResumeAudioDevice();
 
 	static void SDLCALL AudioCallbackTrampoline(void *userdata, uint8_t *stream, int len);

@@ -67,6 +67,9 @@ const int kVolumeKeyStep = 5;
 // 値が変わるので、手が止まってからまとめて 1 回書く。
 const uint32_t kSettingsSaveDelayMs = 400;
 
+// アンダーラン（音の途切れ）を知らせる間隔 (ms)。まとめて 1 行にする。
+const uint32_t kUnderrunReportMs = 5000;
+
 // バックグラウンド（描かないとき）に回る間隔 (ms)。演奏そのものはオーディオ
 // 装置とデコードスレッドが進めるので、ここでやるのは曲送りと通知の更新だけ。
 // 曲の終わりに気付くのがこの間隔ぶん遅れうるので、あまり長くはしない。
@@ -182,12 +185,15 @@ struct Options {
 	// 表示を遅らせる時間 (ms)。指定が無ければ音の遅れに自動で合わせる。
 	int latencyMs;
 	bool latencySet;
+	// 演奏し終えたら mxv2 ごと終わる（-quit）。**デバッグ用**で、既定は false。
+	// ふつうに MDX を渡して起動したときは、鳴らし終えても閉じずに、その
+	// ファイルのあるフォルダを開いたまま残る。
 	bool quitOnEnd;
 	// 出力サンプリングレート。0 なら設定 (ini) の値を使う。
 	int sampleRate;
 
 	Options()
-	    : latencyMs(0), latencySet(false), quitOnEnd(true), sampleRate(0) {}
+	    : latencyMs(0), latencySet(false), quitOnEnd(false), sampleRate(0) {}
 };
 
 // 演奏位置の移動幅。, / . が普通、Shift 付きの < / > が高速。
@@ -348,6 +354,12 @@ void PrintAudioInfo(const mxv2::Player &player, bool latencyAuto) {
 	                                        player.sampleRate()));
 	if (latencyAuto) line += std::string(" ") + mxv2::Msg("Log.AudioAuto");
 	printf("audio    : %s\n", line.c_str());
+	// どの口で鳴らしているか。Android は AAudio と OpenSL ES で音の
+	// 途切れやすさが変わるので、切り分けに要る。
+	{
+		const char *driver = SDL_GetCurrentAudioDriver();
+		if (driver != 0) printf("audiodrv : %s\n", driver);
+	}
 	fflush(stdout);
 }
 
@@ -391,8 +403,8 @@ bool ParseArgs(int argc, char **argv, Options *opt, mxv2::Settings *st) {
 		}
 		if (strcmp(a, "-nofade") == 0) {
 			st->fadeout = false;
-		} else if (strcmp(a, "-noquit") == 0) {
-			opt->quitOnEnd = false;
+		} else if (strcmp(a, "-quit") == 0) {
+			opt->quitOnEnd = true;
 		} else if (strcmp(a, "-folderfirst") == 0) {
 			st->folderFirst = true;
 		} else if (strcmp(a, "-zoom") == 0 && i + 1 < argc) {
@@ -715,6 +727,23 @@ void UpdateNowPlaying(const mxv2::Player &player, const std::string &currentPath
 	mxv2::nowplaying::Update(st);
 }
 
+// 音が途切れた（デコードが間に合わず無音を差し込んだ）ことを知らせる。
+// **終了時のまとめだけでは、長く鳴らしっぱなしにするとき——バックグラウンド
+// 演奏——に気付けない**ので、増えたぶんをときどき出す。
+void PollUnderruns(const mxv2::Player &player, uint32_t *last, uint32_t *nextMs) {
+	const uint32_t now = player.underruns();
+	// 曲が変わると数え直しになる。
+	if (now < *last) *last = 0;
+	if (now == *last) return;
+
+	const uint32_t ticks = SDL_GetTicks();
+	if (*nextMs != 0 && (int32_t)(ticks - *nextMs) < 0) return;
+	printf("warning  : audio underrun x%u\n", now - *last);
+	fflush(stdout);
+	*last = now;
+	*nextMs = ticks + kUnderrunReportMs;
+}
+
 // 通知（Android）のボタンや、他のアプリ・ヘッドホンの都合で届いた要求。
 // 画面を見ていないときの唯一の操作手段なので、**バックグラウンドでも回す**。
 //
@@ -946,9 +975,34 @@ int main(int argc, char **argv) {
 	SDL_SetHint(SDL_HINT_ANDROID_BLOCK_ON_PAUSE_PAUSEAUDIO, "0");
 #endif
 
-	if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER) != 0) {
+	if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) {
 		printf("ERROR: %s\n", mxv2::MsgF("Error.SdlInit", SDL_GetError()).c_str());
 		return EXIT_FAILURE;
+	}
+
+	// オーディオだけ分けて開く。**Android では AAudio を先に試す。**
+	// SDL が既定で選ぶ OpenSL ES は低遅延の "fast track" になり、装置側の
+	// バッファが 5ms ほどしか無い（AudioFlinger の FrmCnt=256）。
+	// アプリが前面にいないと少しの割り込み待ちでも間に合わず、音が途切れる。
+	// AAudio は既定が PERFORMANCE_MODE_NONE（deep buffer）なので、同じ
+	// 状況でも途切れにくい。**AAudio は Android 8 以降**なので、開けなければ
+	// 指定を外して開き直す。
+	{
+		bool audioOk = false;
+#ifdef __ANDROID__
+		SDL_SetHint(SDL_HINT_AUDIODRIVER, "aaudio");
+		audioOk = (SDL_InitSubSystem(SDL_INIT_AUDIO) == 0);
+		if (!audioOk) {
+			printf("warning  : AAudio is not available (%s)\n", SDL_GetError());
+			fflush(stdout);
+			SDL_SetHint(SDL_HINT_AUDIODRIVER, "");
+		}
+#endif
+		if (!audioOk && SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) {
+			printf("ERROR: %s\n", mxv2::MsgF("Error.SdlInit", SDL_GetError()).c_str());
+			SDL_Quit();
+			return EXIT_FAILURE;
+		}
 	}
 
 	// ドラッグ＆ドロップ。多くの環境では既定で有効だが、環境によっては
@@ -1142,6 +1196,9 @@ int main(int argc, char **argv) {
 	// 他のアプリに音を譲って止めた（通知の窓口から来る）。返してもらったときに
 	// 自動で再開してよいかの印。
 	bool pausedByFocus = false;
+	// 音の途切れを知らせた回数と、次に知らせてよい時刻。
+	uint32_t underrunsSeen = 0;
+	uint32_t underrunNextMs = 0;
 	bool endSeen = false;
 	uint64_t endFrame = 0;
 	// 演奏終了後の余韻 (1 秒)。出力レートで数えるので固定値にはできない。
@@ -1179,7 +1236,10 @@ int main(int argc, char **argv) {
 
 	if (!startFile.empty()) StartPlay(ctx, startFile);
 
-	const bool quitWhenDone = opt.quitOnEnd && !startFile.empty();
+	// -quit は「演奏し終えたら終わる」デバッグ用の指定。**明示したときだけ**
+	// 効くので、曲を渡して起動したかどうかは見ない（渡さずに指定したときは、
+	// 手で選んだ曲が終わったところで終わる）。
+	const bool quitWhenDone = opt.quitOnEnd;
 
 	// ドラッグ＆ドロップ。SDL は落とされたもの 1 つにつき 1 イベント送って
 	// くるので、まとめて落とされたときは最初の 1 つだけを覚えておき、
@@ -1622,17 +1682,21 @@ int main(int argc, char **argv) {
 
 		// バックグラウンドでは 1 フレームも描かない。ただし**演奏は続ける**
 		// ので、曲の送り (CONT/REPEAT) と通知まわりはここでも回す。
-		// イベントが来るまで寝て待つ（描かないまま全速で回すと、ただ CPU を
-		// 焼くだけになる）。SDL_WaitEventTimeout に NULL を渡したときは
-		// イベントを取り出さずに覗くだけなので、次の周回の SDL_PollEvent が
-		// そのまま拾う。
+		//
+		// 待つのは **`SDL_Delay` で 1 回眠るだけ**にすること。
+		// `SDL_WaitEventTimeout` は中で **1ms ごとに起きて `SDL_PumpEvents` を
+		// 回す**作りなので、非力な端末では**この待ちだけでコアの 4 割**を
+		// 食っていた（デコードそのものより重かった）。イベントは次の周回の
+		// `SDL_PollEvent` が拾うので、取りこぼしはしない（気付くのが
+		// 最大 kBackgroundTickMs 遅れるだけ）。
 		if (inBackground) {
-			SDL_WaitEventTimeout(NULL, kBackgroundTickMs);
+			SDL_Delay(kBackgroundTickMs);
 
 			if (filer.PollDir()) fileListRefresh = true;
 			if (filer.PollTitles()) fileListRefresh = true;
 			PollSong(ctx);
 			PollNotifyRequests(ctx, &filer, &pausedByFocus);
+			PollUnderruns(player, &underrunsSeen, &underrunNextMs);
 
 			// 描かないが、ビジュアライズのイベントは食べておく。ためたままに
 			// すると 64K でキューが溢れ、**古いものが残って新しいものが
@@ -1655,6 +1719,7 @@ int main(int argc, char **argv) {
 		if (filer.PollTitles()) fileListRefresh = true;
 		PollSong(ctx);
 		PollNotifyRequests(ctx, &filer, &pausedByFocus);
+		PollUnderruns(player, &underrunsSeen, &underrunNextMs);
 
 		// 設定 UI はここで組み立てる。配色を変えると 640x480 の
 		// オフスクリーンを作り直すので、下の描画より先に回す。
