@@ -38,6 +38,7 @@ MouseInput::MouseInput(DrawScreen *draw, Filer *filer, Player *player)
       nextRepeatMs_(0),
       dragOriginTopPx_(0),
       pendingCursor_(-1),
+      pendingOpen_(false),
       dragMoved_(false),
       seekDragging_(false),
       seekWasPaused_(false),
@@ -132,12 +133,10 @@ MouseRequest MouseInput::OnButtonDown(int x, int y, int clicks) {
 			pendingCursor_ =
 			    (!braking && index < filer_->itemCount()) ? index : -1;
 
-			// W クリックはその場で開く。カーソルは離したときに合わせるので、
-			// ここでは先に合わせておく。
-			if (clicks >= 2 && pendingCursor_ >= 0) {
-				filer_->SetCursor(pendingCursor_);
-				return kMouseRequestOpenCursor;
-			}
+			// W クリックは**2 回目を離したとき**に開く（印だけ立てる）。
+			// 押した時点で開くと、その直後に届く「離した」がその場所の
+			// 選択として効いてしまう。
+			pendingOpen_ = (clicks >= 2 && pendingCursor_ >= 0);
 			return kMouseRequestNone;
 		}
 	}
@@ -293,6 +292,7 @@ MouseRequest MouseInput::OnButtonUp(int x, int y) {
 	const int captured = captured_;
 	const int hit = capturedHit_;
 	const int pending = pendingCursor_;
+	const bool open = pendingOpen_;
 	const bool moved = dragMoved_;
 	const bool seeking = seekDragging_;
 	const bool wasPaused = seekWasPaused_;
@@ -311,9 +311,11 @@ MouseRequest MouseInput::OnButtonUp(int x, int y) {
 	}
 
 	// ファイラーは、ドラッグせずに離したときだけカーソルを合わせる。
+	// W クリックの 2 回目なら、合わせたうえで開く。
 	if (captured == kCapturedFileList) {
 		if (!moved) {
 			if (pending >= 0) filer_->SetCursor(pending);
+			if (open && pending >= 0) return kMouseRequestOpenCursor;
 			return kMouseRequestNone;
 		}
 		// 振り切った勢いで滑らせる。離す前に指が止まっていた
@@ -500,6 +502,7 @@ void MouseInput::ReleaseAll() {
 	capturedHit_ = 0;
 	pressMask_ = 0;
 	pendingCursor_ = -1;
+	pendingOpen_ = false;
 	dragMoved_ = false;
 	seekDragging_ = false;
 	draw_->SetScrollBarFlags(0);

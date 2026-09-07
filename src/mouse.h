@@ -122,6 +122,7 @@ private:
 	// なってしまうのを避ける）。
 	int dragOriginTopPx_;  // 掴んだ時の Filer::topPx()
 	int pendingCursor_;    // 離したときに合わせる項目。-1 なら合わせない
+	bool pendingOpen_;     // W クリックの 2 回目。離したときに開く印
 	bool dragMoved_;       // ドラッグ扱いになったか
 
 	// シークバーのドラッグ。シーク (MXDRV_PlayAt) は曲の頭から空回しする
