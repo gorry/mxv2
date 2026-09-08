@@ -16,6 +16,11 @@ trash/
 .cxx/
 local.properties
 
+# release ビルドの署名鍵（機械ごと・人ごとの秘密情報）
+keystore.properties
+*.keystore
+*.jks
+
 # skineditor/ がビルド後にここへコピーする実行ファイル一式
 # (skineditor/SkinEditor/SkinEditor.csproj の CopySkinEditorToMxv2Root)
 /SkinEditor.exe

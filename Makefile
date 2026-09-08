@@ -186,6 +186,12 @@ else
 GRADLEW := android/gradlew
 endif
 
+# **必ず引用符で囲んで使うこと。** cmd.exe はコマンド名の中の引用符無しの
+# `/` を「スイッチの区切り」と誤解することがあり、
+# `android/gradlew.bat -p android ...` をそのまま渡すと cmd が
+# `android` という別のコマンド（Android SDK の廃止された android.bat）を
+# 探しに行ってしまう（実機で踏んだ）。`"$(GRADLEW)"` のように必ず囲む。
+
 # ABI は gradle.properties の mxv2.abiFilters を -P で上書きする。
 # TARGET=android のときは上書きしない（既定の arm64-v8a,armeabi-v7a の
 # ままの FAT apk になる）。
@@ -196,32 +202,40 @@ APK_PATH := $(APK_DIR)/app-$(BUILD).apk
 
 .PHONY: build-android
 build-android:
-	$(GRADLEW) -p android $(GRADLE_ABI_ARG) assemble$(CONFIG)
+	"$(GRADLEW)" -p android $(GRADLE_ABI_ARG) assemble$(CONFIG)
 
 .PHONY: clean-android
 clean-android:
-	$(GRADLEW) -p android clean
+	"$(GRADLEW)" -p android clean
 
-# release は signingConfig が無く unsigned apk になるので adb install できない
-# （Gradle 自身も installRelease タスクを作らない）。BUILD=debug のときだけ
-# 実際にインストールする。
-.PHONY: install-android
+# release は android/keystore.properties が無いと signingConfig が付かず
+# unsigned apk になるので adb install できない（Gradle 自身も installRelease
+# タスクを作らない）。BUILD.md の「Android のリリース署名」で鍵を用意すれば
+# BUILD=release でも install/run できる。
 ifeq ($(BUILD),release)
-install-android:
-	@echo ERROR: TARGET=$(TARGET) BUILD=release cannot be installed.
-	@echo   android/app/build.gradle has no signingConfig for release, so the
-	@echo   APK is unsigned and Android refuses to install it via adb.
-	@echo   Use BUILD=debug for install/run, or add a signingConfig first.
-	@exit 1
+CAN_INSTALL_ANDROID := $(if $(wildcard android/keystore.properties),1,)
 else
+CAN_INSTALL_ANDROID := 1
+endif
+
+.PHONY: install-android
+ifeq ($(CAN_INSTALL_ANDROID),1)
 install-android: build-android
 	adb install -r "$(APK_PATH)"
 	@echo Installed $(APK_PATH)
+else
+install-android:
+	@echo ERROR: TARGET=$(TARGET) BUILD=release cannot be installed.
+	@echo   android/keystore.properties was not found, so the release build is
+	@echo   unsigned and Android refuses to install it via adb.
+	@echo   Use BUILD=debug for install/run, or set up release signing first
+	@echo   (see BUILD.md, "Android release signing").
+	@exit 1
 endif
 
 .PHONY: uninstall-android
 uninstall-android:
-	$(GRADLEW) -p android uninstall$(CONFIG)
+	"$(GRADLEW)" -p android uninstall$(CONFIG)
 
 .PHONY: run-android
 run-android: install-android
@@ -236,7 +250,7 @@ run-android: install-android
 .PHONY: test-android
 test-android: build-android
 	@echo mxv2: no automated Android tests exist yet; running Gradle's unit-test task as a placeholder.
-	$(GRADLEW) -p android test$(CONFIG)UnitTest
+	"$(GRADLEW)" -p android test$(CONFIG)UnitTest
 
 # ---------------------------------------------------------------------------
 # 共通のターゲット（TARGET に応じて上のどちらかへ振り分けるだけ）
@@ -305,7 +319,8 @@ help:
 	@echo   - Android targets shell out to android/gradlew. Requires the
 	@echo     Android SDK/NDK and android/local.properties to be set up
 	@echo     first (see BUILD.md); adb must be on PATH for install/run.
-	@echo   - As of this writing, "assembleRelease" for Android fails on a
-	@echo     pre-existing Gradle task-ordering issue unrelated to this
-	@echo     Makefile (generateMxv2AssetIndex vs
-	@echo     generateReleaseLintVitalReportModel). BUILD=debug is unaffected.
+	@echo   - Android BUILD=release installs/runs only if android/keystore.
+	@echo     properties is set up (see BUILD.md, "Android release signing").
+	@echo     Without it, assembleRelease still builds an unsigned apk, but
+	@echo     install/run refuse it (Android itself refuses to install an
+	@echo     unsigned apk).

@@ -256,6 +256,51 @@ third_party/portable_mdx が「常に真の比較」の警告を出すが、thir
   adb shell input keyevent KEYCODE_MEDIA_NEXT          # 通知と同じ操作
   ```
 
+### Android のリリース署名
+
+`assembleRelease` は署名情報が無くても通るが、その場合の apk は
+**unsigned**（`app-release-unsigned.apk`）で、Android は unsigned apk の
+`adb install` を拒否する。配布用に署名した release apk が欲しいときは、
+鍵を用意して次のファイルを置く。
+
+1. **鍵（キーストア）ファイルをどこかに置く。** 好きな場所でよい
+   （例: `android/release.keystore`）。無ければ `keytool` で作れる。
+
+   ```sh
+   keytool -genkeypair -v -keystore android/release.keystore -alias mxv2 -keyalg RSA -keysize 2048 -validity 10000
+   ```
+
+   このファイルは**絶対に git に入れないこと**（`*.keystore` / `*.jks` は
+   `.gitignore` 済み）。無くすと同じ apk に上書き更新できなくなる
+   （別の鍵の apk は Android 側が「署名が違う」と言って `adb install -r` を
+   拒否する）ので、鍵ファイルとパスワードは別途バックアップしておくこと。
+
+2. **`android/keystore.properties` を作り、鍵の在り処と諸情報を書く。**
+   `local.properties` と同じ扱いで、**git には入れない**
+   （`.gitignore` 済み）。
+
+   ```
+   storeFile=release.keystore
+   storePassword=<上の keytool で入力したパスワード>
+   keyAlias=mxv2
+   ```
+
+   `storeFile` は `android/` からの相対パス（上の例のとおり）か絶対パスの
+   どちらでもよい。**`keyPassword` は省略してよい**（省略時は
+   `storePassword` と同じ値を使う）。上の `keytool` コマンドが作るのは
+   既定の形式である **PKCS12** のキーストアで、この形式はキーストアと
+   鍵とで別々のパスワードを持てない（`keytool` 自身もパスワードを
+   一度しか尋ねてこない）ため。JKS 形式などで実際に別のパスワードを
+   付けている場合だけ `keyPassword=<鍵のパスワード>` を足すこと。
+
+このファイルがあれば `assembleRelease` はそのまま署名済みの
+`app-release.apk` を作るようになり、`adb install` できるようになる
+（無ければ今までどおり unsigned のまま）。Makefile を使っているなら
+`make build TARGET=android BUILD=release` でビルド、
+`make install TARGET=android BUILD=release` や
+`make run TARGET=android BUILD=release` はこのファイルがあるときだけ
+実際にインストールする（無いときは理由を出して止まる）。
+
 ### 素材の届き方
 
 apk の `assets/` は **`fopen` で開けず、列挙もできない**。そこで

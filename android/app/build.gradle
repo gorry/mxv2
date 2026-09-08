@@ -30,6 +30,21 @@ def mxv2AssetIndexDir = layout.buildDirectory.dir('generated/mxv2-assetindex')
 def sdlSrcDir = file(localProperties.getProperty('sdl2.src.dir')
 		?: new File(mxv2Dir, 'third_party/SDL2-2.32.10-src').path)
 
+// release ビルドの署名。local.properties と同じ作り：keystore.properties が
+// 無ければ何もしない（release は今までどおり unsigned のまま。配布しない
+// 開発時はこれで困らない）。鍵の用意の仕方は BUILD.md の
+// 「Android のリリース署名」を見ること。
+def keystorePropertiesFile = rootProject.file('keystore.properties')
+def keystoreProperties = new Properties()
+def hasKeystoreProperties = keystorePropertiesFile.exists()
+if (hasKeystoreProperties) {
+	keystorePropertiesFile.withInputStream { keystoreProperties.load(it) }
+}
+// keyPassword は省略可（既定のキーストア形式 PKCS12 はストアと鍵で別々の
+// パスワードを持てず、keytool 自身もストアのパスワードしか尋ねてこない
+// ため、無ければストアのパスワードをそのまま使う）。
+def keystoreKeyPassword = keystoreProperties.getProperty('keyPassword') ?: keystoreProperties.getProperty('storePassword')
+
 android {
 	namespace 'net.gorry.mxv2'
 	compileSdk 34
@@ -88,10 +103,26 @@ android {
 		targetCompatibility JavaVersion.VERSION_17
 	}
 
+	if (hasKeystoreProperties) {
+		signingConfigs {
+			release {
+				// storeFile は keystore.properties に書かれたパスを
+				// android/ からの相対（または絶対）として解決する。
+				storeFile rootProject.file(keystoreProperties.getProperty('storeFile'))
+				storePassword keystoreProperties.getProperty('storePassword')
+				keyAlias keystoreProperties.getProperty('keyAlias')
+				keyPassword keystoreKeyPassword
+			}
+		}
+	}
+
 	buildTypes {
 		release {
 			minifyEnabled false
 			proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+			if (hasKeystoreProperties) {
+				signingConfig signingConfigs.release
+			}
 		}
 	}
 
@@ -160,5 +191,12 @@ tasks.register('generateMxv2AssetIndex') {
 
 // assets を集める前に両方を走らせる。
 tasks.matching { it.name.startsWith('merge') && it.name.endsWith('Assets') }.configureEach {
+	dependsOn 'prepareMxv2Assets', 'generateMxv2AssetIndex'
+}
+
+// release ビルドが既定で回す Lint Vital も同じ素材を（merge*Assets とは別経路で）
+// 直接読むので、これも明示しないと最新の Gradle の検証（implicit dependency）に
+// 引っかかる（assembleRelease が prepareMxv2Assets FAILED で止まる）。
+tasks.matching { it.name.toLowerCase().contains('lint') }.configureEach {
 	dependsOn 'prepareMxv2Assets', 'generateMxv2AssetIndex'
 }
