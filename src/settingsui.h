@@ -276,11 +276,12 @@ private:
 
 	// 指で操作する端末向けの余白。押せるところの高さが
 	// kTouchTargetMm を下回らないように FramePadding.y と ItemSpacing.y を
-	// 広げる（ApplyScale）。字の大きさは変えない。
+	// 広げる（ApplyScale）。字は kTouchFontMm を下限にするだけ。
 	bool touchUi_;
 	// 押せるところの高さの下限（実ピクセル）。touchUi_ でなければ 0。
 	float touchMinPx_;
-	// そのときの字の大きさ（実ピクセル）。行の高さの kTouchFontRatio。
+	// そのときの字の大きさの下限（実ピクセル）。kTouchFontMm から出す。
+	// 行の高さとは切り離してあるので、touchMinPx_ とは連動しない。
 	float touchFontPx_;
 	// 行が太くなったぶん、ダイアログも広げる倍率。ふつうは 1 倍。
 	float dialogGrow_;

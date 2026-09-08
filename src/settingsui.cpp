@@ -31,11 +31,17 @@ namespace {
 
 // 同梱フォント。assets/ に置いてあるので、どのプラットフォームでも読める。
 // M PLUS 1p Regular (SIL OFL 1.1)。ライセンス全文は assets/MPLUS1p-OFL.txt。
-// 差し替え用の font.ttf は、ユーザーフォルダ側に置いても効く (AssetPaths)。
 // JIS 第1+2水準を含み、CP932 変換で出る U+FF5E (～) や U+2015 (―) も持つ。
+//
+// **ダイアログは必ずこれを使う**（ユーザーの指示。2026-09-08）。
+// スキンやユーザーフォルダの font.ttf は**キャンバスの文字だけ**に効く
+// (textrender.cpp)。ダイアログの字は行の高さや mm 換算と噛み合っていて、
+// 幅の広いフォントや字数の入らないフォントを差されるとラベルが切れたり
+// 押せるところの寸法が狂ったりするので、ここは固定にする。
 const char *kBundledFont = "MPLUS1p-Regular.ttf";
 
-// 差し替え用のスロット。ここに置けば同梱フォントより優先される。
+// 同梱フォントが見つからなかったときだけ見る差し替え用のスロット。
+// **ふつうは使わない**（上の理由で、あくまで最後の保険）。
 const char *kUserFont = "font.ttf";
 
 // 同梱フォントが失われていたときの保険。システムのフォントを拾う。
@@ -59,10 +65,21 @@ const float kFontSizePx = 15.0f;
 // 項目が多く画面が狭いので、下限として 6mm を採る。
 const float kTouchTargetMm = 6.0f;
 
-// その行の中で字が占める割合。行だけ太くして字が小さいままだと、押せても
-// 読めない。0.6 なら 6mm の行に 3.6mm の字で、上下に 1.2mm ずつ余白が残る。
-// 日本語は仮想ボディいっぱいに書かれるので、漢字の実寸はほぼこの値になる。
-const float kTouchFontRatio = 0.6f;
+// 指で操作するときの字の大きさ (mm)。行だけ太くして字が小さいままだと
+// 押せても読めないので、下限として持っている。日本語は仮想ボディいっぱいに
+// 書かれるので、漢字の実寸はほぼこの値になる。
+//
+// **行の高さ (kTouchTargetMm) とは切り離してある**。かつては行の 0.6 倍
+// (6mm の行に 3.6mm の字) にしていたが、それだと Android の縦画面で
+// コンボやスライダーのラベルに 6 文字しか入らなかった。ImGui はラベルを
+// 折り返さないので、はみ出したぶんは黙って切れる。
+// 3.1mm は Android の 19sp 相当で、本文 (14sp = 約 2.2mm) より大きい。
+// これでラベルはおよそ 7 文字ぶんになる。3.6mm では大きく 2.6mm では
+// 小さいという実機での判断で、その中間を採った。
+//
+// 押せるところの高さは 6mm のままなので、**指での操作しやすさは変わらない**
+// （字が小さくなったぶんは上下の余白に回る）。
+const float kTouchFontMm = 3.1f;
 
 // ダイアログの題名。文言はカタログ、"###" 以降は ImGui の id。
 // SyncModal が題名をポインタで見分けるので、**毎フレーム同じ番地**を
@@ -437,9 +454,20 @@ bool SettingsUi::Init(Screen *screen, const AssetPaths &paths, std::string *err)
 
 	// 日本語フォント。ImGui 1.92 以降はグリフを要求時に焼くので、
 	// GlyphRanges を渡さなくても日本語が出る。
+	//
+	// **同梱フォントが最優先**（キャンバスの文字とは逆の順）。スキンや
+	// ユーザーフォルダの font.ttf は、同梱フォントが失われていたときの
+	// 保険としてしか見ない。理由は kBundledFont のところに書いた。
 	{
-		std::string path = paths_.Find(kUserFont);
+		// 同梱ぶんを名指しで見る（Find はユーザーフォルダを先に見るので、
+		// 同じ名前のものを置かれると入れ替わってしまう）。
+		std::string path;
+		if (!paths_.bundledDir.empty()) {
+			const std::string bundled = JoinPath(paths_.bundledDir, kBundledFont);
+			if (FileExists(bundled)) path = bundled;
+		}
 		if (path.empty()) path = paths_.Find(kBundledFont);
+		if (path.empty()) path = paths_.Find(kUserFont);
 		for (int i = 0; path.empty() && i < kNumFontCandidates; i++) {
 			if (FileExists(kFontCandidates[i])) path = kFontCandidates[i];
 		}
@@ -527,8 +555,9 @@ bool SettingsUi::wantCaptureKeyboard() const {
 // ImGui 1.92 はフォントを要求時に焼き直すので、拡大しても字がぼけない。
 //
 // touch が立っているときは、押せるところの高さが kTouchTargetMm を下回らない
-// ように余白を広げる。**字の大きさは変えない**（携帯の狭い画面で、字まで
-// 大きくすると一度に読める項目が減ってしまう）。
+// ように余白を広げる。字は kTouchFontMm を**下限**にするだけで、それより
+// 大きくはしない（携帯の狭い画面で字まで大きくすると、一度に読める項目が
+// 減るうえ、ImGui が折り返さないラベルが横で切れてしまう）。
 //
 // 広げるのは 2 か所:
 //   ・ボタン・チェックボックス・入力欄の高さ = 字の高さ + FramePadding.y * 2
@@ -545,12 +574,13 @@ bool SettingsUi::ApplyScale(float scale, bool touch) {
 	dialogGrow_ = 1.0f;
 
 	// 字の大きさ。ふつうはキャンバスの拡大率どおりだが、指で操作するときは
-	// 行の高さの kTouchFontRatio になるまで大きくする。
+	// kTouchFontMm を下回らないところまで大きくする。**小さくはしない**ので、
+	// キャンバスの拡大率のほうが大きい環境では今までどおり。
 	float fontScale = scale;
 	if (touch) {
 		// ImGui は実ピクセルで描くので、mm から出した値はそのまま使える。
 		touchMinPx_ = kTouchTargetMm * Screen::PixelsPerMm();
-		touchFontPx_ = touchMinPx_ * kTouchFontRatio;
+		touchFontPx_ = kTouchFontMm * Screen::PixelsPerMm();
 		if (touchFontPx_ > kFontSizePx * fontScale) fontScale = touchFontPx_ / kFontSizePx;
 	}
 
