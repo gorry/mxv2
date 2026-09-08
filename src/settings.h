@@ -15,6 +15,12 @@
 namespace mxv2 {
 
 struct Settings {
+	// [UI]
+	// 画面とログの文言に使う言語（assets/locale/<名前>）。**空なら「自動」**で、
+	// 動作環境の言語 (Screen::SystemLocale) に一番近い同梱ぶんを使う。
+	// -locale はこれより優先されるが、ini には残さない。
+	std::string locale;
+
 	// [Screen]
 	std::string skinName;  // skin/<名前>（同梱ぶんとユーザーぶんの両方から探す）
 	// 表示倍率 (%)。100 でドット等倍。0 なら「まだ決まっていない」で、
@@ -107,6 +113,7 @@ struct Settings {
 		kFieldTouchUi = 1 << 15,
 		kFieldFileListScroll = 1 << 16,
 		kFieldContRepeat = 1 << 17,
+		kFieldLocale = 1 << 18,
 	};
 
 	Settings();

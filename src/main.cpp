@@ -827,6 +827,20 @@ void OpenDropped(const PlayContext &ctx, mxv2::Filer *filer, const std::string &
 
 }  // namespace
 
+// 演奏状態の通知（Android）に出す文言をカタログから渡す。起動時と、
+// 設定ウィンドウで言語を替えたときに呼ぶ（Java 側は文言を持っていない）。
+void SetNotifyLabels() {
+	mxv2::nowplaying::Labels labels;
+	labels.channel = mxv2::Msg("Notify.Channel");
+	labels.channelDesc = mxv2::Msg("Notify.ChannelDesc");
+	labels.prev = mxv2::Msg("Notify.Prev");
+	labels.play = mxv2::Msg("Notify.Play");
+	labels.pause = mxv2::Msg("Notify.Pause");
+	labels.next = mxv2::Msg("Notify.Next");
+	labels.stop = mxv2::Msg("Notify.Stop");
+	mxv2::nowplaying::SetLabels(labels);
+}
+
 int main(int argc, char **argv) {
 	// ログの行き先を先に決める。既定ではコンソールを出さない。
 	SetupConsole(WantsConsole(argc, argv));
@@ -857,12 +871,37 @@ int main(int argc, char **argv) {
 	mxv2::MakeDirectories(mxv2::JoinPath(paths.bundledDir, "mdx"));
 #endif
 
+	// ユーザーフォルダは設定を読むより先に要る（引き継ぎがここへ書く）。
+	// **知らせるのはカタログを読んでから**なので、結果だけ覚えておく。
+	const bool userDirFailed = !mxv2::MakeDirectories(paths.userDir);
+
+	// 設定 -> コマンドラインの順に読む（後勝ち）。**カタログより先に読む**のは
+	// 言語の指定が ini にあるため（Settings::Load と引き継ぎは文言を出さない
+	// ので、カタログの前でも困らない）。
+	mxv2::Settings settings;
+	const std::string settingsPath = mxv2::Settings::PathIn(paths.userDir);
+	MigrateLegacySettings(settingsPath);
+	settings.Load(settingsPath);
+	// ini に倍率が無かったかどうかを覚えておく（終了時に書き残すため）。
+	const int legacyScale = settings.legacyScale;
+
 	// 文言はここから先すべてカタログ (assets/locale/<ロケール>/message.ini)
 	// から引く。知らないロケールを渡されたときは英語で代用する。
 	// 1 つも読めなければキー名が出る（動きはする）。
+	//
+	// 言語の決め方は **-locale -> ini の [UI] Locale -> 動作環境の言語**。
+	// 設定ウィンドウの [言語] で選び直すと、そこから先は SettingsUi が
+	// 読み替える（起動し直さなくてよい）。
 	{
+		std::string want = opt.locale;
+		if (want.empty()) want = settings.locale;
+		if (want.empty()) {
+			std::vector<mxv2::LocaleInfo> avail;
+			mxv2::ListLocales(paths, &avail);
+			want = mxv2::MatchLocale(avail, mxv2::Screen::SystemLocale());
+		}
 		bool usedFallback = false;
-		if (!mxv2::LoadMessages(paths, opt.locale, &usedFallback)) {
+		if (!mxv2::LoadMessages(paths, want, &usedFallback)) {
 			// カタログが無いので、この 1 本だけは英語のまま出す。
 			char buf[512];
 			snprintf(buf, sizeof(buf), "message catalog not found: %s (locale %s)",
@@ -873,16 +912,9 @@ int main(int argc, char **argv) {
 			                           mxv2::kFallbackLocale));
 		}
 	}
-	if (!mxv2::MakeDirectories(paths.userDir)) {
+	if (userDirFailed) {
 		Warn(&warnings, mxv2::MsgF("Log.UserDirFailed", paths.userDir));
 	}
-	// 設定 -> コマンドラインの順に読む（後勝ち）。
-	mxv2::Settings settings;
-	const std::string settingsPath = mxv2::Settings::PathIn(paths.userDir);
-	MigrateLegacySettings(settingsPath);
-	settings.Load(settingsPath);
-	// ini に倍率が無かったかどうかを覚えておく（終了時に書き残すため）。
-	const int legacyScale = settings.legacyScale;
 
 	if (!ParseArgs(argc, argv, &opt, &settings)) {
 		PrintUsage(argc > 0 ? argv[0] : "mxv2");
@@ -892,6 +924,8 @@ int main(int argc, char **argv) {
 	// 使い方を出すだけのときに邪魔をしないよう、ここまで来てから出す。
 	printf("assets   : %s\n", paths.bundledDir.c_str());
 	printf("userdir  : %s\n", paths.userDir.c_str());
+	// どの言語で動いているか。「自動」のときに何が選ばれたのかが分かる。
+	printf("locale   : %s\n", mxv2::MessageLocale().c_str());
 
 	// ファイルシステム。同梱アセット・ユーザーフォルダ・ローカルの 3 つを
 	// 用意する。場所の指定はここから先すべて ref（vfs.h）。
@@ -1584,6 +1618,17 @@ int main(int argc, char **argv) {
 			dropSeen = false;
 			dropPath.clear();
 			OpenDropped(ctx, &filer, path);
+		}
+
+		// 言語が入れ替わったフレーム。カタログから引いた文言を**こちらで
+		// 持っている**ところを取り直す（SettingsUi は自分のぶんを直している）。
+		if (ui.TakeLocaleChanged()) {
+			SetNotifyLabels();
+			// ファイラーの「読み込み中」やファイルシステムの選択画面の
+			// 見出しは一覧に焼き込まれているので、読み直して作り直す。
+			filer.Refresh();
+			chromeRefresh = true;
+			fileListRefresh = true;
 		}
 
 		// 設定ウィンドウでスキンが選ばれていたら、ここで作り直す。

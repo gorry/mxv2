@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 
 #include <SDL_syswm.h>
@@ -93,6 +94,43 @@ bool Screen::TouchPreferred() {
 #else
 	return false;
 #endif
+}
+
+std::string Screen::SystemLocale() {
+	// SDL は好みの順に並べて返す。先頭だけ見れば足りる
+	// （合うものが無ければ MatchLocale が落とし先へ落とす）。
+	SDL_Locale *locales = SDL_GetPreferredLocales();
+	std::string out;
+	if (locales != 0) {
+		if (locales[0].language != 0 && locales[0].language[0] != 0) {
+			out = locales[0].language;
+			if (locales[0].country != 0 && locales[0].country[0] != 0) {
+				out += "-";
+				out += locales[0].country;
+			}
+		}
+		SDL_free(locales);
+	}
+	if (!out.empty()) return out;
+
+#ifdef _WIN32
+	// SDL が答えられなかったときの保険。SDL_Init の前でも効く。
+	wchar_t buf[LOCALE_NAME_MAX_LENGTH];
+	const int n = GetUserDefaultLocaleName(buf, LOCALE_NAME_MAX_LENGTH);
+	if (n > 0) {
+		for (int i = 0; i < n && buf[i] != 0; i++) out += (char)buf[i];  // ASCII のみ
+	}
+#else
+	const char *env = getenv("LC_ALL");
+	if (env == 0 || env[0] == 0) env = getenv("LC_MESSAGES");
+	if (env == 0 || env[0] == 0) env = getenv("LANG");
+	if (env != 0) {
+		// "ja_JP.UTF-8" のような形。文字集合と修飾は落とす。
+		for (const char *p = env; *p != 0 && *p != '.' && *p != '@'; p++) out += *p;
+		if (out == "C" || out == "POSIX") out.clear();
+	}
+#endif
+	return out;
 }
 
 bool Screen::Open(const std::string &title, int width, int height, int zoomPercent,

@@ -46,6 +46,11 @@ bool Settings::Load(const std::string &path) {
 	Ini ini;
 	if (!ini.Load(path)) return false;
 
+	// 空なら「自動」（環境の言語）。知らない名前が書かれていても捨てない
+	// （別の版で足された言語かもしれないので、そのときは MatchLocale が
+	// 一番近いものへ落とす）。
+	locale = ini.GetString("UI", "Locale", locale);
+
 	// 旧い ini は Theme= だった。スキンのフォルダ名として読み替える。
 	skinName = ini.GetString("Screen", "Skin", ini.GetString("Screen", "Theme", skinName));
 	zoomPercent = ini.GetInt("Screen", "Zoom", zoomPercent);
@@ -118,6 +123,8 @@ bool Settings::Save(const std::string &path) const {
 	Ini ini;
 	ini.Load(path);  // 知らないキーは残す
 
+	ini.SetString("UI", "Locale", locale);
+
 	ini.SetString("Screen", "Skin", skinName);
 	ini.SetInt("Screen", "Zoom", zoomPercent);
 	ini.SetString("Screen", "Filter", scaleFilter);
@@ -188,6 +195,7 @@ bool Settings::SaveFields(const std::string &path, unsigned fields) const {
 	Settings out;
 	out.Load(path);
 
+	if (fields & kFieldLocale) out.locale = locale;
 	if (fields & kFieldSkin) out.skinName = skinName;
 	if (fields & kFieldZoom) out.zoomPercent = zoomPercent;
 	if (fields & kFieldFilter) out.scaleFilter = scaleFilter;

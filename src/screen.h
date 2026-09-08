@@ -44,6 +44,11 @@ public:
 	// Web は端末で決まるので、SDL がタッチ装置を数えられるかで見る。
 	static bool TouchPreferred();
 
+	// 動作環境の言語。"ja-JP" のような形で、国が分からなければ "ja" だけ。
+	// 設定の [言語] が「自動」のときの既定に使う。分からなければ空。
+	// **SDL_Init の前に呼んでもよい**（起動時のカタログを読む前に要る）。
+	static std::string SystemLocale();
+
 	// 表示倍率の範囲。
 	static const int kZoomMin = 100;
 	static const int kZoomMax = 400;

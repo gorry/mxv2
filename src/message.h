@@ -14,8 +14,12 @@
 //   ・カタログを読む前でも Msg() は呼べる（キーがそのまま返る）。
 //     起動直後の警告を出す都合で、読み込みより前に呼ぶ場所がある。
 //
-// ロケールの切り替えは起動時のみ（-locale）。実行中に読み直すことは
-// 考えていない（題名など、1 度だけ組み立てて使い回している文言がある）。
+// ロケールは起動時（-locale と mxv2.ini の [UI] Locale）に決まるが、
+// **設定ウィンドウの [言語] で実行中に切り替えられる**。切り替えは
+// LoadMessages() を呼び直すだけでよい——古い世代の文言はそのまま生かして
+// おくので、Msg() が返した番地を持ち続けている場所（ダイアログの題名など）
+// があってもぶら下がらない。ただし**中身は古いまま**なので、覚えている側は
+// 取り直すこと（settingsui.cpp の ResetTitles / LoadHelpRows）。
 
 #ifndef MXV2_MESSAGE_H
 #define MXV2_MESSAGE_H
@@ -46,6 +50,28 @@ bool LoadMessages(const AssetPaths &paths, const std::string &locale,
 // 頼まれたロケール名（既定 ja-JP）。実際に載っている文言は、キーによっては
 // 落とし先のものかもしれない。
 const std::string &MessageLocale();
+
+// 選べる言語。設定ウィンドウの [言語] に並べる。
+struct LocaleInfo {
+	std::string name;         // フォルダ名。"ja-JP" など
+	std::string displayName;  // その言語自身での呼び名（[Locale] Name）
+	bool user;                // ユーザーフォルダ側にも中身があるか
+
+	LocaleInfo() : user(false) {}
+};
+
+// 同梱ぶんとユーザーフォルダの locale/ を数え上げる（message.ini のある
+// フォルダだけ）。**ユーザーは言語を足せる**:
+//   ・同梱と同じ名前 … その言語に重ねる（キー単位。変えたい行だけ書けばよい）
+//   ・同梱に無い名前 … 新しい言語として一覧に出る（落とし先の上に載る）
+// 同じ名前が両方にあるときは 1 つにまとめ、**フォルダ名は同梱ぶんの綴り**、
+// 呼び名 ([Locale] Name) はユーザーぶんを優先する。並びはフォルダ名順。
+void ListLocales(const AssetPaths &paths, std::vector<LocaleInfo> *out);
+
+// want に一番近いものを list から選ぶ。"ja_JP" のような書き方や大小の
+// 違いは無視し、完全一致 -> 言語だけ一致 ("ja" と "ja-JP") -> 落とし先 ->
+// 先頭、の順に落ちる。list が空なら want をそのまま返す。
+std::string MatchLocale(const std::vector<LocaleInfo> &list, const std::string &want);
 
 // 文言を引く。キーは "<セクション>.<キー>"。
 // 無ければキーそのものを返す（画面が空になるより、どのキーが無いのかが

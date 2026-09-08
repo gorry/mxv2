@@ -132,6 +132,14 @@ void InitTitles() {
 	kQuitTitle = Msg("Dialog.Quit");
 }
 
+// 言語を入れ替えたあと、題名を新しいカタログから取り直す。古いほうの番地は
+// message.cpp が生かしたままにしてくれるので、途中で持っていても落ちない
+// （中身が古いだけ）。
+void ResetTitles() {
+	kSettingsTitle = 0;
+	InitTitles();
+}
+
 // 文言に ImGui の id を足した名札。同じ文言を 1 つの画面で何度も使うため。
 std::string L(const char *key, const char *id) {
 	return std::string(Msg(key)) + id;
@@ -364,6 +372,8 @@ SettingsUi::SettingsUi()
       inputScale_(1.0f),
       vfs_(0),
       pendingSampleRate_(0),
+      localeApplyPending_(false),
+      localeChanged_(false),
       pendingZoom_(0),
       zoomApplyAtMs_(0),
       changedFields_(0),
@@ -435,6 +445,9 @@ bool SettingsUi::Init(Screen *screen, const AssetPaths &paths, std::string *err)
 	InitTitles();
 	LoadHelpRows();
 	ScanSkins();
+	// 選べる言語。同梱ぶんとユーザーフォルダの locale/ を数え上げる。
+	// **起動時に 1 度だけ**なので、ユーザーが言語を足したら起動し直す。
+	ListLocales(paths_, &locales_);
 
 	// 最初のイベントが来る前に倍率を知っておく。
 	inputScale_ = screen->WindowToOutputScale();
@@ -635,6 +648,39 @@ void SettingsUi::ScanSkins() {
 	paths_.ListSkinRefs(&skinNames_);
 }
 
+// [言語] で選ばれたときの控え。name が空なら「自動」で、動作環境の言語に
+// 一番近い同梱ぶんを読む（ini に残すのは空のままなので、別の端末へ持って
+// いってもその環境の言語になる）。
+void SettingsUi::SelectLocale(Settings *settings, const std::string &name) {
+	if (settings->locale == name) return;
+	settings->locale = name;
+	changedFields_ |= Settings::kFieldLocale;
+
+	pendingLocale_ = name.empty() ? MatchLocale(locales_, Screen::SystemLocale()) : name;
+	localeApplyPending_ = true;
+	// 題名ごと入れ替わるので、いったん閉じる。開き直すのは Build() の頭。
+	visible_ = false;
+}
+
+// 実際にカタログを読み直す。**設定ウィンドウが閉じている間に呼ぶこと。**
+void SettingsUi::ApplyLocale() {
+	const std::string want = pendingLocale_;
+	pendingLocale_.clear();
+	if (want.empty()) return;
+
+	if (!LoadMessages(paths_, want)) {
+		// カタログが読めなかった。前の言語の文言がそのまま残るので、
+		// 画面は動き続ける（この 1 本だけ英語で知らせる）。
+		printf("warning  : message catalog not found: locale %s\n", want.c_str());
+		return;
+	}
+	// 覚えている文言を取り直す。題名はポインタ、操作方法の一覧は写しで
+	// 持っているので、どちらも作り直しが要る。
+	ResetTitles();
+	LoadHelpRows();
+	localeChanged_ = true;
+}
+
 // 同梱のスキンは読み取り専用なので、配色はユーザーフォルダ側の
 // skin/<名前>/ へ書く。次に読むときは、そちらが同梱の colors.ini より
 // 先に見つかる (Skin::FindFile)。
@@ -752,6 +798,15 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	BuildContextMenu(settings, draw, player, filer);
 	BuildColorsWindow(settings, draw, player);
 
+	// [言語] で選ばれた言語をここで入れ替える。ダイアログの題名も文言なので、
+	// **設定ウィンドウが閉じきってから**でないと、開いている最中に ImGui の
+	// ポップアップの id が変わってしまう（下の [参照...] と同じ作法）。
+	if (localeApplyPending_ && !ImGui::IsPopupOpen(kSettingsTitle)) {
+		localeApplyPending_ = false;
+		ApplyLocale();
+		visible_ = true;  // 新しい題名で開き直す
+	}
+
 	// 設定ウィンドウの [参照...] から来た往復。ImGui のポップアップは
 	// 同じ階層で掛け替えられないので、片方が閉じきってからもう片方を開く。
 	if (folderOpenPending_ && !ImGui::IsPopupOpen(kSettingsTitle)) {
@@ -802,6 +857,35 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	}
 
 	// ---- 画面 ----------------------------------------------------------
+	// 言語。ダイアログの文言がまるごと入れ替わるので一番上に置く。
+	// 中身は同梱ぶん (assets/locale/<名前>) だけで、名前はその言語自身での
+	// 呼び名を出す（読めない言語の名前で並べても選べない）。
+	if (ImGui::CollapsingHeader(Msg("Settings.Language"), ImGuiTreeNodeFlags_DefaultOpen)) {
+		// 空なら「自動」。いま実際に使っている言語ではなく**設定の値**を
+		// 見せる（自動のまま日本語で動いているのか、日本語を選んだのかは
+		// 別のことなので）。
+		const std::string cur = settings->locale;
+		const char *label = Msg("Settings.LanguageAuto");
+		for (size_t i = 0; i < locales_.size(); i++) {
+			if (locales_[i].name == cur) label = locales_[i].displayName.c_str();
+		}
+		// 見出しと同じ文言なので、id は "###" で分ける。
+		if (ImGui::BeginCombo(L("Settings.Language", "###language").c_str(), label)) {
+			if (ImGui::Selectable(Msg("Settings.LanguageAuto"), cur.empty())) {
+				SelectLocale(settings, std::string());
+			}
+			if (cur.empty()) ImGui::SetItemDefaultFocus();
+			for (size_t i = 0; i < locales_.size(); i++) {
+				const bool selected = (locales_[i].name == cur);
+				if (ImGui::Selectable(locales_[i].displayName.c_str(), selected)) {
+					SelectLocale(settings, locales_[i].name);
+				}
+				if (selected) ImGui::SetItemDefaultFocus();
+			}
+			ImGui::EndCombo();
+		}
+	}
+
 	if (ImGui::CollapsingHeader(Msg("Settings.Screen"), ImGuiTreeNodeFlags_DefaultOpen)) {
 		// スキン。画面サイズごと変わりうるので、選ばれた名前を置いておいて
 		// 実際の作り直しはメインループに任せる。
@@ -854,8 +938,11 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 			pendingZoom_ = settings->zoomPercent;
 			zoomApplyAtMs_ = SDL_GetTicks() + kZoomApplyDelayMs;
 		}
+		// ここは Button で置くこと。SmallButton は FramePadding.y が 0 なので
+		// [再読込] など他のボタンより背が低くなり、指で操作するときの
+		// 6mm も満たさない。
 		SameLineOrWrap(Msg("Settings.ZoomSystem"));
-		if (ImGui::SmallButton(Msg("Settings.ZoomSystem"))) {
+		if (ImGui::Button(Msg("Settings.ZoomSystem"))) {
 			settings->zoomPercent = Screen::SystemZoomPercent();
 			changedFields_ |= Settings::kFieldZoom;
 			pendingZoom_ = settings->zoomPercent;
@@ -868,7 +955,9 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 				Screen::ScaleMode mode;
 				const char *label;
 			};
-			static const Item kItems[] = {
+			// **static にしないこと。** 一度だけ組み立てると、言語を替えた
+			// あとも古いカタログの文言を指したままになる（実際に踏んだ）。
+			const Item kItems[] = {
 				{ Screen::kScaleSharp, Msg("Settings.FilterSharp") },
 				{ Screen::kScaleNearest, Msg("Settings.FilterNearest") },
 				{ Screen::kScaleLinear, Msg("Settings.FilterLinear") },
@@ -1136,11 +1225,14 @@ void SettingsUi::BuildColorsWindow(Settings *settings, DrawScreen *draw, Player 
 		// 下に置くと毎回スクロールしないと届かない。
 		BuildSkinSaveRow(settings, draw);
 
+		// 部品ごとの見出しは、設定ウィンドウと同じ**畳める見出し**
+		// (CollapsingHeader) にしてある。ここは縦に長いので、見ていない
+		// ところを閉じられるほうがよい。最初は全部開いた状態。
+
 		Colors &t = draw->colors();
 		bool dirty = false;
 
-		ImGui::SeparatorText(Msg("Colors.Background"));
-		{
+		if (ImGui::CollapsingHeader(Msg("Colors.Background"), ImGuiTreeNodeFlags_DefaultOpen)) {
 			bool useBitmap = (t.back.bitmap != 0);
 			if (ImGui::Checkbox(Msg("Colors.UseImage"), &useBitmap)) {
 				t.back.bitmap = useBitmap ? 1 : 0;
@@ -1151,31 +1243,27 @@ void SettingsUi::BuildColorsWindow(Settings *settings, DrawScreen *draw, Player 
 			if (AlphaRow(Msg("Colors.BgStrength"), &t.back.colorBright)) dirty = true;
 		}
 
-		ImGui::SeparatorText(Msg("Colors.Keyboard"));
-		{
+		if (ImGui::CollapsingHeader(Msg("Colors.Keyboard"), ImGuiTreeNodeFlags_DefaultOpen)) {
 			if (GainRow(Msg("Colors.BlackKey"), &t.kb.blackBright)) dirty = true;
 			if (GainRow(Msg("Colors.WhiteKey"), &t.kb.whiteBright)) dirty = true;
 			if (GainRow(Msg("Colors.PressedKey"), &t.kb.bright)) dirty = true;
 		}
 
-		ImGui::SeparatorText(Msg("Colors.Status"));
-		{
+		if (ImGui::CollapsingHeader(Msg("Colors.Status"), ImGuiTreeNodeFlags_DefaultOpen)) {
 			if (ColorRow(L("Colors.Text", "##st"), &t.status.color)) dirty = true;
 			if (AlphaRow(L("Colors.TextStrength", "##st"), &t.status.colorBright)) dirty = true;
 			if (ColorRow(L("Colors.Back", "##st"), &t.status.backColor)) dirty = true;
 			if (AlphaRow(L("Colors.BackStrength", "##st"), &t.status.backColorBright)) dirty = true;
 		}
 
-		ImGui::SeparatorText(Msg("Colors.Title"));
-		{
+		if (ImGui::CollapsingHeader(Msg("Colors.Title"), ImGuiTreeNodeFlags_DefaultOpen)) {
 			if (ColorRow(L("Colors.Text", "##ti"), &t.mdxTitle.color)) dirty = true;
 			if (AlphaRow(L("Colors.TextStrength", "##ti"), &t.mdxTitle.colorBright)) dirty = true;
 			if (ColorRow(L("Colors.Back", "##ti"), &t.mdxTitle.backColor)) dirty = true;
 			if (AlphaRow(L("Colors.BackStrength", "##ti"), &t.mdxTitle.backColorBright)) dirty = true;
 		}
 
-		ImGui::SeparatorText(Msg("Colors.Filer"));
-		{
+		if (ImGui::CollapsingHeader(Msg("Colors.Filer"), ImGuiTreeNodeFlags_DefaultOpen)) {
 			if (ColorRow(L("Colors.Cursor", "##fi"), &t.filer.cursorColor)) dirty = true;
 			if (AlphaRow(L("Colors.CursorStrength", "##fi"), &t.filer.cursorColorBright)) dirty = true;
 			// 「文字の強さ」は下の 4 つの色すべてに効くので、そのあとに置く。
@@ -1190,8 +1278,7 @@ void SettingsUi::BuildColorsWindow(Settings *settings, DrawScreen *draw, Player 
 			if (AlphaRow(L("Colors.BackStrength", "##fi"), &t.filer.backColorBright)) dirty = true;
 		}
 
-		ImGui::SeparatorText(Msg("Colors.PlayKey"));
-		{
+		if (ImGui::CollapsingHeader(Msg("Colors.PlayKey"), ImGuiTreeNodeFlags_DefaultOpen)) {
 			if (ColorRow(L("Colors.Text", "##pk"), &t.playKey.color)) dirty = true;
 			if (AlphaRow(L("Colors.TextStrength", "##pk"), &t.playKey.colorBright)) dirty = true;
 			if (GainRow(L("Colors.ButtonGain", "##pk"), &t.playKey.keyBright)) dirty = true;

@@ -2,6 +2,7 @@
 
 #include "message.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <map>
 
@@ -21,11 +22,26 @@ typedef std::map<std::string, std::vector<MsgRow> > Lists;
 
 // カタログはプロセスに 1 つ。文言は 200 か所以上から引くので、
 // 全部の呼び出しに持ち回らせるより、ここに置くほうが素直。
-// 読むのは起動時の 1 度だけで、あとは参照しかしない。
+//
+// **読み直すときは丸ごと作り直し、古いほうは捨てない。** Msg() は map の中の
+// 文字列を指すポインタを返していて、それを持ち続けている場所（ダイアログの
+// 題名）があるので、消すとぶら下がる。言語の切り替えは人が選んだときだけ
+// なので、数百キロバイトを置いておくほうが安い。
 struct Catalog {
-	Values values;   // "<セクション>.<キー>" -> 文言
-	Lists lists;     // セクション -> 並び順つきの中身
+	Values *values;  // "<セクション>.<キー>" -> 文言
+	Lists *lists;    // セクション -> 並び順つきの中身
 	std::string locale;
+	std::vector<Values *> oldValues;  // 生かしておくだけ。もう読まない
+	std::vector<Lists *> oldLists;
+
+	Catalog() : values(0), lists(0) { NewGeneration(); }
+
+	void NewGeneration() {
+		if (values != 0) oldValues.push_back(values);
+		if (lists != 0) oldLists.push_back(lists);
+		values = new Values();
+		lists = new Lists();
+	}
 };
 
 Catalog &Cat() {
@@ -49,11 +65,11 @@ bool Merge(const std::string &path, bool replaceLists) {
 	const std::vector<std::string> sections = ini.Sections();
 	for (size_t i = 0; i < sections.size(); i++) {
 		const std::vector<std::string> keys = ini.Keys(sections[i]);
-		std::vector<MsgRow> &list = cat.lists[sections[i]];
+		std::vector<MsgRow> &list = (*cat.lists)[sections[i]];
 		if (replaceLists && !keys.empty()) list.clear();
 		for (size_t j = 0; j < keys.size(); j++) {
 			const std::string value = ini.GetString(sections[i], keys[j], std::string());
-			cat.values[sections[i] + "." + keys[j]] = value;
+			(*cat.values)[sections[i] + "." + keys[j]] = value;
 
 			// 並び順つきの一覧。同じキーが後から来たら差し替える。
 			size_t at = list.size();
@@ -85,8 +101,7 @@ std::string LocaleFile(const std::string &root, const std::string &locale) {
 bool LoadMessages(const AssetPaths &paths, const std::string &locale,
                   bool *usedFallback) {
 	Catalog &cat = Cat();
-	cat.values.clear();
-	cat.lists.clear();
+	cat.NewGeneration();
 	cat.locale = locale.empty() ? kDefaultLocale : locale;
 	if (usedFallback != 0) *usedFallback = false;
 
@@ -118,16 +133,133 @@ const std::string &MessageLocale() {
 	return Cat().locale;
 }
 
+namespace {
+
+// ロケール名をそろえる。"ja_JP" と "ja-JP"、"JA-jp" と "ja-JP" は同じもの。
+std::string NormalizeLocale(const std::string &s) {
+	std::string out;
+	for (size_t i = 0; i < s.size(); i++) {
+		char c = s[i];
+		if (c == '_') c = '-';
+		if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+		out += c;
+	}
+	return out;
+}
+
+// "ja-JP" の "ja" の部分。区切りが無ければ全部。
+std::string LocaleLanguage(const std::string &s) {
+	const std::string norm = NormalizeLocale(s);
+	const size_t at = norm.find('-');
+	return (at == std::string::npos) ? norm : norm.substr(0, at);
+}
+
+bool LessLocaleName(const LocaleInfo &a, const LocaleInfo &b) {
+	return NormalizeLocale(a.name) < NormalizeLocale(b.name);
+}
+
+}  // namespace
+
+namespace {
+
+// root/locale/ を数え上げて out へ足す。すでにある言語（大小・区切りの違いは
+// 同じものとみなす）は名前を増やさず、呼び名だけ上書きできる。
+//
+// bundled が false（＝ユーザーフォルダ）のときは、
+//   ・同じ名前が同梱にもあれば **フォルダ名は同梱ぶんのまま**にする。
+//     LoadMessages は同じ名前で両方を開くので、綴りは同梱ぶんに合わせて
+//     おいたほうが安全（大小を区別する環境で、片方だけ開けなくなるのを防ぐ）。
+//   ・呼び名を書いていればそちらを採る（重ねた側が名乗り直せる）。
+void AddLocalesFrom(const std::string &root, bool bundled, std::vector<LocaleInfo> *out) {
+	if (root.empty()) return;
+
+	std::vector<DirEntry> entries;
+	if (!ListDirectory(JoinPath(root, "locale"), &entries)) return;
+
+	for (size_t i = 0; i < entries.size(); i++) {
+		if (!entries[i].isDir) continue;
+		// message.ini の無いフォルダは言語として数えない。
+		Ini ini;
+		if (!ini.Load(LocaleFile(root, entries[i].name))) continue;
+		const std::string displayName = ini.GetString("Locale", "Name", std::string());
+
+		size_t at = out->size();
+		for (size_t j = 0; j < out->size(); j++) {
+			if (NormalizeLocale((*out)[j].name) == NormalizeLocale(entries[i].name)) {
+				at = j;
+				break;
+			}
+		}
+		if (at < out->size()) {
+			if (bundled) (*out)[at].name = entries[i].name;
+			// 呼び名はユーザーぶんが優先。ユーザー側が書いていなければ
+			// 同梱ぶんのものを使う（重ねただけなら名乗りは変わらない）。
+			if (!displayName.empty() && (!bundled || (*out)[at].displayName.empty())) {
+				(*out)[at].displayName = displayName;
+			}
+			if (!bundled) (*out)[at].user = true;
+			continue;
+		}
+
+		LocaleInfo info;
+		info.name = entries[i].name;
+		info.displayName = displayName;
+		info.user = !bundled;
+		out->push_back(info);
+	}
+}
+
+}  // namespace
+
+void ListLocales(const AssetPaths &paths, std::vector<LocaleInfo> *out) {
+	out->clear();
+	// ユーザーぶんを先に見る（呼び名はそちらが勝つ）。同梱ぶんは後から
+	// フォルダ名の綴りをそろえる。
+	AddLocalesFrom(paths.userDir, false, out);
+	AddLocalesFrom(paths.bundledDir, true, out);
+
+	// 呼び名が無ければフォルダ名をそのまま見せる（新しい言語を足した人が
+	// [Locale] Name を書き忘れても選べる）。
+	for (size_t i = 0; i < out->size(); i++) {
+		if ((*out)[i].displayName.empty()) (*out)[i].displayName = (*out)[i].name;
+	}
+	std::sort(out->begin(), out->end(), LessLocaleName);
+}
+
+std::string MatchLocale(const std::vector<LocaleInfo> &list, const std::string &want) {
+	if (list.empty()) return want;
+
+	const std::string norm = NormalizeLocale(want);
+	for (size_t i = 0; i < list.size(); i++) {
+		if (NormalizeLocale(list[i].name) == norm) return list[i].name;
+	}
+
+	// 言語だけ合わせる。"ja" しか分からない端末でも ja-JP を選べるように。
+	const std::string lang = LocaleLanguage(want);
+	if (!lang.empty()) {
+		for (size_t i = 0; i < list.size(); i++) {
+			if (LocaleLanguage(list[i].name) == lang) return list[i].name;
+		}
+	}
+
+	for (size_t i = 0; i < list.size(); i++) {
+		if (NormalizeLocale(list[i].name) == NormalizeLocale(kFallbackLocale)) {
+			return list[i].name;
+		}
+	}
+	return list[0].name;
+}
+
 const char *Msg(const char *key) {
 	if (key == 0) return "";
 	Catalog &cat = Cat();
-	Values::const_iterator it = cat.values.find(key);
-	if (it != cat.values.end()) return it->second.c_str();
+	Values::const_iterator it = cat.values->find(key);
+	if (it != cat.values->end()) return it->second.c_str();
 
 	// 無いキーはキー名をそのまま出す。カタログへ入れておくのは、
 	// 返した文字列を呼び出し側が持ち続けても大丈夫にするため。
 	printf("warning  : message not found: %s\n", key);
-	return cat.values.insert(std::make_pair(std::string(key), std::string(key)))
+	return cat.values->insert(std::make_pair(std::string(key), std::string(key)))
 	    .first->second.c_str();
 }
 
@@ -183,8 +315,8 @@ std::string MsgNum(const char *fmt, double v) {
 
 const std::vector<MsgRow> &MsgList(const char *section) {
 	static const std::vector<MsgRow> kEmpty;
-	Lists::const_iterator it = Cat().lists.find(section ? section : "");
-	return (it == Cat().lists.end()) ? kEmpty : it->second;
+	Lists::const_iterator it = Cat().lists->find(section ? section : "");
+	return (it == Cat().lists->end()) ? kEmpty : it->second;
 }
 
 int MsgDisplayWidth(const std::string &s) {

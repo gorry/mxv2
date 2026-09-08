@@ -21,6 +21,7 @@
 #include "imgui.h"
 
 #include "assetpath.h"
+#include "message.h"
 
 namespace mxv2 {
 
@@ -240,6 +241,15 @@ public:
 	// スキンの一覧を取り直す（フォルダを足したとき用）。
 	void ScanSkins();
 
+	// 言語が入れ替わったフレームで 1 度だけ true。読んだら消える。
+	// カタログから引いた文言を**自分で持っている**ところ（通知のラベルなど）を
+	// メインループに取り直してもらうために使う。
+	bool TakeLocaleChanged() {
+		const bool c = localeChanged_;
+		localeChanged_ = false;
+		return c;
+	}
+
 	// 出力サンプリングレートが選ばれたらここに入る。0 なら変更なし。
 	// レートを変えるには MXDRV とオーディオ装置を開き直すしかないので、
 	// 実際の入れ替えはメインループに任せる（スキンの pendingSkin_ と同じ作法）。
@@ -303,6 +313,18 @@ private:
 	std::vector<std::string> skinNames_;
 	std::string pendingSkin_;
 	int pendingSampleRate_;
+
+	// 言語。選べるのは同梱ぶんだけ（Init で数え上げる）。
+	std::vector<LocaleInfo> locales_;
+	// 選ばれた言語を実際に読み込むまでの控え。**設定ウィンドウが閉じきって
+	// から**入れ替える（題名も文言なので、開いたまま替えると ImGui の
+	// ポップアップの id が途中で変わる）。
+	std::string pendingLocale_;
+	bool localeApplyPending_;
+	bool localeChanged_;
+	// 言語を選んだときの控えと、実際の入れ替え。
+	void SelectLocale(Settings *settings, const std::string &name);
+	void ApplyLocale();
 
 	// PDX パスの入力欄。std::string を直接は編集できないので固定長で持つ。
 	char pdxPathBuf_[512];
