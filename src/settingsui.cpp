@@ -823,6 +823,29 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 
 	ImGui::NewFrame();
 
+	// **ソフトキーボード**。入力欄にカーソルが入っている間だけ出す。
+	// ImGui の SDL2 バックエンドは 2023-04-06 に SDL_StartTextInput() を
+	// 呼ぶのをやめている（IME 以外にも効いてしまうため）ので、こちらで
+	// 面倒を見ないと、Android では入力欄を触ってもキーボードが出ない。
+	//
+	// `io.WantTextInput` は NewFrame() で決まるので、ここで見てよい。
+	// **キーボードのあるプラットフォームでは触らない**——SDL は最初から
+	// テキスト入力を受け付けており、止めたり始めたりすると IME の状態に
+	// 触ってしまう（mxv2 は SDL_TEXTINPUT を自分では使っていないが、
+	// 得るものが無いので触らない）。
+#if defined(__ANDROID__) || defined(__IPHONEOS__) || defined(__EMSCRIPTEN__)
+	{
+		const bool wantText = ImGui::GetIO().WantTextInput;
+		if (wantText != (SDL_IsTextInputActive() == SDL_TRUE)) {
+			if (wantText) {
+				SDL_StartTextInput();
+			} else {
+				SDL_StopTextInput();
+			}
+		}
+	}
+#endif
+
 	// ドラッグでスクロール中の印は、ボタンを離したところで落とす。
 	// ドラッグの途中でダイアログが閉じても、次に開いたものへ持ち越さない。
 	if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) dragScroll_ = false;
