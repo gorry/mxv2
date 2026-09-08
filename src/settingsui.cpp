@@ -298,6 +298,42 @@ void SameLineOrWrap(const char *label) {
 	if (ImGui::GetItemRectMax().x + style.ItemSpacing.x + need <= right) ImGui::SameLine();
 }
 
+// グループの見出し (CollapsingHeader)。**帯を明るくして目立たせる**
+// （2026-09-08、ユーザーの指示）。ImGui の既定は薄い青
+// (ImGuiCol_Header は同じ色の 31% 透過) で、**コンボやスライダなど他の
+// 部品と濃さが変わらず、見出しなのか項目なのか区別が付かない**。
+//
+// 色は押し引きで**この呼び出しの間だけ**変える。`ImGuiCol_Header` は
+// Selectable の選択行やコンボの候補とも共用なので、style をそのまま
+// 書き換えるとファイラーやスキンの一覧まで明るくなってしまう。
+//
+// 開いていても畳んでいても同じ色にしてある（見出しの並びとして読めるほうが
+// よい）。指を乗せたとき・押したときだけさらに濃くする。
+bool GroupHeader(const char *label) {
+	// 既定の青をそのまま使い、透過だけ濃くする。配色を変えても浮かない。
+	ImVec4 c = ImGui::GetStyleColorVec4(ImGuiCol_Header);
+	c.w = 0.75f;
+	ImVec4 hovered = c;
+	hovered.w = 0.90f;
+	ImVec4 active = c;
+	active.w = 1.00f;
+	ImGui::PushStyleColor(ImGuiCol_Header, c);
+	ImGui::PushStyleColor(ImGuiCol_HeaderHovered, hovered);
+	ImGui::PushStyleColor(ImGuiCol_HeaderActive, active);
+	const bool open = ImGui::CollapsingHeader(label);
+	ImGui::PopStyleColor(3);
+	return open;
+}
+
+// 開いているグループの終わりに置く余白。次の見出しとの区切りを見せる。
+// **畳んでいるグループには置かない**——見出しだけが並ぶところは詰めておきたい
+// ので、CollapsingHeader が true のブロックの**中**に置くこと。
+// 高さは字の高さの半分。指で操作するときは字も大きくなるので、余白も一緒に
+// 広がる（決め打ちの画素にしない）。
+void GroupTrailingSpace() {
+	ImGui::Dummy(ImVec2(0.0f, ImGui::GetTextLineHeight() * 0.5f));
+}
+
 // ダイアログを画面の中央に出す。基準点 (pivot) を真ん中にして渡すので、
 // 大きさが決まっていないダイアログ（AlwaysAutoResize）でも中央に来る。
 void CenterNextWindow(ImGuiCond cond) {
@@ -857,10 +893,16 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	}
 
 	// ---- 画面 ----------------------------------------------------------
+	// 見出し (CollapsingHeader) は**畳んだ状態から始まる**（ユーザーの指示、
+	// 2026-09-08）。ImGuiTreeNodeFlags_DefaultOpen を付けないだけでよく、
+	// 開け閉めした状態は ImGui がウィンドウごとに覚えているので、
+	// ダイアログを閉じて開き直しても保たれる（アプリを起動し直すと畳んだ
+	// 状態に戻る。imgui.ini は書いていないので何も残らない）。[配色設定] も同じ。
+	//
 	// 言語。ダイアログの文言がまるごと入れ替わるので一番上に置く。
 	// 中身は同梱ぶん (assets/locale/<名前>) だけで、名前はその言語自身での
 	// 呼び名を出す（読めない言語の名前で並べても選べない）。
-	if (ImGui::CollapsingHeader(Msg("Settings.Language"), ImGuiTreeNodeFlags_DefaultOpen)) {
+	if (GroupHeader(Msg("Settings.Language"))) {
 		// 空なら「自動」。いま実際に使っている言語ではなく**設定の値**を
 		// 見せる（自動のまま日本語で動いているのか、日本語を選んだのかは
 		// 別のことなので）。
@@ -884,9 +926,10 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 			}
 			ImGui::EndCombo();
 		}
+		GroupTrailingSpace();
 	}
 
-	if (ImGui::CollapsingHeader(Msg("Settings.Screen"), ImGuiTreeNodeFlags_DefaultOpen)) {
+	if (GroupHeader(Msg("Settings.Screen"))) {
 		// スキン。画面サイズごと変わりうるので、選ばれた名前を置いておいて
 		// 実際の作り直しはメインループに任せる。
 		int current = -1;
@@ -1014,10 +1057,11 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 				TextNote(Msg("Settings.TouchOffNow"));
 			}
 		}
+		GroupTrailingSpace();
 	}
 
 	// ---- ファイラー ------------------------------------------------------
-	if (ImGui::CollapsingHeader(Msg("Settings.Filer"), ImGuiTreeNodeFlags_DefaultOpen)) {
+	if (GroupHeader(Msg("Settings.Filer"))) {
 		bool largeFont = (settings->fileListFontSize != 0);
 		if (ImGui::Checkbox(Msg("Settings.LargeFont"), &largeFont)) {
 			settings->fileListFontSize = largeFont ? 1 : 0;
@@ -1056,10 +1100,11 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 				ImGui::EndCombo();
 			}
 		}
+		GroupTrailingSpace();
 	}
 
 	// ---- 演奏 ----------------------------------------------------------
-	if (ImGui::CollapsingHeader(Msg("Settings.Play"), ImGuiTreeNodeFlags_DefaultOpen)) {
+	if (GroupHeader(Msg("Settings.Play"))) {
 		// 出力サンプリングレート。96kHz を選べるのは、繋いでいる
 		// portable_mdx が対応している版のときだけ（player.h の
 		// X68SOUND_SUPPORT_96KHZ）。対応していなければ項目自体を出さない。
@@ -1158,6 +1203,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 			folderOpenPending_ = true;
 			visible_ = false;
 		}
+		GroupTrailingSpace();
 	}
 
 	// 保存ボタンは無い。触った時点で mxv2.ini へ書き戻す（スマートフォンでの
@@ -1227,12 +1273,13 @@ void SettingsUi::BuildColorsWindow(Settings *settings, DrawScreen *draw, Player 
 
 		// 部品ごとの見出しは、設定ウィンドウと同じ**畳める見出し**
 		// (CollapsingHeader) にしてある。ここは縦に長いので、見ていない
-		// ところを閉じられるほうがよい。最初は全部開いた状態。
+		// ところを閉じられるほうがよい。**起動直後は全部畳んだ状態**で、
+		// 開け閉めはアプリが動いている間だけ覚えている（設定ウィンドウと同じ）。
 
 		Colors &t = draw->colors();
 		bool dirty = false;
 
-		if (ImGui::CollapsingHeader(Msg("Colors.Background"), ImGuiTreeNodeFlags_DefaultOpen)) {
+		if (GroupHeader(Msg("Colors.Background"))) {
 			bool useBitmap = (t.back.bitmap != 0);
 			if (ImGui::Checkbox(Msg("Colors.UseImage"), &useBitmap)) {
 				t.back.bitmap = useBitmap ? 1 : 0;
@@ -1241,29 +1288,33 @@ void SettingsUi::BuildColorsWindow(Settings *settings, DrawScreen *draw, Player 
 			if (AlphaRow(Msg("Colors.ImageGain"), &t.back.bitmapBright)) dirty = true;
 			if (ColorRow(Msg("Colors.BgColor"), &t.back.color)) dirty = true;
 			if (AlphaRow(Msg("Colors.BgStrength"), &t.back.colorBright)) dirty = true;
+			GroupTrailingSpace();
 		}
 
-		if (ImGui::CollapsingHeader(Msg("Colors.Keyboard"), ImGuiTreeNodeFlags_DefaultOpen)) {
+		if (GroupHeader(Msg("Colors.Keyboard"))) {
 			if (GainRow(Msg("Colors.BlackKey"), &t.kb.blackBright)) dirty = true;
 			if (GainRow(Msg("Colors.WhiteKey"), &t.kb.whiteBright)) dirty = true;
 			if (GainRow(Msg("Colors.PressedKey"), &t.kb.bright)) dirty = true;
+			GroupTrailingSpace();
 		}
 
-		if (ImGui::CollapsingHeader(Msg("Colors.Status"), ImGuiTreeNodeFlags_DefaultOpen)) {
+		if (GroupHeader(Msg("Colors.Status"))) {
 			if (ColorRow(L("Colors.Text", "##st"), &t.status.color)) dirty = true;
 			if (AlphaRow(L("Colors.TextStrength", "##st"), &t.status.colorBright)) dirty = true;
 			if (ColorRow(L("Colors.Back", "##st"), &t.status.backColor)) dirty = true;
 			if (AlphaRow(L("Colors.BackStrength", "##st"), &t.status.backColorBright)) dirty = true;
+			GroupTrailingSpace();
 		}
 
-		if (ImGui::CollapsingHeader(Msg("Colors.Title"), ImGuiTreeNodeFlags_DefaultOpen)) {
+		if (GroupHeader(Msg("Colors.Title"))) {
 			if (ColorRow(L("Colors.Text", "##ti"), &t.mdxTitle.color)) dirty = true;
 			if (AlphaRow(L("Colors.TextStrength", "##ti"), &t.mdxTitle.colorBright)) dirty = true;
 			if (ColorRow(L("Colors.Back", "##ti"), &t.mdxTitle.backColor)) dirty = true;
 			if (AlphaRow(L("Colors.BackStrength", "##ti"), &t.mdxTitle.backColorBright)) dirty = true;
+			GroupTrailingSpace();
 		}
 
-		if (ImGui::CollapsingHeader(Msg("Colors.Filer"), ImGuiTreeNodeFlags_DefaultOpen)) {
+		if (GroupHeader(Msg("Colors.Filer"))) {
 			if (ColorRow(L("Colors.Cursor", "##fi"), &t.filer.cursorColor)) dirty = true;
 			if (AlphaRow(L("Colors.CursorStrength", "##fi"), &t.filer.cursorColorBright)) dirty = true;
 			// 「文字の強さ」は下の 4 つの色すべてに効くので、そのあとに置く。
@@ -1276,12 +1327,14 @@ void SettingsUi::BuildColorsWindow(Settings *settings, DrawScreen *draw, Player 
 			if (AlphaRow(L("Colors.TextStrength", "##fi"), &t.filer.colorBright)) dirty = true;
 			if (ColorRow(L("Colors.Back", "##fi"), &t.filer.backColor)) dirty = true;
 			if (AlphaRow(L("Colors.BackStrength", "##fi"), &t.filer.backColorBright)) dirty = true;
+			GroupTrailingSpace();
 		}
 
-		if (ImGui::CollapsingHeader(Msg("Colors.PlayKey"), ImGuiTreeNodeFlags_DefaultOpen)) {
+		if (GroupHeader(Msg("Colors.PlayKey"))) {
 			if (ColorRow(L("Colors.Text", "##pk"), &t.playKey.color)) dirty = true;
 			if (AlphaRow(L("Colors.TextStrength", "##pk"), &t.playKey.colorBright)) dirty = true;
 			if (GainRow(L("Colors.ButtonGain", "##pk"), &t.playKey.keyBright)) dirty = true;
+			GroupTrailingSpace();
 		}
 
 		if (dirty) Rebuild(draw, player);
