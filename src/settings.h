@@ -51,6 +51,9 @@ struct Settings {
 	int sampleRate;
 	int loops;
 	bool fadeout;
+	// メイン画面の CONT / REPEAT ボタン。押した状態を次の起動へ持ち越す。
+	bool autoNext;    // CONT   … 演奏が終わったら次の曲へ
+	bool autoRepeat;  // REPEAT … 演奏が終わったら同じ曲をもう一度
 	// マスター音量 -100..+100 (0 = 中央)。メイン画面の音量はその場かぎりの
 	// 調整なので記録しない（起動時は必ず 0 から始まる）。
 	int masterVolume;
@@ -103,6 +106,7 @@ struct Settings {
 		kFieldBookmarks = 1 << 14,
 		kFieldTouchUi = 1 << 15,
 		kFieldFileListScroll = 1 << 16,
+		kFieldContRepeat = 1 << 17,
 	};
 
 	Settings();

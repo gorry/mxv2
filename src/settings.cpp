@@ -29,6 +29,8 @@ Settings::Settings()
       sampleRate(48000),
       loops(2),
       fadeout(true),
+      autoNext(false),
+      autoRepeat(false),
       masterVolume(0),  // 中央
       latencyAuto(true),
       latencyMs(0),
@@ -63,6 +65,8 @@ bool Settings::Load(const std::string &path) {
 	sampleRate = ini.GetInt("Play", "SampleRate", sampleRate);
 	loops = ini.GetInt("Play", "N_Loop", loops);
 	fadeout = ini.GetInt("Play", "Fadeout", fadeout ? 1 : 0) != 0;
+	autoNext = ini.GetInt("Play", "Cont", autoNext ? 1 : 0) != 0;
+	autoRepeat = ini.GetInt("Play", "Repeat", autoRepeat ? 1 : 0) != 0;
 	masterVolume = ini.GetInt("Play", "Volume", masterVolume);
 	if (masterVolume < -100) masterVolume = -100;
 	if (masterVolume > 100) masterVolume = 100;
@@ -127,6 +131,8 @@ bool Settings::Save(const std::string &path) const {
 	ini.SetInt("Play", "SampleRate", sampleRate);
 	ini.SetInt("Play", "N_Loop", loops);
 	ini.SetInt("Play", "Fadeout", fadeout ? 1 : 0);
+	ini.SetInt("Play", "Cont", autoNext ? 1 : 0);
+	ini.SetInt("Play", "Repeat", autoRepeat ? 1 : 0);
 	ini.SetInt("Play", "Volume", masterVolume);
 	ini.SetInt("Play", "LatencyAuto", latencyAuto ? 1 : 0);
 	ini.SetInt("Play", "Latency", latencyMs);
@@ -193,6 +199,10 @@ bool Settings::SaveFields(const std::string &path, unsigned fields) const {
 	if (fields & kFieldSampleRate) out.sampleRate = sampleRate;
 	if (fields & kFieldLoops) out.loops = loops;
 	if (fields & kFieldFadeout) out.fadeout = fadeout;
+	if (fields & kFieldContRepeat) {
+		out.autoNext = autoNext;
+		out.autoRepeat = autoRepeat;
+	}
 	if (fields & kFieldVolume) out.masterVolume = masterVolume;
 	if (fields & kFieldLatency) {
 		out.latencyAuto = latencyAuto;

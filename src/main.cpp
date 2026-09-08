@@ -1187,9 +1187,9 @@ int main(int argc, char **argv) {
 	SongLoad songLoad;
 	ui.SetSongLoader(&songLoader);
 
-	// 演奏終了時のふるまい
-	bool autoNext = false;    // CONT
-	bool autoRepeat = false;  // REPEAT
+	// 演奏終了時のふるまい。押した状態は mxv2.ini に残るので、前回のまま始まる。
+	bool autoNext = settings.autoNext;    // CONT
+	bool autoRepeat = settings.autoRepeat;  // REPEAT
 
 	bool quit = false;
 	// 端末がバックグラウンドへ回した (Android)。**音は止めず、描くのだけ止める。**
@@ -1743,6 +1743,14 @@ int main(int argc, char **argv) {
 			settings.lastDir = filer.currentRef();
 			newDirt |= mxv2::Settings::kFieldLastDir;
 		}
+		// CONT / REPEAT はキー・マウス・メニューのどこからでも変わるので、
+		// 切り替えた場所ごとに書くのではなく、ここで見比べて拾う
+		// （文字の大きさや音量と同じ扱い）。
+		if (settings.autoNext != autoNext || settings.autoRepeat != autoRepeat) {
+			settings.autoNext = autoNext;
+			settings.autoRepeat = autoRepeat;
+			newDirt |= mxv2::Settings::kFieldContRepeat;
+		}
 		if (settings.savePosition) {
 			int wx = 0, wy = 0, ww = 0, wh = 0;
 			screen.GetWindowRect(&wx, &wy, &ww, &wh);
@@ -1875,6 +1883,11 @@ int main(int argc, char **argv) {
 		if (settings.lastDir != filer.currentRef()) {
 			settings.lastDir = filer.currentRef();
 			dirtyFields |= mxv2::Settings::kFieldLastDir;
+		}
+		if (settings.autoNext != autoNext || settings.autoRepeat != autoRepeat) {
+			settings.autoNext = autoNext;
+			settings.autoRepeat = autoRepeat;
+			dirtyFields |= mxv2::Settings::kFieldContRepeat;
 		}
 		if (settings.savePosition) {
 			int wx = 0, wy = 0, ww = 0, wh = 0;
