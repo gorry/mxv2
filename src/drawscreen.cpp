@@ -89,11 +89,6 @@ const int kVolumeNever = -1000;
 // 「全部点いている」と読んでしまうため。PutPlayKey のコメントを見ること）。
 const uint32_t kPlayKeyStatusNever = 0xffffffffu;
 
-// スクロールバーの部品の当たり判定。pos は {x, y}、src の w/h を大きさに使う。
-bool InRect(int x, int y, const int pos[2], const Xywh &src) {
-	return x >= pos[0] && x < pos[0] + src.w && y >= pos[1] && y < pos[1] + src.h;
-}
-
 // ミニフォントで描ける形（ASCII 大文字）に落とす。文字描画が使えない
 // プラットフォーム向けの退避用。
 std::string ToAscii(const std::string &utf8, size_t maxLen) {
@@ -119,6 +114,10 @@ std::string ToAscii(const std::string &utf8, size_t maxLen) {
 
 DrawScreen::DrawScreen()
     : skin_(0),
+      canvasW_(0),
+      canvasH_(0),
+      backImageW_(0),
+      backImageH_(0),
       textLayer_(0),
       fileListFontSize_(0),
       channelMask_(0),
@@ -153,20 +152,86 @@ bool DrawScreen::Init(const Skin *skin, std::string *err) {
 		return false;
 	}
 	skin_ = skin;
+	canvasW_ = skin->screenW;
+	canvasH_ = skin->screenH;
+	layout_ = skin->PlacedFor(canvasW_, canvasH_);
 
-	if (!screen_.Create(width(), height(), 24) || !back_.Create(width(), height(), 24) ||
-	    !backBitmap_.Create(width(), height(), 24)) {
-		*err = Msg("Error.ScreenBuffer");
-		return false;
-	}
+	if (!CreateBuffers(err)) return false;
 
 	colors_ = Colors();
-	colors_.Load(skin_->FindColorsFile());
+	colors_.Load(layout_.FindColorsFile());
 
 	if (!LoadAssets(err)) return false;
 
 	Reload();
 	return true;
+}
+
+// スクロールバーの組み立て用バッファ。大きさはファイラーの矩形から決まるので、
+// キャンバスを変えるたびに作り直す。[ScrollBar] Width=0 の
+// 「スクロールバーを出さない」スキンでは器を持たない（PutScrollBar は
+// valid() を見て何もしない）。
+bool DrawScreen::EnsureScrollBarBuffer(std::string *err) {
+	if (layout_.scrollW <= 0 || layout_.scrollH <= 0) {
+		scrollBar_.Destroy();
+		return true;
+	}
+	if (!scrollBar_.Create(layout_.scrollW, layout_.scrollH, 8)) {
+		*err = Msg("Error.ScrollBuffer");
+		return false;
+	}
+	memcpy(scrollBar_.palette(), scrollBarBase_.palette(), sizeof(Rgb) * 256);
+	return true;
+}
+
+bool DrawScreen::CreateBuffers(std::string *err) {
+	if (!screen_.Create(width(), height(), 24) || !back_.Create(width(), height(), 24) ||
+	    !backBitmap_.Create(width(), height(), 24)) {
+		*err = Msg("Error.ScreenBuffer");
+		return false;
+	}
+	return true;
+}
+
+// キャンバスの大きさを変える。バッファを作り直し、レイアウトを解決し直して
+// 全面を描き直す。窓のリサイズと画面の回転から呼ばれる（fullscreen.md）。
+bool DrawScreen::Resize(int canvasW, int canvasH, std::string *err) {
+	if (skin_ == 0) {
+		*err = Msg("Error.NoSkin");
+		return false;
+	}
+	if (canvasW == canvasW_ && canvasH == canvasH_) return true;
+	if (canvasW <= 0 || canvasH <= 0) {
+		*err = Msg("Error.ScreenSize");
+		return false;
+	}
+
+	canvasW_ = canvasW;
+	canvasH_ = canvasH;
+	layout_ = skin_->PlacedFor(canvasW_, canvasH_);
+
+	if (!CreateBuffers(err)) return false;
+	// スクロールバーの組み立て用だけはファイラーの矩形と同じ大きさなので
+	// ここで作り直す（プログレスバーと音量バーはキャンバスに依らない）。
+	if (!EnsureScrollBarBuffer(err)) return false;
+
+	// 行数が変わっているので、差分描画の前回値は作り直させる。
+	fileListLast_.clear();
+	fileListScrollLast_.clear();
+	fileListTitleW_.clear();
+	fileListCursorLast_ = -1;
+
+	Reload();
+	return true;
+}
+
+int DrawScreen::stretchLimit() const {
+	if (skin_ == 0) return 0;
+	if (!colors_.back.bitmap) return 0;  // 背景を使わない設定なら上限なし
+	const bool vertical = FilerSideVertical(skin_->filerSide);
+	const int declared = vertical ? skin_->screenH : skin_->screenW;
+	const int image = vertical ? backImageH_ : backImageW_;
+	return (image > declared) ? image : declared;
 }
 
 // ---------------------------------------------------------------------------
@@ -182,20 +247,20 @@ bool DrawScreen::LoadAssets(std::string *err) {
 		Bitmap *dst;
 	};
 	const Item items[] = {
-		{ &skin_->kb0Bitmap, &kb0_ },
-		{ &skin_->kb1Bitmap, &kb1 },
-		{ &skin_->kb2Bitmap, &kb2 },
-		{ &skin_->miniFontBitmap, &miniFont_ },
-		{ &skin_->levelMeterBitmap, &levelMeter_ },
-		{ &skin_->bannerBitmap, &banner_ },
-		{ &skin_->playKeyBitmap, &playKey_ },
-		{ &skin_->progressBarBitmap, &progressBarBase_ },
-		{ &skin_->volBarBitmap, &totalVolBarBase_ },
-		{ &skin_->scrollBarBitmap, &scrollBarBase_ },
+		{ &layout_.kb0Bitmap, &kb0_ },
+		{ &layout_.kb1Bitmap, &kb1 },
+		{ &layout_.kb2Bitmap, &kb2 },
+		{ &layout_.miniFontBitmap, &miniFont_ },
+		{ &layout_.levelMeterBitmap, &levelMeter_ },
+		{ &layout_.bannerBitmap, &banner_ },
+		{ &layout_.playKeyBitmap, &playKey_ },
+		{ &layout_.progressBarBitmap, &progressBarBase_ },
+		{ &layout_.volBarBitmap, &totalVolBarBase_ },
+		{ &layout_.scrollBarBitmap, &scrollBarBase_ },
 	};
 	for (size_t i = 0; i < sizeof(items) / sizeof(items[0]); i++) {
 		// スキンのフォルダ -> 土台のフォルダ の順に探す。
-		if (!LoadBmpFile(skin_->FindFile(*items[i].name), items[i].dst, err)) return false;
+		if (!LoadBmpFile(layout_.FindFile(*items[i].name), items[i].dst, err)) return false;
 	}
 
 	// ミニフォントの 1 文字の大きさは素材から決まる（スキンが持つのは
@@ -208,41 +273,37 @@ bool DrawScreen::LoadAssets(std::string *err) {
 	static const int kUseKb2[12] = { 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 1, 0 };
 	for (int i = 0; i < 12; i++) {
 		const Bitmap &src = kUseKb2[i] ? kb2 : kb1;
-		CutKeyboardBitmap(&keyboard_[i], src, skin_->kbXOffset[i], 7, 0x11, 0x12 + i);
+		CutKeyboardBitmap(&keyboard_[i], src, layout_.kbXOffset[i], 7, 0x11, 0x12 + i);
 	}
 	for (int i = 0; i < 12; i++) {
 		kbPalette_[i] = kb1.palette()[i + 0x12];
 	}
 
 	// レベルメータの点灯色 / 消灯色
-	for (int i = 0; i < skin_->levelMeterWidthCells * 2; i++) {
-		palLevelMeter_[i] = levelMeter_.palette()[i + skin_->levelMeterPalOfs];
+	for (int i = 0; i < layout_.levelMeterWidthCells * 2; i++) {
+		palLevelMeter_[i] = levelMeter_.palette()[i + layout_.levelMeterPalOfs];
 	}
 
 	// 組み立て用のバッファ
-	if (!progressBar_.Create(skin_->progW, skin_->progH, 8)) {
+	if (!progressBar_.Create(layout_.progW, layout_.progH, 8)) {
 		*err = Msg("Error.ProgressBuffer");
 		return false;
 	}
 	memcpy(progressBar_.palette(), progressBarBase_.palette(), sizeof(Rgb) * 256);
 
-	if (!totalVolBar_.Create(skin_->volW, skin_->volH, 8)) {
+	if (!totalVolBar_.Create(layout_.volW, layout_.volH, 8)) {
 		*err = Msg("Error.VolumeBuffer");
 		return false;
 	}
 	memcpy(totalVolBar_.palette(), totalVolBarBase_.palette(), sizeof(Rgb) * 256);
 
-	if (!scrollBar_.Create(skin_->scrollW, skin_->scrollH, 8)) {
-		*err = Msg("Error.ScrollBuffer");
-		return false;
-	}
-	memcpy(scrollBar_.palette(), scrollBarBase_.palette(), sizeof(Rgb) * 256);
+	if (!EnsureScrollBarBuffer(err)) return false;
 
 	// 操作ボタンの LED は消灯状態から始める
-	playKey_.SetPalette(skin_->palPlayLed, 25, 25, 25);
-	playKey_.SetPalette(skin_->palPauseLed, 25, 25, 25);
-	playKey_.SetPalette(skin_->palContLed, 25, 25, 25);
-	playKey_.SetPalette(skin_->palRepeatLed, 25, 25, 25);
+	playKey_.SetPalette(layout_.palPlayLed, 25, 25, 25);
+	playKey_.SetPalette(layout_.palPauseLed, 25, 25, 25);
+	playKey_.SetPalette(layout_.palContLed, 25, 25, 25);
+	playKey_.SetPalette(layout_.palRepeatLed, 25, 25, 25);
 
 	return true;
 }
@@ -266,16 +327,28 @@ void DrawScreen::CutKeyboardBitmap(Bitmap *out, const Bitmap &src, int xsrc, int
 
 void DrawScreen::LoadBackBitmap() {
 	BmpFill(&backBitmap_, 0, 0, width(), height(), 0, 0, 0, 100);
+	backImageW_ = 0;
+	backImageH_ = 0;
 	if (!colors_.back.bitmap) return;
 
 	Bitmap image;
 	std::string err;
-	if (!LoadBmpFile(skin_->FindFile(skin_->backBitmap), &image, &err)) return;
-	BmpCopy(&backBitmap_, 0, 0, width(), height(), &image, 0, 0, 100);
+	if (!LoadBmpFile(layout_.FindFile(layout_.backBitmap), &image, &err)) return;
+	backImageW_ = image.width();
+	backImageH_ = image.height();
+
+	// 背景を貼る原点は「ファイラー以外側」の外の角。ファイラーが伸びる向きの
+	// 反対側に貼り付ける（下へ伸びるなら左上のまま、上へ伸びるなら左下、
+	// 左へ伸びるなら右上）。素材が足りないところは黒のまま残り、このあとの
+	// CompositeBack で配色の背景色が乗る。はみ出しは BmpCopy が切る。
+	int dx = 0, dy = 0;
+	if (layout_.filerSide == kFilerSideTop) dy = height() - image.height();
+	if (layout_.filerSide == kFilerSideLeft) dx = width() - image.width();
+	BmpCopy(&backBitmap_, dx, dy, image.width(), image.height(), &image, 0, 0, 100);
 }
 
 void DrawScreen::CompositeBanner() {
-	BmpCopy(&back_, skin_->bannerX, skin_->bannerY, skin_->bannerW, skin_->bannerH, &banner_, 0, 0, kBlendMul);
+	BmpCopy(&back_, layout_.bannerX, layout_.bannerY, layout_.bannerW, layout_.bannerH, &banner_, 0, 0, kBlendMul);
 }
 
 void DrawScreen::CompositeStatusBack() {
@@ -291,15 +364,15 @@ void DrawScreen::CompositeStatusBack() {
 // 下地を敷く場所とクリックの当たり判定で同じものを使う。
 bool DrawScreen::StatusRect(int row, int *x, int *y, int *w, int *h) const {
 	if (row < 0 || row >= 9 || skin_ == 0) return false;
-	*x = skin_->statusX;
-	*y = skin_->statusY + skin_->chYOffset[row];
-	*w = skin_->statusW;
-	*h = skin_->statusH;
+	*x = layout_.statusX;
+	*y = layout_.statusY + layout_.chYOffset[row];
+	*w = layout_.statusW;
+	*h = layout_.statusH;
 	return true;
 }
 
 void DrawScreen::CompositeFileList() {
-	BmpFill(&back_, skin_->fileListX, skin_->fileListY, skin_->fileListW, skin_->fileListH, colors_.filer.backColor.r,
+	BmpFill(&back_, layout_.fileListX, layout_.fileListY, layout_.fileListW, layout_.fileListH, colors_.filer.backColor.r,
 	        colors_.filer.backColor.g, colors_.filer.backColor.b, colors_.filer.backColorBright);
 }
 
@@ -307,7 +380,7 @@ void DrawScreen::CompositeKeyboard() {
 	kb0_.SetPalette(1, colors_.kb.blackBright, colors_.kb.blackBright, colors_.kb.blackBright);
 	kb0_.SetPalette(2, colors_.kb.whiteBright, colors_.kb.whiteBright, colors_.kb.whiteBright);
 	for (int i = 0; i < 9; i++) {
-		BmpCopy(&back_, skin_->kbX, skin_->kbY + skin_->chYOffset[i] + skin_->kbYOffset, kb0_.width(), kb0_.height(),
+		BmpCopy(&back_, layout_.kbX, layout_.kbY + layout_.chYOffset[i] + layout_.kbYOffset, kb0_.width(), kb0_.height(),
 		        &kb0_, 0, 0, kBlendMul);
 	}
 }
@@ -380,14 +453,14 @@ bool DrawScreen::ChannelKeyRect(int ch, int *x0, int *y0, int *x1, int *y1) cons
 	const int kbH = kb0_.height();
 	const int row = (ch < 8) ? ch : 8;
 
-	*x0 = skin_->kbX;
-	*x1 = skin_->kbX + kbW;
+	*x0 = layout_.kbX;
+	*x1 = layout_.kbX + kbW;
 	if (ch >= 8) {
 		const int i = ch - 8;
-		*x0 = skin_->kbX + kbW * i / 8;
-		*x1 = skin_->kbX + kbW * (i + 1) / 8;
+		*x0 = layout_.kbX + kbW * i / 8;
+		*x1 = layout_.kbX + kbW * (i + 1) / 8;
 	}
-	*y0 = skin_->kbY + skin_->chYOffset[row] + skin_->kbYOffset;
+	*y0 = layout_.kbY + layout_.chYOffset[row] + layout_.kbYOffset;
 	*y1 = *y0 + kbH;
 	return true;
 }
@@ -435,7 +508,7 @@ void DrawScreen::PrintMini(int x, int y, const char *msg, const Rgb &color, int 
 		int sx = 0, sy = 0;
 		MiniGlyphSrc((unsigned char)*p, miniGlyphW_, miniGlyphH_, &sx, &sy);
 		BmpCopyTransparent(&screen_, x, y, miniGlyphW_, miniGlyphH_, &miniFont_, sx, sy, alpha);
-		x += skin_->miniFontW;
+		x += layout_.miniFontW;
 	}
 }
 
@@ -446,22 +519,22 @@ void DrawScreen::PrintMiniCompose(int x, int y, const char *msg, const Rgb &colo
 		MiniGlyphSrc((unsigned char)*p, miniGlyphW_, miniGlyphH_, &sx, &sy);
 		BmpCopyComposite(&screen_, x, y, miniGlyphW_, miniGlyphH_, &miniFont_, sx, sy, &back_, x,
 		                 y, alpha);
-		x += skin_->miniFontW;
+		x += layout_.miniFontW;
 	}
 }
 
 // ステータス欄の項目 1 つの左上。FM の項目は段 (row) の y をそのまま使い、
 // PCM の 2 項目だけは PCM 行 (chYOffset[8]) の中の 8 スロットから選ぶ。
 void DrawScreen::StatusItemPos(StatusItem item, int row, int *x, int *y) const {
-	const int *pos = skin_->statusPos[item];
+	const int *pos = layout_.statusPos[item];
 	if (item == kStatusPcmVolume || item == kStatusPcmPtr) {
 		const int i = row - 8;
-		*x = skin_->statusX + skin_->pcmXOffset[i] + pos[0];
-		*y = skin_->statusY + skin_->chYOffset[8] + skin_->pcmYOffset[i] + pos[1];
+		*x = layout_.statusX + layout_.pcmXOffset[i] + pos[0];
+		*y = layout_.statusY + layout_.chYOffset[8] + layout_.pcmYOffset[i] + pos[1];
 		return;
 	}
-	*x = skin_->statusX + pos[0];
-	*y = skin_->statusY + skin_->chYOffset[row] + pos[1];
+	*x = layout_.statusX + pos[0];
+	*y = layout_.statusY + layout_.chYOffset[row] + pos[1];
 }
 
 void DrawScreen::PutStatusText(StatusItem item, int row, const char *text) {
@@ -476,7 +549,7 @@ void DrawScreen::PutStatusText(StatusItem item, int row, const char *text) {
 
 void DrawScreen::PutNoteOn(int key, int row, int color, int bendMode) {
 	if (row < 0 || row >= 9) return;
-	key += skin_->keyOffset;
+	key += layout_.keyOffset;
 	if (key < 0) return;
 	const int oct = key / 12;
 	const int note = key % 12;
@@ -485,23 +558,23 @@ void DrawScreen::PutNoteOn(int key, int row, int color, int bendMode) {
 
 	b.palette()[2] = kbPalette_[color % 12];
 
-	const int x = skin_->kbX + skin_->kbXOffset[note] + skin_->kbXOffset[12] * oct - skin_->kbXOffset[skin_->keyOffset];
-	const int y = skin_->kbY + skin_->chYOffset[row] + skin_->kbYOffset;
+	const int x = layout_.kbX + layout_.kbXOffset[note] + layout_.kbXOffset[12] * oct - layout_.kbXOffset[layout_.keyOffset];
+	const int y = layout_.kbY + layout_.chYOffset[row] + layout_.kbYOffset;
 	BmpCopyTransparent(&screen_, x, y, b.width(), b.height(), &b, 0, 0,
 	                   bendMode ? colors_.kb.bright / 2 : colors_.kb.bright);
 }
 
 void DrawScreen::PutNoteOff(int key, int row) {
 	if (row < 0 || row >= 9) return;
-	key += skin_->keyOffset;
+	key += layout_.keyOffset;
 	if (key < 0) return;
 	const int oct = key / 12;
 	const int note = key % 12;
 	const Bitmap &b = keyboard_[note];
 	if (!b.valid()) return;
 
-	const int x = skin_->kbX + skin_->kbXOffset[note] + skin_->kbXOffset[12] * oct - skin_->kbXOffset[skin_->keyOffset];
-	const int y = skin_->kbY + skin_->chYOffset[row] + skin_->kbYOffset;
+	const int x = layout_.kbX + layout_.kbXOffset[note] + layout_.kbXOffset[12] * oct - layout_.kbXOffset[layout_.keyOffset];
+	const int y = layout_.kbY + layout_.chYOffset[row] + layout_.kbYOffset;
 	BmpCopy(&screen_, x, y, b.width(), b.height(), &back_, x, y, 100);
 }
 
@@ -628,14 +701,14 @@ void DrawScreen::PutLevelMeter(const char *levelMeterInfo, int row) {
 	if (row < 0 || row >= 9 || !levelMeter_.valid()) return;
 
 	// 点灯しているセルだけ明るいパレットに差し替える。
-	for (int i = 0; i < skin_->levelMeterWidthCells; i++) {
-		levelMeter_.palette()[i + skin_->levelMeterPalOfs] =
-		    levelMeterInfo[i] ? palLevelMeter_[i] : palLevelMeter_[i + skin_->levelMeterWidthCells];
+	for (int i = 0; i < layout_.levelMeterWidthCells; i++) {
+		levelMeter_.palette()[i + layout_.levelMeterPalOfs] =
+		    levelMeterInfo[i] ? palLevelMeter_[i] : palLevelMeter_[i + layout_.levelMeterWidthCells];
 	}
 
 	// 素材は 1 段ぶんの幅で作ってあり、音量表示と重なる左端 (SrcX) を
 	// 切ってから描く。
-	const int skip = skin_->levelMeterSrcX;
+	const int skip = layout_.levelMeterSrcX;
 	const int w = levelMeter_.width() - skip;
 	const int h = levelMeter_.height();
 	int x = 0, y = 0;
@@ -689,8 +762,8 @@ void DrawScreen::PutStatusZero() {
 		PutLFOVolume3(0, row);
 
 		// セル数はスキン持ち ([LevelMeter] Cells) なので、その数だけ消す。
-		std::vector<char> meter(skin_->levelMeterWidthCells > 0
-		                            ? (size_t)skin_->levelMeterWidthCells
+		std::vector<char> meter(layout_.levelMeterWidthCells > 0
+		                            ? (size_t)layout_.levelMeterWidthCells
 		                            : 1,
 		                        0);
 		PutLevelMeter(&meter[0], row);
@@ -714,8 +787,8 @@ void DrawScreen::PutMDXTitle(const std::string &titleUtf8) {
 	titleScrollShown_ = 0.0f;
 	titleScrollStarted_ = false;
 	if (!titleUtf8.empty() && textLayer_ != 0 && textLayer_->available()) {
-		const int inner = skin_->titleW - kTitleMarginX * 2;
-		const int need = textLayer_->MeasureWidth(skin_->titleH, titleUtf8);
+		const int inner = layout_.titleW - kTitleMarginX * 2;
+		const int need = textLayer_->MeasureWidth(layout_.titleH, titleUtf8);
 		if (need > inner + kTitleScrollSlack) titleScrollMax_ = (float)(need - inner);
 	}
 
@@ -728,8 +801,8 @@ void DrawScreen::DrawMDXTitle(float scrollX) {
 	titleScrollShown_ = scrollX;
 
 	// 背景を戻してからタイトル欄の下地を敷く
-	BmpCopy(&screen_, skin_->titleX, skin_->titleY, skin_->titleW, skin_->titleH, &back_, skin_->titleX, skin_->titleY, 100);
-	BmpFill(&screen_, skin_->titleX, skin_->titleY, skin_->titleW, skin_->titleH, colors_.mdxTitle.backColor.r,
+	BmpCopy(&screen_, layout_.titleX, layout_.titleY, layout_.titleW, layout_.titleH, &back_, layout_.titleX, layout_.titleY, 100);
+	BmpFill(&screen_, layout_.titleX, layout_.titleY, layout_.titleW, layout_.titleH, colors_.mdxTitle.backColor.r,
 	        colors_.mdxTitle.backColor.g, colors_.mdxTitle.backColor.b,
 	        colors_.mdxTitle.backColorBright);
 
@@ -739,9 +812,9 @@ void DrawScreen::DrawMDXTitle(float scrollX) {
 		// 文字はキャンバスではなく出力解像度のレイヤーへ描く。
 		// スクロールするときは端で字が切れてよい（切れる手前で止めると、
 		// 送るたびに 1 文字ぶん飛んで見える）。
-		textLayer_->ClearRect(skin_->titleX, skin_->titleY, skin_->titleW, skin_->titleH);
-		textLayer_->DrawText(skin_->titleX + kTitleMarginX, skin_->titleY,
-		                     skin_->titleW - kTitleMarginX * 2, skin_->titleH, mdxTitle_,
+		textLayer_->ClearRect(layout_.titleX, layout_.titleY, layout_.titleW, layout_.titleH);
+		textLayer_->DrawText(layout_.titleX + kTitleMarginX, layout_.titleY,
+		                     layout_.titleW - kTitleMarginX * 2, layout_.titleH, mdxTitle_,
 		                     colors_.mdxTitle.color, colors_.mdxTitle.colorBright, 0, 0,
 		                     scrollX, true);
 		return;
@@ -750,7 +823,7 @@ void DrawScreen::DrawMDXTitle(float scrollX) {
 	// フォントが読めなかったときの非常用。ミニフォントは本来ステータス欄などの
 	// 数字用なので、ここへ落ちている時点で assets の同梱フォントが失われている。
 	// こちらはスクロールしない（非常用なので凝らない）。
-	PrintMini(skin_->titleX + kTitleMarginX, skin_->titleY + 3,
+	PrintMini(layout_.titleX + kTitleMarginX, layout_.titleY + 3,
 	          ToAscii(mdxTitle_, kMaxAsciiChars).c_str(), colors_.mdxTitle.color,
 	          colors_.mdxTitle.colorBright);
 }
@@ -779,11 +852,11 @@ void DrawScreen::UpdateTitleScroll(uint32_t nowMs) {
 // ---------------------------------------------------------------------------
 
 int DrawScreen::fileListRows() const {
-	return skin_->fileListRows[fileListFontSize_ & 1];
+	return layout_.fileListRows[fileListFontSize_ & 1];
 }
 
 int DrawScreen::fileListItemH() const {
-	return skin_->fileListItemH[fileListFontSize_ & 1];
+	return layout_.fileListItemH[fileListFontSize_ & 1];
 }
 
 void DrawScreen::SetFileListFontSize(int size) {
@@ -795,7 +868,7 @@ void DrawScreen::SetFileListFontSize(int size) {
 void DrawScreen::PutFileList(const Filer &filer, bool refresh, uint32_t nowMs) {
 	const int rows = fileListRows();
 	const int fs = fileListFontSize_ & 1;  // 0=小さい文字 / 1=大きい文字
-	const int itemH = skin_->fileListItemH[fs];
+	const int itemH = layout_.fileListItemH[fs];
 	const int top = filer.top();
 	const int cursor = filer.cursor();
 
@@ -804,8 +877,8 @@ void DrawScreen::PutFileList(const Filer &filer, bool refresh, uint32_t nowMs) {
 	// その 1 行ぶん多く回して、はみ出しは矩形を切って描く。
 	const int offset = filer.topOffsetPx();
 	const int drawRows = (offset > 0) ? rows + 1 : rows;
-	const int listTop = skin_->fileListY;
-	const int listBottom = skin_->fileListY + skin_->fileListH;
+	const int listTop = layout_.fileListY;
+	const int listBottom = layout_.fileListY + layout_.fileListH;
 
 	// 端数が変わると行と画素の対応がまるごとずれるので、行ごとの差分は
 	// 使えない。ドラッグ中は毎フレーム全部描き直す（文字はグリフを
@@ -887,7 +960,7 @@ void DrawScreen::PutFileList(const Filer &filer, bool refresh, uint32_t nowMs) {
 			if (fileListTitleW_[i] < 0) {
 				fileListTitleW_[i] = textLayer_->MeasureWidth(itemH, shown.title);
 			}
-			const int inner = skin_->fileListTitleW[fs];
+			const int inner = layout_.fileListTitleW[fs];
 			if (fileListTitleW_[i] > inner + kTitleScrollSlack) {
 				titlePartial = true;
 				const uint32_t phase =
@@ -903,7 +976,7 @@ void DrawScreen::PutFileList(const Filer &filer, bool refresh, uint32_t nowMs) {
 		if (!redraw) continue;
 		fileListScrollLast_[i] = scrollX;
 
-		const int x = skin_->fileListX;
+		const int x = layout_.fileListX;
 		// 文字を置く基準は切る前の行の上辺。ここを動かすと字が縦に潰れる。
 		const int rowY = listTop + i * itemH - offset;
 		int y = rowY;
@@ -917,13 +990,13 @@ void DrawScreen::PutFileList(const Filer &filer, bool refresh, uint32_t nowMs) {
 
 		// 背景を戻す -> カーソル -> 文字
 		// 背景とカーソルはキャンバス側、文字は出力解像度のレイヤー側。
-		BmpCopy(&screen_, x, y, skin_->fileListW, h, &back_, x, y, 100);
+		BmpCopy(&screen_, x, y, layout_.fileListW, h, &back_, x, y, 100);
 		if (j == cursor && j < filer.itemCount()) {
-			BmpFillMul(&screen_, x, y, skin_->fileListW, h, colors_.filer.cursorColor.r,
+			BmpFillMul(&screen_, x, y, layout_.fileListW, h, colors_.filer.cursorColor.r,
 			           colors_.filer.cursorColor.g, colors_.filer.cursorColor.b,
 			           colors_.filer.cursorColorBright);
 		}
-		if (textLayer_ != 0) textLayer_->ClearRect(x, y, skin_->fileListW, h);
+		if (textLayer_ != 0) textLayer_->ClearRect(x, y, layout_.fileListW, h);
 		if (shown.baseName.empty() && shown.title.empty()) continue;
 
 		// 種別で文字色を変える。"[Setting]" は MDX と同じ色。
@@ -938,12 +1011,12 @@ void DrawScreen::PutFileList(const Filer &filer, bool refresh, uint32_t nowMs) {
 
 		if (textLayer_ != 0 && textLayer_->available()) {
 			// 字は切る前の行位置 (rowY) に置き、はみ出しは y..y+h で切る。
-			textLayer_->DrawText(x + skin_->fileListBaseNameX[fs], rowY,
-			                     skin_->fileListBaseNameW[fs], itemH, shown.baseName, color,
+			textLayer_->DrawText(x + layout_.fileListBaseNameX[fs], rowY,
+			                     layout_.fileListBaseNameW[fs], itemH, shown.baseName, color,
 			                     colors_.filer.colorBright, y, h);
 			if (!shown.title.empty()) {
-				textLayer_->DrawText(x + skin_->fileListTitleX[fs], rowY,
-				                     skin_->fileListTitleW[fs], itemH, shown.title, color,
+				textLayer_->DrawText(x + layout_.fileListTitleX[fs], rowY,
+				                     layout_.fileListTitleW[fs], itemH, shown.title, color,
 				                     colors_.filer.colorBright, y, h, scrollX, titlePartial);
 			}
 		} else {
@@ -951,11 +1024,11 @@ void DrawScreen::PutFileList(const Filer &filer, bool refresh, uint32_t nowMs) {
 			// ステータス欄などの数字用）。こちらは縦に切れないので、
 			// 丸ごと入る行だけ描く。
 			if (h >= itemH) {
-				PrintMini(x + skin_->fileListBaseNameX[fs], rowY + 1,
+				PrintMini(x + layout_.fileListBaseNameX[fs], rowY + 1,
 				          ToAscii(shown.baseName, kMaxAsciiChars).c_str(), color,
 				          colors_.filer.colorBright);
 				if (!shown.title.empty()) {
-					PrintMini(x + skin_->fileListTitleX[fs], rowY + 1,
+					PrintMini(x + layout_.fileListTitleX[fs], rowY + 1,
 					          ToAscii(shown.title, kMaxAsciiChars).c_str(), color,
 					          colors_.filer.colorBright);
 				}
@@ -968,8 +1041,8 @@ void DrawScreen::PutFileList(const Filer &filer, bool refresh, uint32_t nowMs) {
 		const int y = listTop + drawRows * itemH - offset;
 		int h = listBottom - y;
 		if (h > 0) {
-			BmpCopy(&screen_, skin_->fileListX, y, skin_->fileListW, h, &back_, skin_->fileListX, y, 100);
-			if (textLayer_ != 0) textLayer_->ClearRect(skin_->fileListX, y, skin_->fileListW, h);
+			BmpCopy(&screen_, layout_.fileListX, y, layout_.fileListW, h, &back_, layout_.fileListX, y, 100);
+			if (textLayer_ != 0) textLayer_->ClearRect(layout_.fileListX, y, layout_.fileListW, h);
 		}
 	}
 
@@ -995,73 +1068,64 @@ void DrawScreen::PutScrollBar(int topPx, int maxTopPx) {
 		SetScrollBarThumb((maxTopPx > 0) ? (scrollBarMovement() * topPx / maxTopPx) : 0);
 	}
 
-	// 部品の位置と切り出しはスキンが持つ（layout.ini の [ScrollBar] Src* / Pos*）。
+	// 切り出しはスキンが持つ（layout.ini の [ScrollBar] Src*）。置く位置は
+	// PlacedFor が決めた導出値で、矢印は上端・下端に貼り付き、間が溝になる。
 	// 書かれない隙間はパレット 0 = 透明にしたいので、まず消す。
-	BmpFill(&scrollBar_, 0, 0, skin_->scrollW, skin_->scrollH, 0, 0, 0, 100);
+	BmpFill(&scrollBar_, 0, 0, layout_.scrollW, layout_.scrollH, 0, 0, 0, 100);
 
-	const Xywh &up = skin_->scrollSrcUpArrow;
-	const Xywh &bar = skin_->scrollSrcBar;
-	const Xywh &down = skin_->scrollSrcDownArrow;
-	const Xywh &thumb = skin_->scrollSrcThumb;
+	const Xywh &up = layout_.scrollSrcUpArrow;
+	const Xywh &bar = layout_.scrollSrcBar;
+	const Xywh &down = layout_.scrollSrcDownArrow;
+	const Xywh &thumb = layout_.scrollSrcThumb;
 
-	BmpCopy(&scrollBar_, skin_->scrollPosUpArrow[0], skin_->scrollPosUpArrow[1], up.w, up.h,
+	BmpCopy(&scrollBar_, layout_.scrollPosUpArrow[0], layout_.scrollPosUpArrow[1], up.w, up.h,
 	        &scrollBarBase_, up.x, up.y, 100);
-	BmpCopy(&scrollBar_, skin_->scrollPosBar[0], skin_->scrollPosBar[1], bar.w, bar.h,
-	        &scrollBarBase_, bar.x, bar.y, 100);
-	BmpCopy(&scrollBar_, skin_->scrollPosDownArrow[0], skin_->scrollPosDownArrow[1], down.w, down.h,
+	// 溝は素材を上端から繰り返して敷く。足りない最後の 1 枚は途中で切る。
+	// 逆に素材のほうが長ければ、上から必要なぶんだけ使う。
+	if (bar.h > 0) {
+		for (int y = 0; y < layout_.scrollGrooveH; y += bar.h) {
+			int h = layout_.scrollGrooveH - y;
+			if (h > bar.h) h = bar.h;
+			BmpCopy(&scrollBar_, layout_.scrollPosBar[0], layout_.scrollPosBar[1] + y, bar.w,
+			        h, &scrollBarBase_, bar.x, bar.y, 100);
+		}
+	}
+	BmpCopy(&scrollBar_, layout_.scrollPosDownArrow[0], layout_.scrollPosDownArrow[1], down.w, down.h,
 	        &scrollBarBase_, down.x, down.y, 100);
 
 	// つまみは溝の中を動く。
-	BmpCopy(&scrollBar_, skin_->scrollPosBar[0], skin_->scrollPosBar[1] + scrollBarThumb_, thumb.w,
+	BmpCopy(&scrollBar_, layout_.scrollPosBar[0], layout_.scrollPosBar[1] + scrollBarThumb_, thumb.w,
 	        thumb.h, &scrollBarBase_, thumb.x, thumb.y, 100);
 
 	// 矢印の押下表示は通常の矢印と同じ場所に差し替える。原典はここを
 	// 高さ CH_D(110) で転送していてバー全体を潰していた。
 	if (scrollBarFlags_ & kScrollBarUpArrowDown) {
-		const Xywh &s = skin_->scrollSrcUpArrowPress;
-		BmpCopy(&scrollBar_, skin_->scrollPosUpArrow[0], skin_->scrollPosUpArrow[1], s.w, s.h,
+		const Xywh &s = layout_.scrollSrcUpArrowPress;
+		BmpCopy(&scrollBar_, layout_.scrollPosUpArrow[0], layout_.scrollPosUpArrow[1], s.w, s.h,
 		        &scrollBarBase_, s.x, s.y, 100);
 	}
 	if (scrollBarFlags_ & kScrollBarDownArrowDown) {
-		const Xywh &s = skin_->scrollSrcDownArrowPress;
-		BmpCopy(&scrollBar_, skin_->scrollPosDownArrow[0], skin_->scrollPosDownArrow[1], s.w, s.h,
+		const Xywh &s = layout_.scrollSrcDownArrowPress;
+		BmpCopy(&scrollBar_, layout_.scrollPosDownArrow[0], layout_.scrollPosDownArrow[1], s.w, s.h,
 		        &scrollBarBase_, s.x, s.y, 100);
 	}
 
-	// ファイラーと重なっている列には触らない。
+	// スクロールバーの**描画**の矩形は、一覧の矩形と必ず隣り合う
+	// （PlacedFor がファイラーの矩形を分けて決めている）。重なることは
+	// ないので、一度に描いてよい。
 	//
-	// BmpCopyComposite はパレット 0（透明）の画素に背景 (back_) をそのまま
-	// 敷く。つまり「毎フレーム背景で塗り直してから絵を載せる」ので、
-	// スクロールバーの矩形がファイラーへ食い込んでいると、
-	// ファイラーが差分描画で置いたカーソルの右端がそこだけ消えてしまう
-	// （Phone は指で掴みやすいよう、左側 12px を透明な当たり判定にしている。
-	//  [FileList] は x 4..464、[ScrollBar] は x 452..476 で 12px 重なる）。
-	// 重なりぶんは絵が無いので、描かずに残すのが正しい。
-	const int sx = skin_->scrollX;
-	const int sy = skin_->scrollY;
-	const int sw = skin_->scrollW;
-	const int sh = skin_->scrollH;
-	const int listRight = skin_->fileListX + skin_->fileListW;
-	const int iy0 = Max(sy, skin_->fileListY);
-	const int iy1 = Min(sy + sh, skin_->fileListY + skin_->fileListH);
-
-	if (sx >= listRight || iy0 >= iy1) {
-		// 重なっていない。今までどおり一度に描く。
-		CompositeScrollBar(sx, sy, sw, sh);
-		return;
-	}
-	// 縦に重なっている帯だけ、ファイラーより右の列に限る。
-	if (iy0 > sy) CompositeScrollBar(sx, sy, sw, iy0 - sy);
-	const int cx = Min(listRight, sx + sw);
-	if (cx < sx + sw) CompositeScrollBar(cx, iy0, sx + sw - cx, iy1 - iy0);
-	if (iy1 < sy + sh) CompositeScrollBar(sx, iy1, sw, sy + sh - iy1);
+	// ※ 指で掴みやすくするための「見た目より広い当たり判定」は
+	//   [ScrollBar] HitWidth のほうで、こちらは一覧に食い込む。描画は
+	//   食い込まないので、一覧が差分描画で置いたカーソルの右端が
+	//   消えることはない。
+	CompositeScrollBar(layout_.scrollX, layout_.scrollY, layout_.scrollW, layout_.scrollH);
 }
 
 // スクロールバーの一部分を画面へ合成する。x/y は画面座標。
 void DrawScreen::CompositeScrollBar(int x, int y, int w, int h) {
 	if (w <= 0 || h <= 0) return;
-	BmpCopyComposite(&screen_, x, y, w, h, &scrollBar_, x - skin_->scrollX,
-	                 y - skin_->scrollY, &back_, x, y, kBlendMul);
+	BmpCopyComposite(&screen_, x, y, w, h, &scrollBar_, x - layout_.scrollX,
+	                 y - layout_.scrollY, &back_, x, y, kBlendMul);
 }
 
 // ---------------------------------------------------------------------------
@@ -1075,7 +1139,7 @@ void DrawScreen::PutProgressBar(uint32_t nowTimeMs, uint32_t playTimeMs, bool re
 	if (playTimeMs != 0 && now > playTimeMs) now = playTimeMs;
 
 	int len = 0;
-	if (playTimeMs != 0) len = (int)((int64_t)skin_->progW * now / playTimeMs);
+	if (playTimeMs != 0) len = (int)((int64_t)layout_.progW * now / playTimeMs);
 
 	bool disp = refresh;
 	if (progressBarLenLast_ != len) {
@@ -1084,10 +1148,10 @@ void DrawScreen::PutProgressBar(uint32_t nowTimeMs, uint32_t playTimeMs, bool re
 	}
 	if (disp) {
 		// 進んだ部分は素材の 2 段目、残りは 1 段目。
-		BmpCopy(&progressBar_, 0, 0, len, skin_->progH, &progressBarBase_, 0, skin_->progH, 100);
-		BmpCopy(&progressBar_, len, 0, skin_->progW - len, skin_->progH, &progressBarBase_, len, 0, 100);
-		BmpCopyComposite(&screen_, skin_->progX, skin_->progY, skin_->progW, skin_->progH, &progressBar_, 0, 0, &back_,
-		                 skin_->progX, skin_->progY, kBlendMul);
+		BmpCopy(&progressBar_, 0, 0, len, layout_.progH, &progressBarBase_, 0, layout_.progH, 100);
+		BmpCopy(&progressBar_, len, 0, layout_.progW - len, layout_.progH, &progressBarBase_, len, 0, 100);
+		BmpCopyComposite(&screen_, layout_.progX, layout_.progY, layout_.progW, layout_.progH, &progressBar_, 0, 0, &back_,
+		                 layout_.progX, layout_.progY, kBlendMul);
 	}
 
 	const int nowSec = (int)(nowTimeMs / 1000);
@@ -1102,7 +1166,7 @@ void DrawScreen::PutProgressBar(uint32_t nowTimeMs, uint32_t playTimeMs, bool re
 		char s[128];
 		snprintf(s, sizeof(s), "PLAY TIME: %02d:%02d / %02d:%02d", t / 60, t % 60, t2 / 60,
 		         t2 % 60);
-		PrintMiniCompose(skin_->progX + skin_->progTimePos[0], skin_->progY + skin_->progTimePos[1], s,
+		PrintMiniCompose(layout_.progX + layout_.progTimePos[0], layout_.progY + layout_.progTimePos[1], s,
 		                 colors_.playKey.color, colors_.playKey.colorBright);
 	}
 }
@@ -1123,7 +1187,7 @@ int DrawScreen::TotalVolBarPosFromVolume(int volume) const {
 int DrawScreen::VolumeFromX(int x) const {
 	const int m = totalVolBarMovement();
 	if (m <= 0) return 0;
-	const int pos = Max(0, Min(m, x - (skin_->volX + skin_->volNobW / 2)));
+	const int pos = Max(0, Min(m, x - (layout_.volX + layout_.volNobW / 2)));
 	return pos * 200 / m - 100;
 }
 
@@ -1136,17 +1200,17 @@ void DrawScreen::PutTotalVolBar(int volume, bool refresh) {
 	totalVolBarLast_ = volume;
 
 	const int barPos = TotalVolBarPosFromVolume(volume);
-	BmpCopy(&totalVolBar_, 0, 0, skin_->volRect[1].w, skin_->volRect[1].h, &totalVolBarBase_,
-	        skin_->volRect[1].x, skin_->volRect[1].y, 100);
-	BmpCopy(&totalVolBar_, barPos, 0, skin_->volRect[0].w, skin_->volRect[1].h,
-	        &totalVolBarBase_, skin_->volRect[0].x, skin_->volRect[1].y, 100);
-	BmpCopyComposite(&screen_, skin_->volX, skin_->volY, skin_->volW, skin_->volH, &totalVolBar_, 0, 0, &back_, skin_->volX,
-	                 skin_->volY, kBlendMul);
+	BmpCopy(&totalVolBar_, 0, 0, layout_.volRect[1].w, layout_.volRect[1].h, &totalVolBarBase_,
+	        layout_.volRect[1].x, layout_.volRect[1].y, 100);
+	BmpCopy(&totalVolBar_, barPos, 0, layout_.volRect[0].w, layout_.volRect[1].h,
+	        &totalVolBarBase_, layout_.volRect[0].x, layout_.volRect[1].y, 100);
+	BmpCopyComposite(&screen_, layout_.volX, layout_.volY, layout_.volW, layout_.volH, &totalVolBar_, 0, 0, &back_, layout_.volX,
+	                 layout_.volY, kBlendMul);
 
 	// 桁数は固定にする。短い文字列を書くと前の表示の末尾が残る。
 	char s[64];
 	snprintf(s, sizeof(s), "%c%03d", (volume >= 0) ? '+' : '-', abs(volume));
-	PrintMiniCompose(skin_->volX + skin_->volTimePos[0], skin_->volY + skin_->volTimePos[1], s,
+	PrintMiniCompose(layout_.volX + layout_.volTimePos[0], layout_.volY + layout_.volTimePos[1], s,
 	                 colors_.playKey.color, colors_.playKey.colorBright);
 }
 
@@ -1157,7 +1221,7 @@ void DrawScreen::PutTotalVolBar(int volume, bool refresh) {
 void DrawScreen::PutPlayKey(uint32_t status, bool refresh) {
 	if (!playKey_.valid()) return;
 
-	playKey_.SetPalette(skin_->palPlayKeyKey, colors_.playKey.keyBright, colors_.playKey.keyBright,
+	playKey_.SetPalette(layout_.palPlayKeyKey, colors_.playKey.keyBright, colors_.playKey.keyBright,
 	                    colors_.playKey.keyBright);
 
 	struct LedMap {
@@ -1168,10 +1232,10 @@ void DrawScreen::PutPlayKey(uint32_t status, bool refresh) {
 	// PAUSE だけ黄（2026-09-04、ユーザー指示。素材のパレットでも PAUSE の
 	// 玉 (palPauseLed) は元から黄色なので、点灯色と素材の色が揃った）。
 	const LedMap leds[4] = {
-		{ kPlayKeyPlayLed, skin_->palPlayLed, skin_->palGreen },
-		{ kPlayKeyPauseLed, skin_->palPauseLed, skin_->palYellow },
-		{ kPlayKeyContLed, skin_->palContLed, skin_->palRed },
-		{ kPlayKeyRepeatLed, skin_->palRepeatLed, skin_->palRed },
+		{ kPlayKeyPlayLed, layout_.palPlayLed, layout_.palGreen },
+		{ kPlayKeyPauseLed, layout_.palPauseLed, layout_.palYellow },
+		{ kPlayKeyContLed, layout_.palContLed, layout_.palRed },
+		{ kPlayKeyRepeatLed, layout_.palRepeatLed, layout_.palRed },
 	};
 
 	// LED は「前回の status」ではなく **今パレットに入っている色**と見比べる。
@@ -1185,25 +1249,25 @@ void DrawScreen::PutPlayKey(uint32_t status, bool refresh) {
 	bool ledChanged = false;
 	for (int i = 0; i < 4; i++) {
 		const uint32_t now = status & leds[i].bit;
-		const Rgb want = playKey_.palette()[now ? leds[i].onPal : skin_->palDark];
+		const Rgb want = playKey_.palette()[now ? leds[i].onPal : layout_.palDark];
 		Rgb &cur = playKey_.palette()[leds[i].pal];
 		if (cur.r == want.r && cur.g == want.g && cur.b == want.b) continue;
 		cur = want;
 		ledChanged = true;
 	}
 
-	for (int i = 0; i < skin_->numPlayKeys; i++) {
+	for (int i = 0; i < layout_.numPlayKeys; i++) {
 		const uint32_t sw = status & (1u << i);
 		bool disp = refresh || ledChanged;
 		if (sw != (playKeyStatusLast_ & (1u << i))) disp = true;
 		if (!disp) continue;
 
-		const int w = skin_->playKeyRect[i].w;
-		const int h = skin_->playKeyRect[i].h;
-		const int x = skin_->playKeyX + skin_->playKeyPos[i][0];
-		const int y = skin_->playKeyY + skin_->playKeyPos[i][1];
-		BmpCopyComposite(&screen_, x, y, w, h, &playKey_, skin_->playKeyRect[i].x,
-		                 skin_->playKeyRect[i].y + (sw ? h : 0), &back_, x, y, kBlendMul);
+		const int w = layout_.playKeyRect[i].w;
+		const int h = layout_.playKeyRect[i].h;
+		const int x = layout_.playKeyX + layout_.playKeyPos[i][0];
+		const int y = layout_.playKeyY + layout_.playKeyPos[i][1];
+		BmpCopyComposite(&screen_, x, y, w, h, &playKey_, layout_.playKeyRect[i].x,
+		                 layout_.playKeyRect[i].y + (sw ? h : 0), &back_, x, y, kBlendMul);
 	}
 
 	playKeyStatusLast_ = status;
@@ -1214,10 +1278,10 @@ void DrawScreen::PutPlayKey(uint32_t status, bool refresh) {
 // ---------------------------------------------------------------------------
 
 int DrawScreen::HitCheckPlayKey(int x, int y) const {
-	for (int i = 0; i < skin_->numPlayKeys; i++) {
-		const int l = skin_->playKeyX + skin_->playKeyPos[i][0];
-		const int t = skin_->playKeyY + skin_->playKeyPos[i][1];
-		if (x >= l && x < l + skin_->playKeyRect[i].w && y >= t && y < t + skin_->playKeyRect[i].h) {
+	for (int i = 0; i < layout_.numPlayKeys; i++) {
+		const int l = layout_.playKeyX + layout_.playKeyPos[i][0];
+		const int t = layout_.playKeyY + layout_.playKeyPos[i][1];
+		if (x >= l && x < l + layout_.playKeyRect[i].w && y >= t && y < t + layout_.playKeyRect[i].h) {
 			return i + 1;
 		}
 	}
@@ -1225,38 +1289,37 @@ int DrawScreen::HitCheckPlayKey(int x, int y) const {
 }
 
 int DrawScreen::HitCheckScrollBar(int x, int y) const {
-	if (x < skin_->scrollX || x >= skin_->scrollX + skin_->scrollW) return kHitScrollBarNone;
-	if (y < skin_->scrollY || y >= skin_->scrollY + skin_->scrollH) return kHitScrollBarNone;
+	// 横は当たり判定の矩形 ([ScrollBar] HitWidth) で見る。描画より広く
+	// できるので、細いバーでも指で掴める（Phone がそうしている）。
+	if (x < layout_.scrollHitX || x >= layout_.scrollHitX + layout_.scrollHitW) {
+		return kHitScrollBarNone;
+	}
+	if (y < layout_.scrollY || y >= layout_.scrollY + layout_.scrollH) return kHitScrollBarNone;
 
-	// 当たり判定も描いた場所（スキンの Pos* と Src* の大きさ）から決める。
-	const int dx = x - skin_->scrollX;
-	const int dy = y - skin_->scrollY;
-
-	if (InRect(dx, dy, skin_->scrollPosUpArrow, skin_->scrollSrcUpArrow)) {
+	// 縦は描いたとおりに分ける。矢印は上端・下端に貼り付き、間が溝。
+	const int dy = y - layout_.scrollY;
+	if (dy < layout_.scrollPosUpArrow[1] + layout_.scrollSrcUpArrow.h) {
 		return kHitScrollBarUpArrow;
 	}
-	if (InRect(dx, dy, skin_->scrollPosDownArrow, skin_->scrollSrcDownArrow)) {
-		return kHitScrollBarDownArrow;
-	}
-	// 残りは溝の中。つまみの上下がページ送りになる。
-	if (!InRect(dx, dy, skin_->scrollPosBar, skin_->scrollSrcBar)) return kHitScrollBarNone;
+	if (dy >= layout_.scrollPosDownArrow[1]) return kHitScrollBarDownArrow;
 
-	const int thumbTop = skin_->scrollPosBar[1] + scrollBarThumb_;
+	// 残りは溝の中。つまみの上下がページ送りになる。
+	const int thumbTop = layout_.scrollPosBar[1] + scrollBarThumb_;
 	if (dy < thumbTop) return kHitScrollBarUpPage;
-	if (dy < thumbTop + skin_->scrollSrcThumb.h) return kHitScrollBarThumb;
+	if (dy < thumbTop + layout_.scrollSrcThumb.h) return kHitScrollBarThumb;
 	return kHitScrollBarDownPage;
 }
 
 int DrawScreen::HitCheckFileList(int x, int y) const {
-	if (x < skin_->fileListX || x >= skin_->fileListX + skin_->fileListW) return -1;
-	if (y < skin_->fileListY || y >= skin_->fileListY + skin_->fileListH) return -1;
+	if (x < layout_.fileListX || x >= layout_.fileListX + layout_.fileListW) return -1;
+	if (y < layout_.fileListY || y >= layout_.fileListY + layout_.fileListH) return -1;
 
 	// 画素単位でスクロールしていると全体が上へずれているので、その分を足して
 	// から行に直す。ずれの量は最後に描いたときのものを使う（描いてあるものと
 	// 当たり判定を必ず一致させるため）。戻り値は「上から数えて何行目か」で、
 	// 呼び出し側が Filer::top() に足して項目を決める。
-	const int itemH = skin_->fileListItemH[fileListFontSize_ & 1];
-	const int row = (y - skin_->fileListY + fileListOffsetLast_) / itemH;
+	const int itemH = layout_.fileListItemH[fileListFontSize_ & 1];
+	const int row = (y - layout_.fileListY + fileListOffsetLast_) / itemH;
 	// 大きい文字 (13px) では 110/13 = 8 行と半端が出る。原典は半端の帯でも
 	// 行 8 を返していたが、そこには何も描かれていないので弾く。
 	// ずれているときは半端な行が 1 つ増える。
@@ -1266,20 +1329,20 @@ int DrawScreen::HitCheckFileList(int x, int y) const {
 }
 
 int DrawScreen::HitCheckProgressBar(int x, int y) const {
-	if (y < skin_->progY || y >= skin_->progY + skin_->progH) return -1;
-	if (x < skin_->progX || x >= skin_->progX + skin_->progW) return -1;
-	return Max(0, Min(skin_->progW, x - skin_->progX));
+	if (y < layout_.progY || y >= layout_.progY + layout_.progH) return -1;
+	if (x < layout_.progX || x >= layout_.progX + layout_.progW) return -1;
+	return Max(0, Min(layout_.progW, x - layout_.progX));
 }
 
 // バーの外へ指が出ても端に丸める。上の HitCheckProgressBar は「当たったか」を
 // 見るので y も見るが、掴んだあとは x だけで決める。
 int DrawScreen::ProgressPosFromX(int x) const {
-	return Max(0, Min(skin_->progW, x - skin_->progX));
+	return Max(0, Min(layout_.progW, x - layout_.progX));
 }
 
 bool DrawScreen::HitCheckBanner(int x, int y) const {
-	if (x < skin_->bannerX || x >= skin_->bannerX + skin_->bannerW) return false;
-	if (y < skin_->bannerY || y >= skin_->bannerY + skin_->bannerH) return false;
+	if (x < layout_.bannerX || x >= layout_.bannerX + layout_.bannerW) return false;
+	if (y < layout_.bannerY || y >= layout_.bannerY + layout_.bannerH) return false;
 	return true;
 }
 
@@ -1304,8 +1367,8 @@ int DrawScreen::HitCheckStatus(int x, int y) const {
 // 音量は -100..+100 で、-1 も正しい値なので「当たらなかった」を戻り値では
 // 表せない。真偽値で返して音量は out で渡す。
 bool DrawScreen::HitCheckTotalVolBar(int x, int y, int *volume) const {
-	if (y < skin_->volY || y >= skin_->volY + skin_->volH) return false;
-	if (x < skin_->volX || x >= skin_->volX + skin_->volW) return false;
+	if (y < layout_.volY || y >= layout_.volY + layout_.volH) return false;
+	if (x < layout_.volX || x >= layout_.volX + layout_.volW) return false;
 	if (volume != 0) *volume = VolumeFromX(x);
 	return true;
 }

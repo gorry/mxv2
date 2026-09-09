@@ -9,8 +9,8 @@
 # BOM-less .ps1 as CP932, so UTF-8 Japanese breaks the parser. Keep it ASCII.
 #
 # What it does:
-#   1. starts <devroot>/build/Release/mxv2.exe with its own scratch -userdir,
-#      so the user's mxv2.ini is never touched
+#   1. starts <devroot>/build/win64/Release/mxv2.exe with its own scratch
+#      -userdir, so the user's mxv2.ini is never touched
 #   2. brings only that window to the front (another window on top would be
 #      captured instead - this actually happened during development)
 #   3. grabs the client area (DPI aware) and writes ref-Default.png here
@@ -31,10 +31,14 @@ $env:INCLUDE = ""
 $refDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 # refimage -> SkinEditor.Tests -> skineditor -> <devroot>
 $devRoot = (Get-Item $refDir).Parent.Parent.Parent.FullName
-$exe = Join-Path $devRoot "build\Release\mxv2.exe"
+$exe = Join-Path $devRoot "build\win64\Release\mxv2.exe"
 if (-not (Test-Path $exe)) {
-    throw "mxv2.exe not found: $exe  (build it first: cmake --build build --config Release)"
+    throw "mxv2.exe not found: $exe  (build it first: make TARGET=win64 BUILD=release build)"
 }
+
+# mxv2 quits when it cannot open an audio device, which kills the window before
+# it can be captured. Nothing here needs sound, so force the dummy driver.
+$env:SDL_AUDIODRIVER = "dummy"
 
 $outPath = Join-Path $refDir ("ref-{0}.png" -f $Skin)
 $scratch = Join-Path ([IO.Path]::GetTempPath()) ("mxv2-refcap-" + [Guid]::NewGuid().ToString("N").Substring(0, 8))

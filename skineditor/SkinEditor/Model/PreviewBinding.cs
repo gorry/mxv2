@@ -69,7 +69,11 @@ public static class PreviewBindings
         switch (section)
         {
             case "Screen":
-                return new PreviewBinding(PreviewRegions.Ids.Screen);
+                // 2 分割の指定はファイラー側の矩形へ枠を出す（どこで割れて
+                // いるかが見えるように）。それ以外は画面全体。
+                return key is "FilerSide" or "FilerExtent"
+                    ? new PreviewBinding(PreviewRegions.Ids.FilerSide)
+                    : new PreviewBinding(PreviewRegions.Ids.Screen);
 
             case Kb:
                 switch (key)
@@ -127,30 +131,22 @@ public static class PreviewBindings
             case "Title":
                 return new PreviewBinding(PreviewRegions.Ids.Title, 10, PreviewDrag.Rect);
 
+            // ファイラーの矩形は「ファイラー側の矩形からのマージン」なので、
+            // 掴んで動かす形にはならない（ドラッグ無し。枠だけ出す）。
             case "FileList":
-                return key == "Rect"
-                    ? new PreviewBinding(PreviewRegions.Ids.FileList, 10, PreviewDrag.Rect)
-                    : new PreviewBinding(PreviewRegions.Ids.FileList);
+                return new PreviewBinding(PreviewRegions.Ids.FileList);
 
             case "ScrollBar":
                 switch (key)
                 {
-                    case "Rect": return new PreviewBinding(PreviewRegions.Ids.ScrollBar, 20, PreviewDrag.Rect);
+                    case "Width": return new PreviewBinding(PreviewRegions.Ids.ScrollBar);
+                    case "HitWidth": return new PreviewBinding(PreviewRegions.Ids.ScrollHit);
                     case "SrcThumb": return new PreviewBinding(PreviewRegions.Ids.ScrollThumb);
                     case "SrcUpArrowPress":
                     case "SrcUpArrow": return new PreviewBinding(PreviewRegions.Ids.ScrollUpArrow);
                     case "SrcDownArrowPress":
                     case "SrcDownArrow": return new PreviewBinding(PreviewRegions.Ids.ScrollDownArrow);
                     case "SrcBar": return new PreviewBinding(PreviewRegions.Ids.ScrollBarGroove);
-                    case "PosUpArrow":
-                        return new PreviewBinding(PreviewRegions.Ids.ScrollUpArrow, 0, PreviewDrag.Xy,
-                            PreviewRegions.Ids.ScrollBar);
-                    case "PosBar":
-                        return new PreviewBinding(PreviewRegions.Ids.ScrollBarGroove, 0, PreviewDrag.Xy,
-                            PreviewRegions.Ids.ScrollBar);
-                    case "PosDownArrow":
-                        return new PreviewBinding(PreviewRegions.Ids.ScrollDownArrow, 0, PreviewDrag.Xy,
-                            PreviewRegions.Ids.ScrollBar);
                 }
                 break;
 

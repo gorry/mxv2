@@ -16,6 +16,9 @@ public sealed class FieldEditControl : Panel
     private readonly CheckBox _check;
     private readonly SingleLineLabel _label;
     private readonly NumericUpDown[] _numerics;
+    // FieldKind.Enum のときだけ。数値欄の代わりに名前を選ばせる
+    // （[Screen] FilerSide。数値では「下/上/左/右」が読み取れないため）。
+    private readonly ComboBox? _combo;
     private readonly SingleLineLabel? _suffixLabel;
     private bool _suppressCommit;
 
@@ -41,6 +44,26 @@ public sealed class FieldEditControl : Panel
             Width = Dpi.S(this, 240),
             Dock = DockStyle.Left,
         };
+
+        if (field.Kind == FieldKind.Enum)
+        {
+            _numerics = Array.Empty<NumericUpDown>();
+            _combo = new ComboBox
+            {
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Width = Dpi.S(this, 120),
+                Dock = DockStyle.Left,
+                Margin = new Padding(0, Dpi.S(this, 3), Dpi.S(this, 4), Dpi.S(this, 3)),
+            };
+            var labels = field.EnumLabels ?? field.EnumNames ?? Array.Empty<string>();
+            foreach (var t in labels) _combo.Items.Add(t);
+            _combo.SelectedIndexChanged += (_, _) => CommitEnum();
+            Controls.Add(_combo);
+            Controls.Add(_label);
+            Controls.Add(_check);
+            Refresh();
+            return;
+        }
 
         int count = field.Format(doc.Effective).Split(',').Length;
         _numerics = new NumericUpDown[count];
@@ -99,6 +122,16 @@ public sealed class FieldEditControl : Panel
         Refresh();
     }
 
+    private void CommitEnum()
+    {
+        if (_suppressCommit || _combo == null) return;
+        int i = _combo.SelectedIndex;
+        var names = _field.EnumNames ?? Array.Empty<string>();
+        if (i < 0 || i >= names.Length) return;
+        _doc.SetLayoutRaw(_field.Section, _field.Key, names[i]);
+        Refresh();
+    }
+
     private void Commit()
     {
         if (_suppressCommit) return;
@@ -132,6 +165,18 @@ public sealed class FieldEditControl : Panel
         _check.Checked = hasBase ? own : true;
         // ReadOnly は継承チェックボックスごと触らせない（値は見えるが変更不可）。
         _check.Enabled = hasBase && !_field.ReadOnly;
+
+        if (_combo != null)
+        {
+            var names = _field.EnumNames ?? Array.Empty<string>();
+            var cur = _field.Format(_doc.Effective);
+            int idx = Array.FindIndex(names, n => string.Equals(n, cur, StringComparison.OrdinalIgnoreCase));
+            if (idx < 0) idx = 0;
+            if (_combo.SelectedIndex != idx) _combo.SelectedIndex = idx;
+            _combo.Enabled = _check.Checked && !_field.ReadOnly;
+            _suppressCommit = false;
+            return;
+        }
 
         var parts = _field.Format(_doc.Effective).Split(',');
 

@@ -224,9 +224,16 @@ public sealed class DrawScreenPort
     private void LoadBackBitmap()
     {
         Blitter.Fill(_backBitmap, 0, 0, Width, Height, 0, 0, 0, 100);
+        // 背景を貼る原点は「ファイラー以外側」の外の角（本体 LoadBackBitmap）。
+        // エディタは常に宣言サイズで描くので、下・右配置なら左上のまま。
         if (_colors.back.bitmap == 0) return;
         if (_backSource is not { Valid: true }) return;
-        Blitter.Copy(_backBitmap, 0, 0, Width, Height, _backSource, 0, 0, 100);
+        {
+            int dx = _skin.filerSide == (int)FilerSide.Left ? Width - _backSource.Width : 0;
+            int dy = _skin.filerSide == (int)FilerSide.Top ? Height - _backSource.Height : 0;
+            Blitter.Copy(_backBitmap, dx, dy, _backSource.Width, _backSource.Height,
+                _backSource, 0, 0, 100);
+        }
     }
 
     private void CompositeBanner()
@@ -657,8 +664,16 @@ public sealed class DrawScreenPort
 
         Blitter.Copy(_scrollBar, _skin.scrollPosUpArrow[0], _skin.scrollPosUpArrow[1], up.W, up.H,
             _scrollBarBase, up.X, up.Y, 100);
-        Blitter.Copy(_scrollBar, _skin.scrollPosBar[0], _skin.scrollPosBar[1], bar.W, bar.H,
-            _scrollBarBase, bar.X, bar.Y, 100);
+        // 溝は素材を上から繰り返して敷く。足りない最後の 1 枚は途中で切る。
+        if (bar.H > 0)
+        {
+            for (int gy = 0; gy < _skin.scrollGrooveH; gy += bar.H)
+            {
+                int gh = Math.Min(bar.H, _skin.scrollGrooveH - gy);
+                Blitter.Copy(_scrollBar, _skin.scrollPosBar[0], _skin.scrollPosBar[1] + gy,
+                    bar.W, gh, _scrollBarBase, bar.X, bar.Y, 100);
+            }
+        }
         Blitter.Copy(_scrollBar, _skin.scrollPosDownArrow[0], _skin.scrollPosDownArrow[1], down.W, down.H,
             _scrollBarBase, down.X, down.Y, 100);
         // つまみは溝の中を動く。
@@ -679,25 +694,11 @@ public sealed class DrawScreenPort
                 _scrollBarBase, s.X, s.Y, 100);
         }
 
-        // ファイラーと重なっている列には触らない（重なりぶんは絵が無いので、
-        // 描かずに残すのが正しい。本体のコメント参照）。
-        int sx = _skin.scrollX;
-        int sy = _skin.scrollY;
-        int sw = _skin.scrollW;
-        int sh = _skin.scrollH;
-        int listRight = _skin.fileListX + _skin.fileListW;
-        int iy0 = Math.Max(sy, _skin.fileListY);
-        int iy1 = Math.Min(sy + sh, _skin.fileListY + _skin.fileListH);
-
-        if (sx >= listRight || iy0 >= iy1)
-        {
-            CompositeScrollBar(sx, sy, sw, sh);
-            return;
-        }
-        if (iy0 > sy) CompositeScrollBar(sx, sy, sw, iy0 - sy);
-        int cx = Math.Min(listRight, sx + sw);
-        if (cx < sx + sw) CompositeScrollBar(cx, iy0, sx + sw - cx, iy1 - iy0);
-        if (iy1 < sy + sh) CompositeScrollBar(sx, iy1, sw, sy + sh - iy1);
+        // 描画の矩形は一覧の矩形と必ず隣り合う（PlacedFor がファイラーの
+        // 矩形を分けて決めている）ので、一度に描いてよい。指で掴みやすく
+        // するための広い当たり判定は [ScrollBar] HitWidth のほうで、
+        // そちらは一覧に食い込むが描画はしない。
+        CompositeScrollBar(_skin.scrollX, _skin.scrollY, _skin.scrollW, _skin.scrollH);
     }
 
     private void CompositeScrollBar(int x, int y, int w, int h)

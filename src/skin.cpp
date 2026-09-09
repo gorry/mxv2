@@ -2,6 +2,7 @@
 
 #include "skin.h"
 
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 
@@ -13,6 +14,24 @@ namespace mxv2 {
 
 const char kColorsFile[] = "colors.ini";
 const char kLegacyColorsFile[] = "theme.mxv";
+
+// FilerSide の並び。
+static const char *const kFilerSideNames[kNumFilerSides] = {
+	"Bottom", "Top", "Left", "Right",
+};
+
+const char *FilerSideName(int side) {
+	if (side < 0 || side >= kNumFilerSides) side = kFilerSideBottom;
+	return kFilerSideNames[side];
+}
+
+int FilerSideFromName(const std::string &name, int fallback) {
+	if (name.empty()) return fallback;
+	for (int i = 0; i < kNumFilerSides; i++) {
+		if (CompareNoCase(name, kFilerSideNames[i]) == 0) return i;
+	}
+	return fallback;
+}
 
 // StatusItem の並び。
 const char *const kStatusItemKeys[kNumStatusItems] = {
@@ -96,6 +115,11 @@ Skin::Skin() {
 	screenW = 640;
 	screenH = 480;
 
+	// ファイラーは下。境界は y=366（旧 mxv の一覧の上辺）なので、
+	// ファイラー側の厚みは 480-366 = 114。
+	filerSide = kFilerSideBottom;
+	filerExtent = 114;
+
 	kbX = 4;
 	kbY = 4;
 	{
@@ -166,12 +190,12 @@ Skin::Skin() {
 	titleW = 632;
 	titleH = 14;
 
-	fileListX = 4;
-	fileListY = 366;
-	fileListW = 620;
-	fileListH = 110;
-	fileListRows[0] = 11;
-	fileListRows[1] = 8;
+	// ファイラー側の矩形 (0,366,640,114) からの内側マージン。
+	// 一覧 + スクロールバーで (4,366,632,110) になる。
+	fileListMargin[0] = 4;
+	fileListMargin[1] = 0;
+	fileListMargin[2] = 4;
+	fileListMargin[3] = 4;
 	fileListItemH[0] = 10;
 	fileListItemH[1] = 13;
 	// 旧 mxv の「文字数 × ItemHeight/2」をピクセルに直した値。
@@ -181,13 +205,9 @@ Skin::Skin() {
 	fileListBaseNameW[1] = 156;
 	fileListTitleX[0] = 125;
 	fileListTitleX[1] = 162;
-	fileListTitleW[0] = 480;
-	fileListTitleW[1] = 624;
 
-	scrollX = 624;
-	scrollY = 366;
-	scrollW = 12;
-	scrollH = 110;
+	scrollWidth = 12;
+	scrollHitWidth = 12;
 	// scrollbar.bmp (12x146) は上から つまみ / 上矢印(押下) / 下矢印(押下) /
 	// 上矢印 / 溝 / 下矢印 の順に並んでいる。
 	{
@@ -204,6 +224,26 @@ Skin::Skin() {
 		scrollSrcBar = bar;
 		scrollSrcDownArrow = down;
 	}
+	// 導出値。PlacedFor() を通すまでは宣言サイズでの値を入れておく。
+	placedCanvasW = screenW;
+	placedCanvasH = screenH;
+	placedOtherX = 0;
+	placedOtherY = 0;
+	fileListX = 4;
+	fileListY = 366;
+	fileListW = 620;
+	fileListH = 110;
+	fileListRows[0] = 11;
+	fileListRows[1] = 8;
+	fileListTitleW[0] = 495;
+	fileListTitleW[1] = 458;
+	scrollX = 624;
+	scrollY = 366;
+	scrollW = 12;
+	scrollH = 110;
+	scrollHitX = 624;
+	scrollHitW = 12;
+	scrollGrooveH = 86;
 	scrollPosUpArrow[0] = 0;
 	scrollPosUpArrow[1] = 0;
 	scrollPosBar[0] = 0;
@@ -337,6 +377,8 @@ void Skin::ApplyLayout(const std::string &skinDir) {
 
 	screenW = ini.GetInt("Screen", "Width", screenW);
 	screenH = ini.GetInt("Screen", "Height", screenH);
+	filerSide = FilerSideFromName(ini.GetString("Screen", "FilerSide", std::string()), filerSide);
+	filerExtent = ini.GetInt("Screen", "FilerExtent", filerExtent);
 	backBitmap = ini.GetString("Screen", "ImgBack", backBitmap);
 
 	GetXy(ini, "Keyboard", "Pos", &kbX, &kbY);
@@ -388,39 +430,21 @@ void Skin::ApplyLayout(const std::string &skinDir) {
 		titleW = r.w;
 		titleH = r.h;
 	}
-	{
-		Xywh r = { fileListX, fileListY, fileListW, fileListH };
-		GetXywh(ini, "FileList", "Rect", &r);
-		fileListX = r.x;
-		fileListY = r.y;
-		fileListW = r.w;
-		fileListH = r.h;
-	}
+	GetIntList(ini, "FileList", "Margin", fileListMargin, 4);
 	// どれも「小さい文字, 大きい文字」の 2 つ組。1 つだけなら両方に効く。
-	GetFontSizePair(ini, "FileList", "Rows", fileListRows);
 	GetFontSizePair(ini, "FileList", "ItemHeight", fileListItemH);
 	GetFontSizePair(ini, "FileList", "BaseNameX", fileListBaseNameX);
 	GetFontSizePair(ini, "FileList", "BaseNameWidth", fileListBaseNameW);
 	GetFontSizePair(ini, "FileList", "TitleX", fileListTitleX);
-	GetFontSizePair(ini, "FileList", "TitleWidth", fileListTitleW);
 
-	{
-		Xywh r = { scrollX, scrollY, scrollW, scrollH };
-		GetXywh(ini, "ScrollBar", "Rect", &r);
-		scrollX = r.x;
-		scrollY = r.y;
-		scrollW = r.w;
-		scrollH = r.h;
-	}
+	scrollWidth = ini.GetInt("ScrollBar", "Width", scrollWidth);
+	scrollHitWidth = ini.GetInt("ScrollBar", "HitWidth", scrollHitWidth);
 	GetXywh(ini, "ScrollBar", "SrcThumb", &scrollSrcThumb);
 	GetXywh(ini, "ScrollBar", "SrcUpArrowPress", &scrollSrcUpArrowPress);
 	GetXywh(ini, "ScrollBar", "SrcDownArrowPress", &scrollSrcDownArrowPress);
 	GetXywh(ini, "ScrollBar", "SrcUpArrow", &scrollSrcUpArrow);
 	GetXywh(ini, "ScrollBar", "SrcBar", &scrollSrcBar);
 	GetXywh(ini, "ScrollBar", "SrcDownArrow", &scrollSrcDownArrow);
-	GetIntList(ini, "ScrollBar", "PosUpArrow", scrollPosUpArrow, 2);
-	GetIntList(ini, "ScrollBar", "PosBar", scrollPosBar, 2);
-	GetIntList(ini, "ScrollBar", "PosDownArrow", scrollPosDownArrow, 2);
 	scrollBarBitmap = ini.GetString("ScrollBar", "ImgScrollBar", scrollBarBitmap);
 
 	{
@@ -474,6 +498,149 @@ void Skin::ApplyLayout(const std::string &skinDir) {
 	palYellow = ini.GetInt("PlayKey", "PalYellow", palYellow);
 	palBlue = ini.GetInt("PlayKey", "PalBlue", palBlue);
 	playKeyBitmap = ini.GetString("PlayKey", "ImgPlayKey", playKeyBitmap);
+}
+
+// ---------------------------------------------------------------------------
+// キャンバスの大きさに合わせる（fullscreen.md）
+// ---------------------------------------------------------------------------
+
+void Skin::CanvasSizeFor(int outW, int outH, int stretchLimit, int *cw, int *ch) const {
+	int w = screenW;
+	int h = screenH;
+	if (outW > 0 && outH > 0 && screenW > 0 && screenH > 0) {
+		if (FilerSideVertical(filerSide)) {
+			// 幅を宣言サイズに合わせ、高さだけ出力の縦横比へ寄せる。
+			h = (int)(((int64_t)outH * screenW + outW / 2) / outW);
+			int limit = stretchLimit;
+			const int hard = screenH * kMaxCanvasStretch;
+			if (limit <= 0 || limit > hard) limit = hard;
+			if (h < screenH) h = screenH;  // 縮む方向へは伸ばさない（左右が余白になる）
+			if (h > limit) h = limit;
+		} else {
+			w = (int)(((int64_t)outW * screenH + outH / 2) / outH);
+			int limit = stretchLimit;
+			const int hard = screenW * kMaxCanvasStretch;
+			if (limit <= 0 || limit > hard) limit = hard;
+			if (w < screenW) w = screenW;
+			if (w > limit) w = limit;
+		}
+	}
+	if (cw != 0) *cw = w;
+	if (ch != 0) *ch = h;
+}
+
+Skin Skin::PlacedFor(int canvasW, int canvasH) const {
+	Skin s = *this;
+	if (canvasW < screenW) canvasW = screenW;
+	if (canvasH < screenH) canvasH = screenH;
+	s.placedCanvasW = canvasW;
+	s.placedCanvasH = canvasH;
+
+	// 画面を 2 つに分ける。伸びたぶんはファイラー側だけが受け取り、
+	// ファイラー以外側の厚みは宣言サイズのまま。
+	const int fixedV = screenH - filerExtent;  // 上下配置での「ファイラー以外側」の高さ
+	const int fixedH = screenW - filerExtent;  // 左右配置での「ファイラー以外側」の幅
+	Xywh filer = { 0, 0, canvasW, canvasH };
+	int otherX = 0, otherY = 0;
+	switch (filerSide) {
+		case kFilerSideTop:
+			filer.h = canvasH - fixedV;
+			otherY = filer.h;
+			break;
+		case kFilerSideLeft:
+			filer.w = canvasW - fixedH;
+			otherX = filer.w;
+			break;
+		case kFilerSideRight:
+			filer.x = fixedH;
+			filer.w = canvasW - fixedH;
+			break;
+		case kFilerSideBottom:
+		default:
+			filer.y = fixedV;
+			filer.h = canvasH - fixedV;
+			break;
+	}
+	if (filer.w < 1) filer.w = 1;
+	if (filer.h < 1) filer.h = 1;
+	s.placedOtherX = otherX;
+	s.placedOtherY = otherY;
+
+	// ファイラー側の矩形から内側へマージンを取ると、一覧とスクロールバーで
+	// 分け合う矩形になる。
+	Xywh inner;
+	inner.x = filer.x + fileListMargin[0];
+	inner.y = filer.y + fileListMargin[1];
+	inner.w = filer.w - fileListMargin[0] - fileListMargin[2];
+	inner.h = filer.h - fileListMargin[1] - fileListMargin[3];
+	if (inner.w < 1) inner.w = 1;
+	if (inner.h < 1) inner.h = 1;
+
+	int sw = scrollWidth;
+	if (sw < 0) sw = 0;
+	if (sw > inner.w - 1) sw = inner.w - 1;
+
+	s.fileListX = inner.x;
+	s.fileListY = inner.y;
+	s.fileListW = inner.w - sw;
+	s.fileListH = inner.h;
+
+	s.scrollX = inner.x + inner.w - sw;
+	s.scrollY = inner.y;
+	s.scrollW = sw;
+	s.scrollH = inner.h;
+
+	// 当たり判定は描画より広くできる（左へ広がる）。
+	int hitW = scrollHitWidth;
+	if (hitW < sw) hitW = sw;
+	if (hitW > inner.w) hitW = inner.w;
+	s.scrollHitX = inner.x + inner.w - hitW;
+	s.scrollHitW = hitW;
+
+	// 矢印は上端と下端に貼り付き、溝は残りぶん。
+	const int upH = scrollSrcUpArrow.h;
+	const int downH = scrollSrcDownArrow.h;
+	int groove = s.scrollH - upH - downH;
+	if (groove < 0) groove = 0;
+	s.scrollGrooveH = groove;
+	s.scrollPosUpArrow[0] = 0;
+	s.scrollPosUpArrow[1] = 0;
+	s.scrollPosBar[0] = 0;
+	s.scrollPosBar[1] = upH;
+	s.scrollPosDownArrow[0] = 0;
+	s.scrollPosDownArrow[1] = s.scrollH - downH;
+
+	// 行数と曲名の幅は矩形から決まる。行数は切り捨て（半端な帯は
+	// 描かないし、当たり判定でも弾く）。
+	for (int i = 0; i < 2; i++) {
+		const int ih = (fileListItemH[i] > 0) ? fileListItemH[i] : 1;
+		int rows = s.fileListH / ih;
+		if (rows < 1) rows = 1;
+		s.fileListRows[i] = rows;
+		int tw = s.fileListW - fileListTitleX[i];
+		if (tw < 0) tw = 0;
+		s.fileListTitleW[i] = tw;
+	}
+
+	// ファイラー以外側の部品は、その矩形の原点からの相対で書かれている。
+	// 下・右にファイラーを置くなら原点は (0,0) のままなので何も動かない。
+	if (otherX != 0 || otherY != 0) {
+		s.kbX += otherX;
+		s.kbY += otherY;
+		s.statusX += otherX;
+		s.statusY += otherY;
+		s.bannerX += otherX;
+		s.bannerY += otherY;
+		s.titleX += otherX;
+		s.titleY += otherY;
+		s.progX += otherX;
+		s.progY += otherY;
+		s.volX += otherX;
+		s.volY += otherY;
+		s.playKeyX += otherX;
+		s.playKeyY += otherY;
+	}
+	return s;
 }
 
 std::string Skin::FindFile(const std::string &name) const {

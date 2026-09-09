@@ -662,6 +662,42 @@ void ForceRedrawAll(mxv2::Screen *screen, mxv2::TextLayer *textLayer, mxv2::Draw
 	*fileListRefresh = true;
 }
 
+// 窓の大きさに合わせてキャンバスを作り直す（fullscreen.md）。
+//
+// スキンは「宣言サイズ」でレイアウトを持っているが、窓の縦横比がそれと
+// 違うときは、ファイラーを置いた向きだけ伸ばして窓に寄せる。伸ばせる量は
+// 背景ビットマップの大きさで頭打ちになり、あふれたぶんは今までどおり
+// レターボックスになる。
+//
+// 呼ぶのは**フレームの頭で 1 回だけ**。窓のリサイズはイベントで印を立てる
+// だけにして、ここでまとめて作り直す。これがそのままリサイズ中のデバウンスに
+// なる（ドラッグ中に何十回イベントが来ても、作り直すのは 1 フレームに 1 回）。
+// 大きさが変わっていなければ何もしない。作り直したら true。
+bool SyncCanvasToWindow(mxv2::Screen *screen, mxv2::TextLayer *textLayer,
+                        mxv2::DrawScreen *draw, mxv2::Filer *filer, const mxv2::Skin &skin) {
+	int outW = 0, outH = 0;
+	screen->GetOutputSize(&outW, &outH);
+	int cw = 0, ch = 0;
+	skin.CanvasSizeFor(outW, outH, draw->stretchLimit(), &cw, &ch);
+	if (cw == screen->width() && ch == screen->height()) return false;
+
+	// 順番が大事: 画面 -> 文字レイヤー -> DrawScreen。
+	// DrawScreen::Resize は最後に Reload() まで済ませて曲名を描き直すので、
+	// その前にレイヤーを作り直しておく。
+	std::string err;
+	if (!screen->SetCanvasSize(cw, ch, &err)) {
+		printf("warning  : %s\n", err.c_str());
+		return false;
+	}
+	textLayer->SyncToScreen(screen);
+	if (!draw->Resize(cw, ch, &err)) {
+		printf("warning  : %s\n", err.c_str());
+		return false;
+	}
+	filer->SetViewMetrics(draw->fileListRows(), draw->fileListItemH());
+	return true;
+}
+
 // 演奏が終わったら CONT / REPEAT に従って次の曲へ送る。
 //
 // **バックグラウンド（描かないとき）でも呼ぶ**ので、描画とは切り離してある。
@@ -1113,6 +1149,16 @@ int main(int argc, char **argv) {
 		if (settings.savePosition && settings.windowX >= 0 && settings.windowY >= 0) {
 			screen.SetWindowPos(settings.windowX, settings.windowY);
 		}
+		// 前回の大きさに戻す。**縮める方向には戻さない**（表示倍率が
+		// 100% を割るとキャンバスが潰れるので、宣言サイズ x 表示倍率を
+		// 下限にする）。伸びたぶんはファイラーの行数として戻ってくる。
+		if (settings.savePosition && settings.windowW > 0 && settings.windowH > 0) {
+			const int minW = skin.screenW * settings.zoomPercent / 100;
+			const int minH = skin.screenH * settings.zoomPercent / 100;
+			const int w = (settings.windowW > minW) ? settings.windowW : minW;
+			const int h = (settings.windowH > minH) ? settings.windowH : minH;
+			SDL_SetWindowSize(screen.window(), w, h);
+		}
 		screen.SetScaleMode(
 		    mxv2::Screen::ScaleModeFromName(settings.scaleFilter, mxv2::Screen::kScaleSharp));
 		// 綴りが違っていたら解決後の名前で書き直す。
@@ -1225,6 +1271,10 @@ int main(int argc, char **argv) {
 	bool autoNext = settings.autoNext;    // CONT
 	bool autoRepeat = settings.autoRepeat;  // REPEAT
 
+	// 窓の大きさが変わった印。フレームの頭でキャンバスを合わせ直す。
+	// 起動直後にも 1 回通して、窓の縦横比にキャンバスを寄せる。
+	bool windowResized = true;
+
 	bool quit = false;
 	// 端末がバックグラウンドへ回した (Android)。**音は止めず、描くのだけ止める。**
 	bool inBackground = false;
@@ -1284,6 +1334,25 @@ int main(int argc, char **argv) {
 	bool dropGroup = false;
 
 	while (!quit) {
+		// 窓の大きさが変わっていたらキャンバスを作り直す。イベントごとでは
+		// なくフレームに 1 回にすることが、そのままリサイズ中のデバウンスに
+		// なる。表示倍率やスキンを変えたあとの追随もここが受け持つ。
+		if (windowResized) {
+			windowResized = false;
+			if (SyncCanvasToWindow(&screen, &textLayer, &draw, &filer, skin)) {
+				player.RequestStatusRefresh();
+				chromeRefresh = true;
+				fileListRefresh = true;
+			} else if (textLayer.SyncToScreen(&screen)) {
+				// キャンバスは同じで拡大率だけ変わった（文字は出力解像度で
+				// 描いているので、レイヤーを作り直したら描き直しが要る）。
+				draw.Reload();
+				player.RequestStatusRefresh();
+				chromeRefresh = true;
+				fileListRefresh = true;
+			}
+		}
+
 		SDL_Event ev;
 		while (SDL_PollEvent(&ev)) {
 			ui.ProcessEvent(ev);
@@ -1317,15 +1386,13 @@ int main(int argc, char **argv) {
 
 			// ウィンドウの大きさが変わると拡大率も変わる。文字レイヤーを
 			// 作り直して、画面を最初から描き直す。
+			// キャンバスそのものの作り直し（ファイラーの行数が変わる）は
+			// イベントごとではなくフレームの頭で 1 回だけやる
+			// （SyncCanvasToWindow）。
 			if (ev.type == SDL_WINDOWEVENT &&
 			    (ev.window.event == SDL_WINDOWEVENT_SIZE_CHANGED ||
 			     ev.window.event == SDL_WINDOWEVENT_RESIZED)) {
-				if (textLayer.SyncToScreen(&screen)) {
-					draw.Reload();
-					player.RequestStatusRefresh();
-					chromeRefresh = true;
-					fileListRefresh = true;
-				}
+				windowResized = true;
 			}
 
 			// 端末のライフサイクル (Android)。バックグラウンドでは描かない
@@ -1672,6 +1739,10 @@ int main(int argc, char **argv) {
 				player.RequestStatusRefresh();
 				chromeRefresh = true;
 				fileListRefresh = true;
+				// 宣言サイズが同じスキンへ移ったときは窓の大きさが変わらず、
+				// リサイズのイベントも来ない。分割が違えばキャンバスは
+				// 変わるので、次のフレームで合わせ直させる。
+				windowResized = true;
 			}
 		}
 
@@ -1799,9 +1870,12 @@ int main(int argc, char **argv) {
 		if (settings.savePosition) {
 			int wx = 0, wy = 0, ww = 0, wh = 0;
 			screen.GetWindowRect(&wx, &wy, &ww, &wh);
-			if (wx != settings.windowX || wy != settings.windowY) {
+			if (wx != settings.windowX || wy != settings.windowY ||
+			    ww != settings.windowW || wh != settings.windowH) {
 				settings.windowX = wx;
 				settings.windowY = wy;
+				settings.windowW = ww;
+				settings.windowH = wh;
 				newDirt |= mxv2::Settings::kFieldWindowPos;
 			}
 		}
@@ -1937,9 +2011,12 @@ int main(int argc, char **argv) {
 		if (settings.savePosition) {
 			int wx = 0, wy = 0, ww = 0, wh = 0;
 			screen.GetWindowRect(&wx, &wy, &ww, &wh);
-			if (wx != settings.windowX || wy != settings.windowY) {
+			if (wx != settings.windowX || wy != settings.windowY ||
+			    ww != settings.windowW || wh != settings.windowH) {
 				settings.windowX = wx;
 				settings.windowY = wy;
+				settings.windowW = ww;
+				settings.windowH = wh;
 				dirtyFields |= mxv2::Settings::kFieldWindowPos;
 			}
 		}

@@ -108,7 +108,7 @@ public sealed class PreviewRenderer : IDisposable
     // 1 枚描いて 32bpp のビットマップを返す（使い回すので破棄しないこと）。
     public Bitmap? Render(PreviewState state)
     {
-        var skin = _doc.Effective;
+        var skin = _doc.Placed;
         if (skin.screenW <= 0 || skin.screenH <= 0) return null;
 
         // レイアウト・配色が変わっていなければ背景を使い回す。SkinDocument は

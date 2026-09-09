@@ -13,7 +13,10 @@
 
 namespace SkinEditor.Model;
 
-public enum FieldKind { Int, IntList, Xywh, Str }
+// Enum は「決まった名前のどれか」（今は [Screen] FilerSide だけ）。
+// FieldEditControl は数値欄ではなくコンボボックスを出し、値は
+// FieldDef.EnumNames の名前そのものを layout.ini へ書く。
+public enum FieldKind { Int, IntList, Xywh, Str, Enum }
 
 // ReadOnly は「値は表示するが、継承チェックボックスも数値欄も編集不可にする」
 // 指定（FieldEditControl 側で見る）。SHUFFLE 未実装の間、[PlayKey] Count を
@@ -37,7 +40,7 @@ public enum FieldKind { Int, IntList, Xywh, Str }
 public sealed record FieldDef(string Section, string Key, string Label, FieldKind Kind,
     Func<SkinLayout, string> Format, bool ReadOnly = false, string Suffix = "",
     int IntMin = -9999, int IntMax = 9999, int[]? ComponentMin = null, int[]? ComponentMax = null,
-    BitmapRole? SizeBoundRole = null);
+    BitmapRole? SizeBoundRole = null, string[]? EnumNames = null, string[]? EnumLabels = null);
 
 public static class LayoutFieldSchema
 {
@@ -72,6 +75,13 @@ public static class LayoutFieldSchema
             // ---- 画面 ------------------------------------------------------
             new("Screen", "Width", "幅", FieldKind.Int, e => $"{e.screenW}", IntMin: 1, IntMax: 9999),
             new("Screen", "Height", "高さ", FieldKind.Int, e => $"{e.screenH}", IntMin: 1, IntMax: 9999),
+            // 画面を 2 つに分ける位置（fullscreen.md）。キャンバスが伸びたぶんは
+            // すべてファイラー側が受け取り、ファイラー以外側の厚みは変わらない。
+            new("Screen", "FilerSide", "ファイラーを置く辺", FieldKind.Enum,
+                e => FilerSides.Name(e.filerSide),
+                EnumNames: FilerSides.Names, EnumLabels: FilerSides.Labels),
+            new("Screen", "FilerExtent", "ファイラー側の厚み", FieldKind.Int,
+                e => $"{e.filerExtent}", IntMin: 1, IntMax: 9999),
 
             // ---- 鍵盤 ------------------------------------------------------
             new("Keyboard", "Pos", "位置", FieldKind.IntList, e => $"{e.kbX},{e.kbY}", Suffix: "(x,y)"),
@@ -110,11 +120,11 @@ public static class LayoutFieldSchema
                 ComponentMin: RectMin, ComponentMax: RectMax),
 
             // ---- ファイラー ------------------------------------------------
-            new("FileList", "Rect", "矩形", FieldKind.Xywh,
-                e => $"{e.fileListX},{e.fileListY},{e.fileListW},{e.fileListH}", Suffix: "(x,y,w,h)",
-                ComponentMin: RectMin, ComponentMax: RectMax),
-            new("FileList", "Rows", "行数", FieldKind.IntList,
-                e => SkinLayoutIo.Join(e.fileListRows), Suffix: "(小,大)", IntMin: 1, IntMax: 999),
+            // 矩形は「ファイラー側の矩形からの内側マージン」で書く。行数と
+            // 曲名幅は矩形から求まるので項目が無い（fullscreen.md）。
+            new("FileList", "Margin", "内側マージン", FieldKind.IntList,
+                e => SkinLayoutIo.Join(e.fileListMargin), Suffix: "(左,上,右,下)",
+                IntMin: 0, IntMax: 9999),
             new("FileList", "ItemHeight", "1行の高さ", FieldKind.IntList,
                 e => SkinLayoutIo.Join(e.fileListItemH), Suffix: "(小,大)", IntMin: 1, IntMax: 999),
             new("FileList", "BaseNameX", "ファイル名開始X", FieldKind.IntList,
@@ -123,13 +133,14 @@ public static class LayoutFieldSchema
                 e => SkinLayoutIo.Join(e.fileListBaseNameW), Suffix: "(小,大)", IntMin: 1, IntMax: 9999),
             new("FileList", "TitleX", "曲名開始X", FieldKind.IntList,
                 e => SkinLayoutIo.Join(e.fileListTitleX), Suffix: "(小,大)", IntMin: 0, IntMax: 9999),
-            new("FileList", "TitleWidth", "曲名幅", FieldKind.IntList,
-                e => SkinLayoutIo.Join(e.fileListTitleW), Suffix: "(小,大)", IntMin: 1, IntMax: 9999),
 
             // ---- スクロールバー --------------------------------------------
-            new("ScrollBar", "Rect", "矩形", FieldKind.Xywh,
-                e => $"{e.scrollX},{e.scrollY},{e.scrollW},{e.scrollH}", Suffix: "(x,y,w,h)",
-                ComponentMin: RectMin, ComponentMax: RectMax),
+            // 位置はファイラーの矩形から決まる。書くのは幅だけで、
+            // 当たり判定は描画より広くできる（左へ広がる）。
+            new("ScrollBar", "Width", "描く幅", FieldKind.Int,
+                e => $"{e.scrollWidth}", IntMin: 0, IntMax: 9999),
+            new("ScrollBar", "HitWidth", "当たり判定の幅", FieldKind.Int,
+                e => $"{e.scrollHitWidth}", IntMin: 0, IntMax: 9999),
             new("ScrollBar", "SrcThumb", "素材内: つまみ", FieldKind.Xywh,
                 e => e.scrollSrcThumb.ToString(), Suffix: "(x,y,w,h)",
                 ComponentMin: SrcMin, ComponentMax: SrcMax, SizeBoundRole: BitmapRole.ScrollBar),
@@ -148,12 +159,6 @@ public static class LayoutFieldSchema
             new("ScrollBar", "SrcDownArrow", "素材内: 下矢印", FieldKind.Xywh,
                 e => e.scrollSrcDownArrow.ToString(), Suffix: "(x,y,w,h)",
                 ComponentMin: SrcMin, ComponentMax: SrcMax, SizeBoundRole: BitmapRole.ScrollBar),
-            new("ScrollBar", "PosUpArrow", "配置: 上矢印", FieldKind.IntList,
-                e => SkinLayoutIo.Join(e.scrollPosUpArrow), Suffix: "(x,y)"),
-            new("ScrollBar", "PosBar", "配置: 溝", FieldKind.IntList,
-                e => SkinLayoutIo.Join(e.scrollPosBar), Suffix: "(x,y)"),
-            new("ScrollBar", "PosDownArrow", "配置: 下矢印", FieldKind.IntList,
-                e => SkinLayoutIo.Join(e.scrollPosDownArrow), Suffix: "(x,y)"),
 
             // ---- プログレスバー --------------------------------------------
             new("ProgressBar", "Rect", "矩形", FieldKind.Xywh,

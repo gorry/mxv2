@@ -35,8 +35,10 @@ public static class PreviewRegions
         public const string PcmOrigin = "pcm.origin";    // + PCM ch (0..7)
         public const string Banner = "banner";
         public const string Title = "title";
+        public const string FilerSide = "filerside";  // ファイラー側の矩形（2 分割の片方）
         public const string FileList = "filelist";
         public const string ScrollBar = "scrollbar";
+        public const string ScrollHit = "scrollbar.hit";  // 当たり判定（描画より広い）
         public const string ScrollThumb = "scroll.thumb";
         public const string ScrollUpArrow = "scroll.up";
         public const string ScrollBarGroove = "scroll.groove";
@@ -78,6 +80,7 @@ public static class PreviewRegions
 
         r[Ids.Banner] = new Rectangle(e.bannerX, e.bannerY, e.bannerW, e.bannerH);
         r[Ids.Title] = new Rectangle(e.titleX, e.titleY, e.titleW, e.titleH);
+        r[Ids.FilerSide] = FilerSideRect(e);
         r[Ids.FileList] = new Rectangle(e.fileListX, e.fileListY, e.fileListW, e.fileListH);
 
         AddScrollBar(r, e);
@@ -183,13 +186,32 @@ public static class PreviewRegions
         r[Ids.PcmAll] = pcmAll ?? r[Ids.Status];
     }
 
+    // ファイラー側の矩形（画面を 2 つに分けた片方）。SkinLayout.PlacedFor と
+    // 同じ式をここでもう一度書く（描画側の内部状態に依存させないため）。
+    private static Rectangle FilerSideRect(SkinLayout e)
+    {
+        int w = Math.Max(1, e.placedCanvasW);
+        int h = Math.Max(1, e.placedCanvasH);
+        int fixedV = e.screenH - e.filerExtent;
+        int fixedH = e.screenW - e.filerExtent;
+        return (FilerSide)e.filerSide switch
+        {
+            FilerSide.Top => new Rectangle(0, 0, w, Math.Max(1, h - fixedV)),
+            FilerSide.Left => new Rectangle(0, 0, Math.Max(1, w - fixedH), h),
+            FilerSide.Right => new Rectangle(fixedH, 0, Math.Max(1, w - fixedH), h),
+            _ => new Rectangle(0, fixedV, w, Math.Max(1, h - fixedV)),
+        };
+    }
+
     private static void AddScrollBar(Dictionary<string, Rectangle> r, SkinLayout e)
     {
         r[Ids.ScrollBar] = new Rectangle(e.scrollX, e.scrollY, e.scrollW, e.scrollH);
+        r[Ids.ScrollHit] = new Rectangle(e.scrollHitX, e.scrollY, e.scrollHitW, e.scrollH);
         r[Ids.ScrollUpArrow] = new Rectangle(e.scrollX + e.scrollPosUpArrow[0], e.scrollY + e.scrollPosUpArrow[1],
             e.scrollSrcUpArrow.W, e.scrollSrcUpArrow.H);
+        // 溝は素材を繰り返して敷くので、枠は**描く高さ**で出す。
         r[Ids.ScrollBarGroove] = new Rectangle(e.scrollX + e.scrollPosBar[0], e.scrollY + e.scrollPosBar[1],
-            e.scrollSrcBar.W, e.scrollSrcBar.H);
+            e.scrollSrcBar.W, e.scrollGrooveH);
         r[Ids.ScrollDownArrow] = new Rectangle(e.scrollX + e.scrollPosDownArrow[0], e.scrollY + e.scrollPosDownArrow[1],
             e.scrollSrcDownArrow.W, e.scrollSrcDownArrow.H);
         // つまみは溝の中を動く。枠は動かない値にしたいので一番上に置いた姿。

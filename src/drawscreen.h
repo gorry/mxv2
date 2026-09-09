@@ -33,11 +33,25 @@ public:
 
 	// スキン (レイアウトと素材の置き場所) を受け取り、素材を読んで
 	// 配色を適用し、背景を合成する。skin は呼び出し側が保持し続けること。
+	// キャンバスはスキンの宣言サイズで始まる（伸ばすのは Resize）。
 	bool Init(const Skin *skin, std::string *err);
 
-	int width() const { return skin_->screenW; }
-	int height() const { return skin_->screenH; }
+	// キャンバスの大きさを変える（窓のリサイズ、画面の回転）。
+	// バッファを作り直し、レイアウトを解決し直して、全面を描き直す。
+	// 大きさが同じなら何もしないで true。
+	bool Resize(int canvasW, int canvasH, std::string *err);
+
+	int width() const { return canvasW_; }
+	int height() const { return canvasH_; }
 	const Skin &skin() const { return *skin_; }
+	// 今のキャンバスに合わせて解決したレイアウト（Skin::PlacedFor）。
+	const Skin &layout() const { return layout_; }
+
+	// キャンバスを伸ばせる上限 (px)。ファイラーを置いた向きの長さで、
+	// 背景ビットマップの大きさ（宣言サイズより小さければ宣言サイズ）で
+	// 決まる。「背景画像を使わない」設定なら 0 = 上限なし。
+	// Skin::CanvasSizeFor へ渡す。
+	int stretchLimit() const;
 
 	// 背景を作り直して全面を描き直す。
 	void Reload();
@@ -235,6 +249,21 @@ private:
 	void CompositeScrollBar(int x, int y, int w, int h);
 
 	const Skin *skin_;  // 呼び出し側の持ち物。寿命は DrawScreen より長いこと
+
+	// skin_ を今のキャンバスの大きさに合わせて解決したもの
+	// (Skin::PlacedFor)。ファイラー / 一覧 / スクロールバーの矩形、行数、
+	// 曲名の幅、それにファイラー以外側の部品の座標が入っている。
+	// **描画と当たり判定はすべてこちらを見る。** skin_ を直に見てよいのは
+	// 「スキンそのもの」を返す skin() だけ。
+	Skin layout_;
+	int canvasW_, canvasH_;
+
+	// 背景ビットマップの大きさ（読めなければ 0）。伸ばせる上限に使う。
+	int backImageW_, backImageH_;
+
+	bool CreateBuffers(std::string *err);
+	bool EnsureScrollBarBuffer(std::string *err);
+
 	Colors colors_;
 
 	Bitmap screen_;      // 表示用 24bpp

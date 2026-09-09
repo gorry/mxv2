@@ -36,7 +36,9 @@ Settings::Settings()
       latencyMs(0),
       savePosition(true),
       windowX(-1),
-      windowY(-1) {}
+      windowY(-1),
+      windowW(0),
+      windowH(0) {}
 
 std::string Settings::PathIn(const std::string &dir) {
 	return JoinPath(dir, "mxv2.ini");
@@ -113,6 +115,8 @@ bool Settings::Load(const std::string &path) {
 	savePosition = ini.GetInt("Position", "Save", savePosition ? 1 : 0) != 0;
 	windowX = ini.GetInt("Position", "X", windowX);
 	windowY = ini.GetInt("Position", "Y", windowY);
+	windowW = ini.GetInt("Position", "Width", windowW);
+	windowH = ini.GetInt("Position", "Height", windowH);
 
 	if (loops < 1) loops = 1;
 	if (loops > 99) loops = 99;
@@ -184,6 +188,8 @@ bool Settings::Save(const std::string &path) const {
 	ini.SetInt("Position", "Save", savePosition ? 1 : 0);
 	ini.SetInt("Position", "X", windowX);
 	ini.SetInt("Position", "Y", windowY);
+	ini.SetInt("Position", "Width", windowW);
+	ini.SetInt("Position", "Height", windowH);
 
 	return ini.Save(path);
 }

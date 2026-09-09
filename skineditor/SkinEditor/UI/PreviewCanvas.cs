@@ -139,7 +139,7 @@ public sealed class PreviewCanvas : Panel
     // （収まらない位置を選ぶと鍵盤の外や隣の段に描かれてしまうため）。
     private void RandomizePressedKeys()
     {
-        var skin = _doc.Effective;
+        var skin = _doc.Placed;
         int span = skin.kbXOffset[12];
         int kb0Width = _renderer.FindAsset(skin.kb0Bitmap)?.Width ?? span;
         int octaves = span > 0 ? Math.Max(1, kb0Width / span) : 1;
@@ -191,7 +191,7 @@ public sealed class PreviewCanvas : Panel
 
     // 今の実効値での全アイテムの矩形（skin 座標）。当たり判定に使う。
     public Dictionary<string, Rectangle> BuildRegions() =>
-        PreviewRegions.Build(_doc.Effective, FindAssetSize, _state.Volume);
+        PreviewRegions.Build(_doc.Placed, FindAssetSize, _state.Volume);
 
     private Size? FindAssetSize(string fileName)
     {
@@ -215,7 +215,7 @@ public sealed class PreviewCanvas : Panel
         g.InterpolationMode = InterpolationMode.NearestNeighbor;
         g.PixelOffsetMode = PixelOffsetMode.Half;
 
-        var eff = _doc.Effective;
+        var eff = _doc.Placed;
         int sw = Math.Max(1, eff.screenW), sh = Math.Max(1, eff.screenH);
         _scale = Math.Max(0.05f, Math.Min((Width - Margin) / (float)sw, (Height - Margin) / (float)sh));
         _origin = new PointF((Width - sw * _scale) / 2f, (Height - sh * _scale) / 2f);

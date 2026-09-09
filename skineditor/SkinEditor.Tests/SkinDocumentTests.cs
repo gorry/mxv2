@@ -16,7 +16,8 @@ public class SkinDocumentTests
 
         Assert.Equal(640, doc.Effective.screenW);
         Assert.Equal(480, doc.Effective.screenH);
-        Assert.Equal(new[] { 11, 8 }, doc.Effective.fileListRows);
+        // 行数は導出値（Placed 側）。110 / 10 = 11、110 / 13 = 8。
+        Assert.Equal(new[] { 11, 8 }, doc.Placed.fileListRows);
         Assert.Equal(8, doc.Effective.numPlayKeys);
         Assert.Equal("minifont.bmp", doc.Effective.miniFontBitmap);
         Assert.Equal(6, doc.Effective.miniFontW);
@@ -68,7 +69,12 @@ public class SkinDocumentTests
 
         Assert.Equal(480, phone.Effective.screenW);
         Assert.Equal(720, phone.Effective.screenH);
-        Assert.Equal(new[] { 15, 10 }, phone.Effective.fileListRows);
+        // 行数は layout.ini に書かれず、ファイラーの矩形と 1 行の高さから
+        // 求まる（fullscreen.md）。250 / 16 = 15、250 / 24 = 10。
+        Assert.Equal(new[] { 4, 462, 460, 250 },
+            new[] { phone.Placed.fileListX, phone.Placed.fileListY,
+                    phone.Placed.fileListW, phone.Placed.fileListH });
+        Assert.Equal(new[] { 15, 10 }, phone.Placed.fileListRows);
         Assert.Equal("", phone.BaseRef);
     }
 

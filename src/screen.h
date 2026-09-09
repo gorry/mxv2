@@ -109,7 +109,13 @@ public:
 
 	// 論理サイズを変える（スキンの切り替え）。ウィンドウとレンダラは
 	// 作り直さないので、Dear ImGui のバックエンドを繋いだままでよい。
+	// **ウィンドウの大きさも「キャンバス x 表示倍率」に揃え直す。**
 	bool Resize(int width, int height, std::string *err);
+
+	// キャンバスだけ変える。ウィンドウには触らない。
+	// 窓のリサイズに追いかけてキャンバスを作り直すとき（fullscreen.md）は
+	// こちらを使う。Resize から呼ぶと窓の大きさを取り合いになるため。
+	bool SetCanvasSize(int width, int height, std::string *err);
 
 	// 表示倍率 (%) を変える。論理サイズは変わらない。
 	void SetZoom(int zoomPercent);

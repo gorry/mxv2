@@ -129,7 +129,7 @@ public class RenderTests
     {
         var root = TestPaths.FindDevRoot();
         doc = SkinDocument.Open(root, skinName);
-        var port = new DrawScreenPort(doc.Effective, doc.EffectiveColors, new SkinAssetSource(doc));
+        var port = new DrawScreenPort(doc.Placed, doc.EffectiveColors, new SkinAssetSource(doc));
         port.Reload("テスト");
         port.PutPlayKey(DrawScreenPort.PlayKeyPlayLed);
         port.PutProgressBar(0, 180000);

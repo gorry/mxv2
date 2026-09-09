@@ -93,6 +93,8 @@ public static class TabLayout
             Bitmap(BitmapRole.Back),
             Field("Screen", "Width"),
             Field("Screen", "Height"),
+            Field("Screen", "FilerSide"),
+            Field("Screen", "FilerExtent"),
             Colors("背景 (Back)"),
         }),
 
@@ -185,29 +187,25 @@ public static class TabLayout
 
         new TabDef("ファイラー", new[]
         {
-            Field("FileList", "Rect"),
-            Field("FileList", "Rows"),
+            Field("FileList", "Margin"),
             Field("FileList", "ItemHeight"),
             Field("FileList", "BaseNameX"),
             Field("FileList", "BaseNameWidth"),
             Field("FileList", "TitleX"),
-            Field("FileList", "TitleWidth"),
             Colors("ファイラー (Filer)"),
         }),
 
         new TabDef("スクロールバー", new[]
         {
             Bitmap(BitmapRole.ScrollBar),
-            Field("ScrollBar", "Rect"),
+            Field("ScrollBar", "Width"),
+            Field("ScrollBar", "HitWidth"),
             Field("ScrollBar", "SrcThumb"),
             Field("ScrollBar", "SrcUpArrowPress"),
             Field("ScrollBar", "SrcDownArrowPress"),
             Field("ScrollBar", "SrcUpArrow"),
             Field("ScrollBar", "SrcBar"),
             Field("ScrollBar", "SrcDownArrow"),
-            Field("ScrollBar", "PosUpArrow"),
-            Field("ScrollBar", "PosBar"),
-            Field("ScrollBar", "PosDownArrow"),
             Slider("スクロール", 0, 100, 0, (p, v) => p.StateScroll = v, PreviewRegions.Ids.ScrollBar),
             // 上矢印・下矢印は別のアイテムなので、行ごとではなくトグルごとに
             // プレビューへ結び付ける（片方だけ選んで枠を出せるように）。

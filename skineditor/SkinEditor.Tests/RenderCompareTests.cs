@@ -48,7 +48,7 @@ public class RenderCompareTests
 
         var root = TestPaths.FindDevRoot();
         var doc = SkinDocument.Open(root, "Default");
-        var skin = doc.Effective;
+        var skin = doc.Placed;
         var port = new DrawScreenPort(skin, doc.EffectiveColors, new SkinAssetSource(doc));
         port.Reload("");  // 本物は起動直後で曲名が空
 

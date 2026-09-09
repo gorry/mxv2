@@ -345,6 +345,12 @@ bool Screen::ResetTextures(std::string *err) {
 }
 
 bool Screen::Resize(int width, int height, std::string *err) {
+	if (!SetCanvasSize(width, height, err)) return false;
+	if (window_ != 0) SDL_SetWindowSize(window_, width_ * zoom_ / 100, height_ * zoom_ / 100);
+	return true;
+}
+
+bool Screen::SetCanvasSize(int width, int height, std::string *err) {
 	if (width <= 0 || height <= 0) {
 		*err = Msg("Error.ScreenSize");
 		return false;
@@ -369,7 +375,6 @@ bool Screen::Resize(int width, int height, std::string *err) {
 	height_ = height;
 	pixels_.assign((size_t)width_ * height_, 0xff000000u);
 	SetScaleMode(scaleMode_);
-	if (window_ != 0) SDL_SetWindowSize(window_, width_ * zoom_ / 100, height_ * zoom_ / 100);
 	return true;
 }
 

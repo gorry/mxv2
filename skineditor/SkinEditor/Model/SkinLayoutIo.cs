@@ -17,6 +17,8 @@ public static class SkinLayoutIo
     {
         t.screenW = ini.GetInt("Screen", "Width", t.screenW);
         t.screenH = ini.GetInt("Screen", "Height", t.screenH);
+        t.filerSide = FilerSides.FromName(ini.GetString("Screen", "FilerSide", ""), t.filerSide);
+        t.filerExtent = ini.GetInt("Screen", "FilerExtent", t.filerExtent);
         t.backBitmap = ini.GetString("Screen", "ImgBack", t.backBitmap);
 
         GetXy(ini, "Keyboard", "Pos", ref t.kbX, ref t.kbY);
@@ -58,32 +60,20 @@ public static class SkinLayoutIo
             GetXywh(ini, "Title", "Rect", ref r);
             t.titleX = r.X; t.titleY = r.Y; t.titleW = r.W; t.titleH = r.H;
         }
-        {
-            var r = new Xywh(t.fileListX, t.fileListY, t.fileListW, t.fileListH);
-            GetXywh(ini, "FileList", "Rect", ref r);
-            t.fileListX = r.X; t.fileListY = r.Y; t.fileListW = r.W; t.fileListH = r.H;
-        }
-        GetFontSizePair(ini, "FileList", "Rows", t.fileListRows);
+        GetIntList(ini, "FileList", "Margin", t.fileListMargin, 4);
         GetFontSizePair(ini, "FileList", "ItemHeight", t.fileListItemH);
         GetFontSizePair(ini, "FileList", "BaseNameX", t.fileListBaseNameX);
         GetFontSizePair(ini, "FileList", "BaseNameWidth", t.fileListBaseNameW);
         GetFontSizePair(ini, "FileList", "TitleX", t.fileListTitleX);
-        GetFontSizePair(ini, "FileList", "TitleWidth", t.fileListTitleW);
 
-        {
-            var r = new Xywh(t.scrollX, t.scrollY, t.scrollW, t.scrollH);
-            GetXywh(ini, "ScrollBar", "Rect", ref r);
-            t.scrollX = r.X; t.scrollY = r.Y; t.scrollW = r.W; t.scrollH = r.H;
-        }
+        t.scrollWidth = ini.GetInt("ScrollBar", "Width", t.scrollWidth);
+        t.scrollHitWidth = ini.GetInt("ScrollBar", "HitWidth", t.scrollHitWidth);
         GetXywh(ini, "ScrollBar", "SrcThumb", ref t.scrollSrcThumb);
         GetXywh(ini, "ScrollBar", "SrcUpArrowPress", ref t.scrollSrcUpArrowPress);
         GetXywh(ini, "ScrollBar", "SrcDownArrowPress", ref t.scrollSrcDownArrowPress);
         GetXywh(ini, "ScrollBar", "SrcUpArrow", ref t.scrollSrcUpArrow);
         GetXywh(ini, "ScrollBar", "SrcBar", ref t.scrollSrcBar);
         GetXywh(ini, "ScrollBar", "SrcDownArrow", ref t.scrollSrcDownArrow);
-        GetIntList(ini, "ScrollBar", "PosUpArrow", t.scrollPosUpArrow, 2);
-        GetIntList(ini, "ScrollBar", "PosBar", t.scrollPosBar, 2);
-        GetIntList(ini, "ScrollBar", "PosDownArrow", t.scrollPosDownArrow, 2);
         t.scrollBarBitmap = ini.GetString("ScrollBar", "ImgScrollBar", t.scrollBarBitmap);
 
         {
@@ -142,6 +132,8 @@ public static class SkinLayoutIo
     {
         ini.SetInt("Screen", "Width", t.screenW);
         ini.SetInt("Screen", "Height", t.screenH);
+        ini.SetString("Screen", "FilerSide", FilerSides.Name(t.filerSide));
+        ini.SetInt("Screen", "FilerExtent", t.filerExtent);
         ini.SetString("Screen", "ImgBack", t.backBitmap);
 
         ini.SetString("Keyboard", "Pos", $"{t.kbX},{t.kbY}");
@@ -173,24 +165,20 @@ public static class SkinLayoutIo
 
         ini.SetString("Title", "Rect", $"{t.titleX},{t.titleY},{t.titleW},{t.titleH}");
 
-        ini.SetString("FileList", "Rect", $"{t.fileListX},{t.fileListY},{t.fileListW},{t.fileListH}");
-        ini.SetString("FileList", "Rows", Join(t.fileListRows));
+        ini.SetString("FileList", "Margin", Join(t.fileListMargin));
         ini.SetString("FileList", "ItemHeight", Join(t.fileListItemH));
         ini.SetString("FileList", "BaseNameX", Join(t.fileListBaseNameX));
         ini.SetString("FileList", "BaseNameWidth", Join(t.fileListBaseNameW));
         ini.SetString("FileList", "TitleX", Join(t.fileListTitleX));
-        ini.SetString("FileList", "TitleWidth", Join(t.fileListTitleW));
 
-        ini.SetString("ScrollBar", "Rect", $"{t.scrollX},{t.scrollY},{t.scrollW},{t.scrollH}");
+        ini.SetInt("ScrollBar", "Width", t.scrollWidth);
+        ini.SetInt("ScrollBar", "HitWidth", t.scrollHitWidth);
         ini.SetString("ScrollBar", "SrcThumb", t.scrollSrcThumb.ToString());
         ini.SetString("ScrollBar", "SrcUpArrowPress", t.scrollSrcUpArrowPress.ToString());
         ini.SetString("ScrollBar", "SrcDownArrowPress", t.scrollSrcDownArrowPress.ToString());
         ini.SetString("ScrollBar", "SrcUpArrow", t.scrollSrcUpArrow.ToString());
         ini.SetString("ScrollBar", "SrcBar", t.scrollSrcBar.ToString());
         ini.SetString("ScrollBar", "SrcDownArrow", t.scrollSrcDownArrow.ToString());
-        ini.SetString("ScrollBar", "PosUpArrow", Join(t.scrollPosUpArrow));
-        ini.SetString("ScrollBar", "PosBar", Join(t.scrollPosBar));
-        ini.SetString("ScrollBar", "PosDownArrow", Join(t.scrollPosDownArrow));
         ini.SetString("ScrollBar", "ImgScrollBar", t.scrollBarBitmap);
 
         ini.SetString("ProgressBar", "Rect", $"{t.progX},{t.progY},{t.progW},{t.progH}");

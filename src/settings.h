@@ -88,8 +88,12 @@ struct Settings {
 	static const int kMaxBookmarks = 64;
 
 	// [Position] 復元用。savePosition が false なら使わない。
+	// 大きさも覚える。ウィンドウを伸ばすとファイラーの行数が変わるので
+	// （fullscreen.md）、位置だけ戻して大きさを戻さないと形が変わってしまう。
+	// 0 以下なら「覚えていない」で、スキンの宣言サイズ x 表示倍率から始める。
 	bool savePosition;
 	int windowX, windowY;
+	int windowW, windowH;
 
 	// 保存する項目。「変わった項目だけを書き戻す」ために使う。
 	// 設定ウィンドウには保存ボタンが無く、触った時点で保存する作りなので、

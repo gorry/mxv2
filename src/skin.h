@@ -35,6 +35,29 @@ struct Xywh {
 	int x, y, w, h;
 };
 
+// ファイラーを画面のどの辺に置くか。
+//
+// 画面はここで 2 つに分かれる。「ファイラー側」と「ファイラー以外側」で、
+// キャンバスが伸び縮みしてもファイラー以外側の厚みは宣言サイズのまま、
+// 増減はすべてファイラー側が吸収する（fullscreen.md）。
+// 上下に置けば縦に、左右に置けば横に伸びる。
+enum FilerSide {
+	kFilerSideBottom = 0,
+	kFilerSideTop,
+	kFilerSideLeft,
+	kFilerSideRight,
+	kNumFilerSides
+};
+
+// layout.ini での名前 ("Bottom" など) との変換。綴りは大文字小文字を問わない。
+const char *FilerSideName(int side);
+int FilerSideFromName(const std::string &name, int fallback);
+
+// 伸縮する向きが縦か（上下配置）。
+inline bool FilerSideVertical(int side) {
+	return side == kFilerSideBottom || side == kFilerSideTop;
+}
+
 // ステータス欄に並ぶ項目。1 段（1 チャンネル）の中でどこに出すかを
 // layout.ini の [Status] Pos<名前> で指定する（左上からの相対で、
 // [Status] Pos と [Keyboard] ChannelY が足される）。
@@ -73,7 +96,17 @@ extern const char kLegacyColorsFile[];  // "theme.mxv"
 
 struct Skin {
 	// ---- 画面 --------------------------------------------------------
+	// 「宣言サイズ」。キャンバスが伸びる前の大きさで、部品の座標も配色も
+	// この大きさを前提に書く。実際のキャンバスはこれ以上に伸びうる
+	// （PlacedFor / CanvasSizeFor と fullscreen.md）。
 	int screenW, screenH;
+
+	// ---- 画面の 2 分割 ------------------------------------------------
+	// ファイラーを置く辺と、その辺からファイラー側の矩形が何ピクセル
+	// あるか（宣言サイズでの値）。キャンバスが伸びたぶんはすべて
+	// ファイラー側が受け取り、ファイラー以外側の厚みは変わらない。
+	int filerSide;    // FilerSide
+	int filerExtent;  // ファイラー側の矩形の厚み (px)
 
 	// ---- 鍵盤 --------------------------------------------------------
 	int kbX, kbY;
@@ -114,29 +147,49 @@ struct Skin {
 	int titleX, titleY, titleW, titleH;
 
 	// ---- ファイラー -----------------------------------------------
-	int fileListX, fileListY, fileListW, fileListH;
+	// layout.ini に書くのは「ファイラー側の矩形からの内側マージン」だけ
+	// （[FileList] Margin に "左,上,右,下"）。矩形はキャンバスの大きさで
+	// 変わるので、絶対座標では書けない。
+	int fileListMargin[4];
 	// [0] = 小さい文字 / [1] = 大きい文字。layout.ini では「小,大」と書き、
 	// 1 つだけ書けば両方に効く。
-	int fileListRows[2];   // 行数
 	int fileListItemH[2];  // 1 行の高さ
-	// 以下は行の左端からのピクセル位置と、描画に使う幅（ピクセル）。
+	// 行の左端からのピクセル位置と、描画に使う幅（ピクセル）。
 	// 旧 mxv は等幅フォント前提で「文字数」だったが、プロポーショナル
 	// フォントでは意味を持たないのでピクセルに変えてある。
 	int fileListBaseNameX[2], fileListBaseNameW[2];
-	int fileListTitleX[2], fileListTitleW[2];
+	int fileListTitleX[2];
+
+	// ---- ファイラー（導出値） -------------------------------------------
+	// **layout.ini からは読まない。** PlacedFor() が今のキャンバスの
+	// 大きさから求めて埋める。描画と当たり判定はこちらを見ること。
+	int fileListX, fileListY, fileListW, fileListH;
+	int fileListRows[2];    // = fileListH / fileListItemH（切り捨て）
+	int fileListTitleW[2];  // = fileListW - fileListTitleX
 
 	// ---- スクロールバー -----------------------------------------------
-	// 部品は 6 つ。Src* は素材の中の位置と大きさ、Pos* は Rect の左上からの
-	// 相対位置（[PlayKey] の Src<n> / Pos<n> と同じ書き方）。
-	// つまみは溝の中を動くので位置が計算で決まり、押下中の矢印は通常の矢印と
-	// 同じ場所へ描くので、この 3 つは Pos を持たない。
-	int scrollX, scrollY, scrollW, scrollH;
+	// スクロールバーはファイラーの矩形の右端を分け合う。layout.ini に書くのは
+	// その幅だけで、位置はファイラーの矩形から決まる。
+	//   Width    描画に使う幅
+	//   HitWidth 当たり判定の幅（描画幅以上。左へ広げると、細いバーでも
+	//            指で掴めるようになる。Phone がそうしている）
+	int scrollWidth;
+	int scrollHitWidth;
+	// 素材の中の位置と大きさ。矢印は上端・下端に貼り付き、溝 (SrcBar) は
+	// 残りの高さぶん上から繰り返して敷かれる。押下中の矢印は通常の矢印と
+	// 同じ場所へ描く。
 	Xywh scrollSrcThumb;
 	Xywh scrollSrcUpArrowPress;
 	Xywh scrollSrcDownArrowPress;
 	Xywh scrollSrcUpArrow;
 	Xywh scrollSrcBar;
 	Xywh scrollSrcDownArrow;
+
+	// ---- スクロールバー（導出値） ---------------------------------------
+	// **layout.ini からは読まない。** PlacedFor() が埋める。
+	int scrollX, scrollY, scrollW, scrollH;  // 描画の矩形
+	int scrollHitX, scrollHitW;              // 当たり判定の矩形（y は描画と同じ）
+	int scrollGrooveH;                       // 溝を描く高さ
 	int scrollPosUpArrow[2];
 	int scrollPosBar[2];
 	int scrollPosDownArrow[2];
@@ -211,13 +264,38 @@ struct Skin {
 	// このスキンのファイルを探す場所。優先度の高い順。
 	const std::vector<std::string> &dirs() const { return dirs_; }
 
+	// ---- キャンバスの大きさに合わせる ---------------------------------
+	// 出力 (outW x outH) に収まるキャンバスの大きさを求める。伸びるのは
+	// ファイラーを置いた向きだけで、もう一方は宣言サイズのまま
+	// （残りはレターボックスになる）。
+	// stretchLimit は伸ばす方向の上限 (px)。0 なら上限なし（それでも
+	// kMaxCanvasStretch 倍で頭打ちにする）。
+	void CanvasSizeFor(int outW, int outH, int stretchLimit, int *cw, int *ch) const;
+
+	// 伸ばす方向の上限をどれだけ大きくしても、宣言サイズのこの倍率で
+	// 打ち切る。背景を使わないスキンで窓を極端に細長くしたときに、
+	// 途方もない大きさのバッファを作らないための保険。
+	static const int kMaxCanvasStretch = 8;
+
+	// キャンバスの大きさ (canvasW x canvasH) に合わせて導出値を埋めた
+	// コピーを返す。ファイラー以外側の部品の座標には、その矩形の原点が
+	// 足される（ファイラーを上や左に置いたときにずれるぶん）。
+	// **描画と当たり判定はこのコピーを見ること。**
+	Skin PlacedFor(int canvasW, int canvasH) const;
+
+	// PlacedFor() が埋める。ファイラー以外側の矩形の原点と、そのときの
+	// キャンバスの大きさ。背景ビットマップを貼る位置を決めるのに使う。
+	int placedCanvasW, placedCanvasH;
+	int placedOtherX, placedOtherY;
+
 	// ---- 導出値 -------------------------------------------------------
 	int fileListMaxItemH() const {
 		return (fileListItemH[0] > fileListItemH[1]) ? fileListItemH[0] : fileListItemH[1];
 	}
 	// つまみが動ける幅。旧 mxv の MX_CH_SCROLLBARMOVEMENT / MX_CW_TOTALVOLBARMOVEMENT。
-	// つまみは溝の中を動くので、溝の高さからつまみの高さを引いたもの。
-	int scrollBarMovement() const { return scrollSrcBar.h - scrollSrcThumb.h; }
+	// つまみは溝の中を動くので、**描く溝**の高さからつまみの高さを引いたもの
+	// （素材の溝の高さではない。溝は繰り返して敷くので伸び縮みする）。
+	int scrollBarMovement() const { return scrollGrooveH - scrollSrcThumb.h; }
 	int volBarMovement() const { return volW - volNobW; }
 
 private:

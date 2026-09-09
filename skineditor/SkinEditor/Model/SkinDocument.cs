@@ -27,6 +27,11 @@ public sealed class SkinDocument
     private readonly List<IniDocument> _baseLayoutInis = new();
 
     public SkinLayout Effective { get; private set; } = new();
+    // Effective を宣言サイズ (screenW x screenH) に合わせて解決したもの
+    // （SkinLayout.PlacedFor）。ファイラー / 一覧 / スクロールバーの矩形、
+    // 行数、曲名の幅が入っている。**プレビューの描画と枠はこちらを見る。**
+    // 編集値の表示は layout.ini に書くキーそのものなので Effective 側。
+    public SkinLayout Placed { get; private set; } = new SkinLayout().PlacedFor(640, 480);
     public ColorsValues EffectiveColors { get; private set; } = new();
 
     public bool IsDirty { get; private set; }
@@ -121,6 +126,7 @@ public sealed class SkinDocument
         for (int i = _baseLayoutInis.Count - 1; i >= 0; i--) SkinLayoutIo.ApplyLayout(_baseLayoutInis[i], eff);
         SkinLayoutIo.ApplyLayout(OwnLayoutIni, eff);
         Effective = eff;
+        Placed = eff.PlacedFor(eff.screenW, eff.screenH);
 
         EffectiveColors = HasOwnColors ? _colorsWorking : ResolveColorsFromDirs(_baseDirs);
         Changed?.Invoke();
