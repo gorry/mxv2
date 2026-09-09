@@ -137,14 +137,26 @@ def parse_brightness_range(range_str):
     max_v = min(255.0, max(v1, v2))
     return min_v, max_v
 
-def generate_hairline(width=1024, height=1024, direction='horizontal', length=150, intensity=1.0, groove=0.0, brightness_range=(0x90, 0xdf), fine=1.0):
+def generate_hairline(width=1024, height=1024, direction='horizontal', length=150, intensity=1.0, groove=0.0, brightness_range=(0x90, 0xdf), fine=1.0, seed=None):
     """
     ヘアライン加工風のテクスチャを生成する
     """
+    # 乱数の種。省略されたときはここで引いて必ず表示する。
+    # 気に入った絵が出たら、表示された値を --seed に渡せば同じものを出し直せる。
+    # ※ 同じ種でも、--width / --height / --length が変わればノイズの大きさが
+    #    変わるので別の絵になる（生成は余白 length ぶんを足した大きさで行い、
+    #    あとから中央を切り出しているため）。
+    if seed is None:
+        seed = int.from_bytes(os.urandom(4), 'big')
+    print(f"Random seed: {seed} (use --seed {seed} to reproduce)")
+
     print(f"Generating noise ({width}x{height})...")
     # 1. 一様乱数によるノイズ画像を生成
     # 金属のベースとなるノイズ
-    noise = np.random.randint(0, 256, (height, width), dtype=np.uint8)
+    # グローバルな np.random ではなく専用のジェネレータを使う（種を渡された
+    # ときだけ再現でき、他所の乱数に影響しない）。
+    rng = np.random.default_rng(seed)
+    noise = rng.integers(0, 256, (height, width), dtype=np.uint8)
 
     # 2. モーションブラーを適用して線状の模様（ヘアライン）を作る
     kernel_size = max(1, int(length))
@@ -240,6 +252,8 @@ def main():
     parser.add_argument('--rgba', type=str, default=None, help="Comma-separated RGBA values (e.g. 255,215,0,255)")
     parser.add_argument('--color-intensity', type=float, default=None, help="Color blend intensity (0.0 - 1.0)")
     parser.add_argument('--out', type=str, default='hairline.png', help="Output file name")
+    parser.add_argument('--seed', type=int, default=None,
+                        help="Random seed for the base noise (default: pick one at random and print it, so a good result can be reproduced later)")
 
     # ベーステクスチャの明るさ・レンジ
     parser.add_argument('--range', '--brightness-range', dest='brightness_range', type=str, default='0x90,0xdf',
@@ -266,7 +280,7 @@ def main():
 
     # 明るさレンジの解析
     b_min, b_max = parse_brightness_range(args.brightness_range)
-    texture = generate_hairline(gen_w, gen_h, args.direction, length=args.length, intensity=args.intensity, groove=args.groove, brightness_range=(b_min, b_max), fine=args.fine)
+    texture = generate_hairline(gen_w, gen_h, args.direction, length=args.length, intensity=args.intensity, groove=args.groove, brightness_range=(b_min, b_max), fine=args.fine, seed=args.seed)
     
     # クロップ
     texture_cropped = texture[pad:pad+args.height, pad:pad+args.width]

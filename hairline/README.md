@@ -72,6 +72,26 @@ py hairline.py --light-pos 0.35,0.4 --light-color 255,245,220 --light-intensity 
 py hairline.py --preset gold-light --light --light-color 255,255,220 --out hairline_gold_light.png
 ```
 
+### 同じ絵をもう一度出す（`--seed`）
+
+ベースのノイズは実行するたびに変わるため、**同じコマンドでも毎回違う模様**に
+なります。実行時に使った種は必ず表示されるので、気に入った絵が出たらその値を
+`--seed` に渡せば、同じものを出し直せます。
+
+```bash
+$ py hairline.py --out hairline.png
+Random seed: 2748493113 (use --seed 2748493113 to reproduce)
+...
+
+# 同じ模様をもう一度（色や光だけ変えて出し直したいときにも使える）
+py hairline.py --seed 2748493113 --out hairline.png
+```
+
+同じ種でも、`--width` / `--height` / `--length` を変えると別の絵になります
+（生成は余白 `--length` ぶんを足した大きさで行い、あとから中央を切り出して
+いるため、ノイズの大きさ自体が変わります）。色・明るさ・光のオプションは
+ノイズより後の工程なので、**種を固定したまま自由に変えられます**。
+
 ### 明るさレンジ（明暗・コントラスト）の調整
 
 `--range`（または `--brightness-range`）でベーステクスチャの最小・最大輝度を指定できます。16進数（`0x20,0x80`）または10進数（`32,128`）で指定可能です。
@@ -117,6 +137,7 @@ py hairline.py --rgba 255,180,180,255 --color-intensity 0.5 --out hairline_roseg
 * `--rgba` : カスタムカラーの指定 (例: `255,215,0,255`)
 * `--color-intensity` : 色のブレンド率 (0.0〜1.0)
 * `--out` : 出力ファイル名 (デフォルト: `hairline.png`)
+* `--seed` : ベースノイズの乱数の種 (省略時は毎回ランダム。使った値は必ず表示される)
 * `--light` : 光の反射効果を有効化
 * `--light-pos` : 反射の中心位置 `X,Y` (0.0〜1.0, デフォルト: `0.5,0.5`)
 * `--light-color` : 光源の色 `R,G,B` (0〜255, デフォルト: `255,255,255`)
