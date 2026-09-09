@@ -1,7 +1,11 @@
-# mxv2 - 人間が使うビルド用 Makefile
+# mxv2 - 手元でビルドするための Makefile
 #
-# エージェントや CI からの利用は想定していない。人が手元で
-# `make` / `make run` / `make test` のように使うためのもの。
+# 「Makefile があるなら make でビルドできたほうが楽」という、人のための入口。
+# 中身は BUILD.md に書いてある cmake / gradlew の手順をそのまま呼んでいるだけ
+# なので、**CI から使ってもエージェントが使っても構わない**（`make` /
+# `make run` / `make test` で済むぶん、そのほうが短く書けることも多い）。
+# エージェントが BUILD.md の手順を直に叩くことが多いのは、単にそちらの
+# ほうが素の手順として覚えやすいからで、ここを避ける理由があるわけではない。
 #
 # ---------------------------------------------------------------------------
 # 前提
@@ -41,6 +45,14 @@ ifeq ($(OS),Windows_NT)
 SHELL := cmd.exe
 .SHELLFLAGS := /C
 endif
+
+# 引数なしの `make` は build。
+#
+# **明示しないと build にならない。** GNU Make の既定のゴールは
+# 「ファイルの中で最初に現れた（.PHONY などの特殊ターゲットでない）ルール」で、
+# このファイルではそれが `$(WIN_BUILD_DIR)/CMakeCache.txt`（configure）に
+# なってしまう。実際、引数なしの `make` が configure だけで終わっていた。
+.DEFAULT_GOAL := build
 
 # ---------------------------------------------------------------------------
 # スイッチ（環境変数 / make の代入で指定する）
@@ -129,10 +141,20 @@ WIN_OUT_DIR := $(WIN_BUILD_DIR)/$(CONFIG)
 EXE_MAIN := $(WIN_OUT_DIR)/mxv2.exe
 EXE_CHUNKTEST := $(WIN_OUT_DIR)/mxv2_chunktest.exe
 
+CMAKE_CONFIGURE := cmake -B $(WIN_BUILD_DIR) -S . -A $(VS_ARCH)
+
 # まだ configure していなければ行う。一度 configure していれば
 # （このディレクトリが生きているかぎり）`cmake --build` だけで済む。
 $(WIN_BUILD_DIR)/CMakeCache.txt:
-	cmake -B $(WIN_BUILD_DIR) -S . -A $(VS_ARCH)
+	$(CMAKE_CONFIGURE)
+
+# `make configure` と頼まれたときは、**済んでいてもやり直す**。
+# CMakeLists.txt を触ったあとに作り直したいときのための入口なので、
+# 「もう最新です」と言われても困る（cmake の再 configure は速いし、
+# 何度やっても同じ結果になる）。
+.PHONY: configure-windows
+configure-windows:
+	$(CMAKE_CONFIGURE)
 
 .PHONY: build-windows
 build-windows: $(WIN_BUILD_DIR)/CMakeCache.txt
@@ -200,6 +222,14 @@ GRADLE_ABI_ARG := $(if $(ABI_OVERRIDE),-Pmxv2.abiFilters=$(ABI_OVERRIDE))
 APK_DIR := android/app/build/outputs/apk/$(BUILD)
 APK_PATH := $(APK_DIR)/app-$(BUILD).apk
 
+# Android には configure の段がない（Gradle がビルドのたびに自分で構成し、
+# ネイティブ側の CMake も Gradle が呼ぶ）。`make configure` を TARGET=android
+# で叩いたときに「そんなターゲットは無い」と言われないよう、何もしない入口を
+# 用意しておく。
+.PHONY: configure-android
+configure-android:
+	@echo mxv2: Android has no separate configure step; Gradle configures on every build.
+
 .PHONY: build-android
 build-android:
 	"$(GRADLEW)" -p android $(GRADLE_ABI_ARG) assemble$(CONFIG)
@@ -255,11 +285,12 @@ test-android: build-android
 # ---------------------------------------------------------------------------
 # 共通のターゲット（TARGET に応じて上のどちらかへ振り分けるだけ）
 # ---------------------------------------------------------------------------
-.PHONY: all build install uninstall clean run test help
+.PHONY: all configure build install uninstall clean run test help
 
 all: build
 
 ifeq ($(PLATFORM),windows)
+configure: configure-windows
 build: build-windows
 install: install-windows
 uninstall: uninstall-windows
@@ -267,6 +298,7 @@ clean: clean-windows
 run: run-windows
 test: test-windows
 else
+configure: configure-android
 build: build-android
 install: install-android
 uninstall: uninstall-android
@@ -279,8 +311,10 @@ help:
 	@echo mxv2 Makefile
 	@echo -----------------------------------------------------------------
 	@echo Targets:
-	@echo   all        build (default)
-	@echo   build      build the selected TARGET/BUILD
+	@echo   build      build the selected TARGET/BUILD (default)
+	@echo   all        same as build
+	@echo   configure  win32/win64: (re-)run cmake to create build/^<TARGET^>
+	@echo              android: nothing to do (Gradle configures on each build)
 	@echo   install    install the built target
 	@echo              (win32/win64: copy into PREFIX; android: adb install,
 	@echo              debug only - see notes below)
