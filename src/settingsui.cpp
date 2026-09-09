@@ -399,6 +399,8 @@ bool CheckSkinName(const std::string &name, std::string *err) {
 SettingsUi::SettingsUi()
     : ready_(false),
       visible_(false),
+      settingsWasVisible_(false),
+      settingsClosed_(false),
       hasJapaneseFont_(false),
       styleScale_(0.0f),
       touchUi_(false),
@@ -408,6 +410,8 @@ SettingsUi::SettingsUi()
       inputScale_(1.0f),
       vfs_(0),
       pendingSampleRate_(0),
+      orientEnabled_(false),
+      orientation_(Screen::kLandscape),
       localeApplyPending_(false),
       localeChanged_(false),
       pendingZoom_(0),
@@ -681,7 +685,67 @@ ImVec2 SettingsUi::DialogSize(float w, float h) const {
 // ---------------------------------------------------------------------------
 
 void SettingsUi::ScanSkins() {
-	paths_.ListSkinRefs(&skinNames_);
+	std::vector<std::string> refs;
+	paths_.ListSkinRefs(&refs);
+
+	skins_.clear();
+	for (size_t i = 0; i < refs.size(); i++) {
+		SkinItem item;
+		item.ref = refs[i];
+		// 縦横の分けは layout.ini の [Screen] Width/Height で決まるが、
+		// **Base から画面サイズを継承しているスキンがある**（同梱の
+		// Default-Portrait / Default-Landscape / Default-Midnight がそう）。
+		// 名前や layout.ini の直読みでは決められないので、本体と同じ
+		// 手順（Skin::Load）を通す。正方形は縦扱い（screen_orientation.md）。
+		Skin s;
+		std::string err;
+		item.portrait = true;
+		if (s.Load(paths_, item.ref, &err)) item.portrait = (s.screenW <= s.screenH);
+		skins_.push_back(item);
+	}
+}
+
+// 頭に付ける印は縦長四角形 (U+25AF) / 横長四角形 (U+25AD)。同梱フォントには
+// 両方あるが、それが失われて ImGui の既定フォント（ASCII だけ）に落ちたときは
+// 出せないので "|" / "-" にする（screen_orientation.md）。
+std::string SettingsUi::SkinLabel(const SkinItem &item) const {
+	const char *mark;
+	if (hasJapaneseFont_) {
+		mark = item.portrait ? "\xe2\x96\xaf" : "\xe2\x96\xad";
+	} else {
+		mark = item.portrait ? "|" : "-";
+	}
+	return std::string(mark) + " " + item.ref;
+}
+
+// スロットに合う向きのスキンを上へまとめて出す（screen_orientation.md）。
+// 合わないほうも選べる——余白が出るだけで、ユーザーの選択として許す。
+bool SettingsUi::SkinCombo(const char *label, bool portraitSlot, std::string *value) {
+	std::string shown = *value;
+	for (size_t i = 0; i < skins_.size(); i++) {
+		if (skins_[i].ref == *value) {
+			shown = SkinLabel(skins_[i]);
+			break;
+		}
+	}
+
+	bool changed = false;
+	if (ImGui::BeginCombo(label, shown.c_str())) {
+		for (int pass = 0; pass < 2; pass++) {
+			const bool want = (pass == 0) ? portraitSlot : !portraitSlot;
+			for (size_t i = 0; i < skins_.size(); i++) {
+				if (skins_[i].portrait != want) continue;
+				const bool selected = (skins_[i].ref == *value);
+				if (ImGui::Selectable(SkinLabel(skins_[i]).c_str(), selected)) {
+					*value = skins_[i].ref;
+					changed = true;
+				}
+				if (selected) ImGui::SetItemDefaultFocus();
+			}
+		}
+		ImGui::EndCombo();
+	}
+	return changed;
 }
 
 // [言語] で選ばれたときの控え。name が空なら「自動」で、動作環境の言語に
@@ -852,6 +916,13 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	// 「実際にスクロールしたか」は離したフレームでもまだ要る（押した行を
 	// 選ばせないため）ので、落とすのは次に押したときにする。
 	if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) dragMoved_ = false;
+
+	// 設定ウィンドウが閉じた瞬間を拾う。× でも ESC でも ImGui が visible_ を
+	// false にするので、代入を追うのではなく変わり目を見る。**1 フレーム
+	// 遅れて分かる**が、閉じてから効かせたいもの（縦横の切り替えかた）には
+	// それで足りる。
+	if (settingsWasVisible_ && !visible_) settingsClosed_ = true;
+	settingsWasVisible_ = visible_;
 
 	// 右クリックのメニューとバージョン情報は、設定ウィンドウが閉じていても出す。
 	BuildContextMenu(settings, draw, player, filer);
@@ -1061,29 +1132,72 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 
 	// ---- スキン ----------------------------------------------------------
 	// 2026-09-10 にユーザーの指示で [画面] から切り出した。
+	//
+	// 縦横切り替え（screen_orientation.md）が有効なときだけ、縦画面用と
+	// 横画面用の 2 つを選ぶ形になる。無効なときは今までどおり 1 つ。
+	// 画面サイズごと変わりうるので、選ばれた名前を置いておいて実際の
+	// 作り直しはメインループに任せる。
 	if (GroupHeader(Msg("Settings.SkinGroup"))) {
-		// 画面サイズごと変わりうるので、選ばれた名前を置いておいて
-		// 実際の作り直しはメインループに任せる。
-		int current = -1;
-		for (size_t i = 0; i < skinNames_.size(); i++) {
-			if (skinNames_[i] == settings->skinName) current = (int)i;
-		}
-		if (ImGui::BeginCombo(Msg("Settings.Skin"), (current >= 0) ? skinNames_[current].c_str()
-		                                              : settings->skinName.c_str())) {
-			for (size_t i = 0; i < skinNames_.size(); i++) {
-				const bool selected = ((int)i == current);
-				if (ImGui::Selectable(skinNames_[i].c_str(), selected)) {
-					pendingSkin_ = skinNames_[i];
-					changedFields_ |= Settings::kFieldSkin;
+		if (!orientEnabled_) {
+			// 縦横切り替えが無効なときは今までどおり。**印も並べ替えも
+			// しない**——縦横の区別が意味を持たないので、名前の順のまま出す。
+			if (ImGui::BeginCombo(Msg("Settings.Skin"), settings->skinName.c_str())) {
+				for (size_t i = 0; i < skins_.size(); i++) {
+					const bool selected = (skins_[i].ref == settings->skinName);
+					if (ImGui::Selectable(skins_[i].ref.c_str(), selected)) {
+						settings->skinName = skins_[i].ref;
+						pendingSkin_ = settings->skinName;
+						changedFields_ |= Settings::kFieldSkin;
+					}
+					if (selected) ImGui::SetItemDefaultFocus();
 				}
-				if (selected) ImGui::SetItemDefaultFocus();
+				ImGui::EndCombo();
 			}
-			ImGui::EndCombo();
-		}
-		SameLineOrWrap(Msg("Button.Rescan"));
-		if (ImGui::Button(Msg("Button.Rescan"))) {
-			ScanSkins();
-			pendingSkin_ = settings->skinName;
+			SameLineOrWrap(Msg("Button.Rescan"));
+			if (ImGui::Button(Msg("Button.Rescan"))) {
+				ScanSkins();
+				pendingSkin_ = settings->skinName;
+			}
+		} else {
+			// いま出ている向きのほうを選び直したときだけ、その場で作り直す。
+			// もう片方は ini を書き換えるだけ（次にその向きになったら効く）。
+			if (SkinCombo(Msg("Settings.SkinPortrait"), true, &settings->skinPortrait)) {
+				changedFields_ |= Settings::kFieldOrientSkin;
+				if (orientation_ == Screen::kPortrait) pendingSkin_ = settings->skinPortrait;
+			}
+			if (SkinCombo(Msg("Settings.SkinLandscape"), false, &settings->skinLandscape)) {
+				changedFields_ |= Settings::kFieldOrientSkin;
+				if (orientation_ == Screen::kLandscape) pendingSkin_ = settings->skinLandscape;
+			}
+
+			// 切り替えかた。**選び直しても、効くのはダイアログを閉じてから**
+			// （screen_orientation.md）。開いている最中に端末を回されると、
+			// 何を設定しているのか分からなくなるため。
+			{
+				static const char *const kKeys[Settings::kNumOrientModes] = {
+					"Settings.OrientPortraitOnly", "Settings.OrientLandscapeOnly",
+					"Settings.OrientStartup", "Settings.OrientAlways",
+				};
+				int mode = settings->orientationMode;
+				if (mode < 0 || mode >= Settings::kNumOrientModes) {
+					mode = Settings::kOrientAlways;
+				}
+				if (ImGui::BeginCombo(Msg("Settings.OrientMode"), Msg(kKeys[mode]))) {
+					for (int i = 0; i < Settings::kNumOrientModes; i++) {
+						const bool selected = (i == mode);
+						if (ImGui::Selectable(Msg(kKeys[i]), selected)) {
+							settings->orientationMode = i;
+							changedFields_ |= Settings::kFieldOrientMode;
+						}
+						if (selected) ImGui::SetItemDefaultFocus();
+					}
+					ImGui::EndCombo();
+				}
+			}
+			if (ImGui::Button(Msg("Button.Rescan"))) {
+				ScanSkins();
+			}
+			TextNote(Msg("Settings.OrientNote"));
 		}
 		GroupTrailingSpace();
 	}

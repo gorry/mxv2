@@ -53,6 +53,36 @@ public:
 	static const int kZoomMin = 100;
 	static const int kZoomMax = 400;
 
+	// ---- 画面の向き（screen_orientation.md） --------------------------
+	// スキンを選ぶためだけの向き。上下反転は区別しない（反転しても
+	// 縦は縦、横は横なので、スキンを替える理由が無い）。
+	enum Orientation {
+		kPortrait = 0,
+		kLandscape,
+	};
+
+	// -orientlock の値。0 なら実物（デスクトップではダミー）を見る。
+	enum OrientationLock {
+		kOrientLockNone = 0,
+		kOrientLockPortrait,
+		kOrientLockLandscape,
+	};
+	void SetOrientationLock(int lock) { orientLock_ = lock; }
+	int orientationLock() const { return orientLock_; }
+
+	// いまの向き。**端末の「自然な向き」ではなく出力の縦横比で決める。**
+	// SDL_GetDisplayOrientation は SDLActivity が display.getRotation() を
+	// そのまま写しているので、横が自然な向きのタブレットでは逆に出る。
+	//
+	// デスクトップでは常に横（-orientlock で変えられる）。窓を自由に
+	// 変形できるので縦横比では決められない——変形するたびにスキンが
+	// 入れ替わってしまう。
+	Orientation orientation() const;
+
+	// ウィンドウを作る前に使う版。起動時にどちらのスキンを読むかを
+	// 決めるのに要る。**SDL_Init(SDL_INIT_VIDEO) の後に呼ぶこと。**
+	Orientation displayOrientation() const;
+
 	// キャンバスを拡大するときの補間方法。
 	enum ScaleMode {
 		// 最近傍。ドットがそのまま出るが、非整数倍だと 1px と 2px が混ざって
@@ -112,6 +142,16 @@ public:
 	// **ウィンドウの大きさも「キャンバス x 表示倍率」に揃え直す。**
 	bool Resize(int width, int height, std::string *err);
 
+	// 窓の大きさをこちらから決めてよいか。
+	//
+	// **Android では駄目。** 窓＝画面で、大きさを決めるのは OS のほう。
+	// SDL の Android バックエンドは SetWindowSize を持たないので、
+	// SDL_SetWindowSize を呼ぶと **SDL 側の記録（window->w/h）だけが変わり**、
+	// 実際の描画面と食い違う。レンダラの出力サイズもその記録から来るので、
+	// 絵が「実物より小さいビューポート」に描かれて画面の隅に寄る
+	// （実機で踏んだ: 2400x1080 の画面に 720x480 が左下に出た）。
+	static bool CanResizeWindow();
+
 	// キャンバスだけ変える。ウィンドウには触らない。
 	// 窓のリサイズに追いかけてキャンバスを作り直すとき（fullscreen.md）は
 	// こちらを使う。Resize から呼ぶと窓の大きさを取り合いになるため。
@@ -159,6 +199,10 @@ private:
 	std::vector<uint32_t> pixels_;
 	int width_, height_;
 	int zoom_;  // 表示倍率 (%)
+
+	int orientLock_;  // OrientationLock
+	// 実物の向きを見るところ（Android だけ）。w/h の大小で決める。
+	Orientation OrientationOf(int w, int h) const;
 
 	ScaleMode scaleMode_;
 	// sharp-bilinear の 1 段目の受け皿。キャンバスの整数倍。

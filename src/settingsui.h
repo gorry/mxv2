@@ -71,6 +71,20 @@ public:
 	}
 	bool visible() const { return visible_; }
 
+	// 縦横切り替えの状態。main が毎フレーム教える（screen_orientation.md）。
+	void SetOrientationState(bool enabled, int orientation) {
+		orientEnabled_ = enabled;
+		orientation_ = orientation;
+	}
+
+	// 設定ウィンドウが閉じた瞬間かどうかを 1 度だけ返す。
+	// 「縦横の切り替えかた」は**閉じてから**効かせる決まりなので、その合図に使う。
+	bool TakeSettingsClosed() {
+		const bool v = settingsClosed_;
+		settingsClosed_ = false;
+		return v;
+	}
+
 	// スキンの配色を編集するダイアログ (F2)。設定ウィンドウとは独立に開閉する。
 	// F2 も開くだけ。閉じるのは ESC か × ボタン（設定ウィンドウと同じ）。
 	void OpenColors() {
@@ -280,6 +294,8 @@ private:
 
 	bool ready_;
 	bool visible_;
+	bool settingsWasVisible_;  // 前のフレームの visible_（閉じた瞬間を拾う）
+	bool settingsClosed_;
 	bool hasJapaneseFont_;
 	float styleScale_;
 	ImGuiStyle baseStyle_;
@@ -310,9 +326,26 @@ private:
 
 	AssetPaths paths_;
 	Vfs *vfs_;
-	std::vector<std::string> skinNames_;
+	// 選べるスキン。縦横切り替え（screen_orientation.md）のために、
+	// 名前だけでなく**縦横どちら向けか**も持つ。
+	struct SkinItem {
+		std::string ref;
+		bool portrait;  // 正方形は縦扱い
+	};
+	std::vector<SkinItem> skins_;
 	std::string pendingSkin_;
 	int pendingSampleRate_;
+
+	// 縦横切り替えが有効か（起動オプションで決まる）と、いまの向き。
+	// main が毎フレーム渡す。
+	bool orientEnabled_;
+	int orientation_;  // Screen::Orientation
+
+	// スキン 1 つぶんの表示名。頭に縦横の印を付ける。
+	std::string SkinLabel(const SkinItem &item) const;
+	// スキンを選ぶドロップダウン。portraitSlot が true なら縦向きのスキンを
+	// 上へまとめる。選び直されたら true。
+	bool SkinCombo(const char *label, bool portraitSlot, std::string *value);
 
 	// 言語。選べるのは同梱ぶんだけ（Init で数え上げる）。
 	std::vector<LocaleInfo> locales_;

@@ -31,6 +31,7 @@
 #include "message.h"
 #include "mouse.h"
 #include "nowplaying.h"
+#include "orientlock.h"
 #include "player.h"
 #include "screen.h"
 #include "settings.h"
@@ -192,8 +193,25 @@ struct Options {
 	// 出力サンプリングレート。0 なら設定 (ini) の値を使う。
 	int sampleRate;
 
+	// ---- 画面の向きでスキンを切り替える（screen_orientation.md） --------
+	// -orient <0|1>。-1 なら指定なしで、プラットフォームごとの既定
+	// （Android は ON、それ以外は OFF）になる。
+	int orient;
+	// -orientlock <0|1|2>。スキンを選ぶための向きを固定する**デバッグ用**。
+	// 0 なら実物（デスクトップではダミー）を見る。回転の制御には効かない。
+	int orientLock;
+	// -skin が指定されたか。指定されていたら縦横切り替えは OFF にする
+	// （名指しされたスキンを勝手に差し替えない）。
+	bool skinSet;
+
 	Options()
-	    : latencyMs(0), latencySet(false), quitOnEnd(false), sampleRate(0) {}
+	    : latencyMs(0),
+	      latencySet(false),
+	      quitOnEnd(false),
+	      sampleRate(0),
+	      orient(-1),
+	      orientLock(0),
+	      skinSet(false) {}
 };
 
 // 演奏位置の移動幅。, / . が普通、Shift 付きの < / > が高速。
@@ -440,6 +458,21 @@ bool ParseArgs(int argc, char **argv, Options *opt, mxv2::Settings *st) {
 			i++;  // 同上
 		} else if (strcmp(a, "-skin") == 0 && i + 1 < argc) {
 			st->skinName = argv[++i];
+			opt->skinSet = true;
+		} else if (strcmp(a, "-orient") == 0 && i + 1 < argc) {
+			opt->orient = atoi(argv[++i]);
+			if (opt->orient != 0 && opt->orient != 1) {
+				printf("ERROR: %s\n",
+				       mxv2::MsgF("Error.BadOption", a, argv[i]).c_str());
+				return false;
+			}
+		} else if (strcmp(a, "-orientlock") == 0 && i + 1 < argc) {
+			opt->orientLock = atoi(argv[++i]);
+			if (opt->orientLock < 0 || opt->orientLock > 2) {
+				printf("ERROR: %s\n",
+				       mxv2::MsgF("Error.BadOption", a, argv[i]).c_str());
+				return false;
+			}
 		} else if (strcmp(a, "-console") == 0) {
 			// 実際の処理は main の先頭 (SetupConsole)。ここでは受け流すだけ。
 		} else if (strcmp(a, "-h") == 0 || strcmp(a, "-help") == 0) {
@@ -660,6 +693,41 @@ void ForceRedrawAll(mxv2::Screen *screen, mxv2::TextLayer *textLayer, mxv2::Draw
 	player->RequestStatusRefresh();
 	*chromeRefresh = true;
 	*fileListRefresh = true;
+}
+
+// ---- 画面の向きでスキンを切り替える（screen_orientation.md） --------------
+
+// 切り替えかたから、いま使うべき向きを決める。「起動時の方向で切り替える」と
+// 「常に切り替える」は、渡された今の向きをそのまま使う。
+mxv2::Screen::Orientation OrientationForMode(int mode, mxv2::Screen::Orientation now) {
+	if (mode == mxv2::Settings::kOrientPortraitOnly) return mxv2::Screen::kPortrait;
+	if (mode == mxv2::Settings::kOrientLandscapeOnly) return mxv2::Screen::kLandscape;
+	return now;
+}
+
+// 端末そのものの向きを、切り替えかたに合わせて固定する（Android だけ。
+// それ以外では orientlock が何もしない）。
+//
+// **固定しても上下反転は許す**（SENSOR_PORTRAIT / SENSOR_LANDSCAPE）。
+// 「常に切り替える」なら自由に回してよい。
+void ApplyOrientationMode(int mode, mxv2::Screen::Orientation now) {
+	switch (mode) {
+		case mxv2::Settings::kOrientPortraitOnly:
+			mxv2::orientlock::Set(mxv2::orientlock::kPortrait);
+			break;
+		case mxv2::Settings::kOrientLandscapeOnly:
+			mxv2::orientlock::Set(mxv2::orientlock::kLandscape);
+			break;
+		case mxv2::Settings::kOrientStartup:
+			// 起動した（か、設定を閉じた）ときの向きで固定する。
+			mxv2::orientlock::Set((now == mxv2::Screen::kPortrait)
+			                          ? mxv2::orientlock::kPortrait
+			                          : mxv2::orientlock::kLandscape);
+			break;
+		default:
+			mxv2::orientlock::Set(mxv2::orientlock::kFree);
+			break;
+	}
 }
 
 // 窓の大きさに合わせてキャンバスを作り直す（fullscreen.md）。
@@ -1127,17 +1195,51 @@ int main(int argc, char **argv) {
 	// うまくいかないときの逃げ場。同梱ぶんは必ずあるはずなので名指しする。
 	const std::string kFallbackSkin = mxv2::MakeBundledSkinRef("Default");
 
+	// **ウィンドウを開くのはスキンを読んだ後**（スキンが画面サイズを決める）
+	// だが、起動時の向きを見るのに Screen が要るので、器だけ先に作っておく。
+	mxv2::Screen screen;
+
+	// ---- 画面の向きでスキンを切り替える（screen_orientation.md） ----------
+	//
+	// 機能そのものの ON/OFF は起動オプションで決まり、**ini には残さない**。
+	// 既定は Android が ON、それ以外が OFF。-skin で名指しされたときは、
+	// そのスキンを勝手に差し替えないよう OFF にする。
+	bool orientEnabled = false;
+#ifdef __ANDROID__
+	orientEnabled = true;
+#endif
+	if (opt.orient >= 0) orientEnabled = (opt.orient != 0);
+	if (opt.skinSet) orientEnabled = false;
+	screen.SetOrientationLock(opt.orientLock);
+
+	// 起動時の向き。**ウィンドウを作る前**なので画面のほうを見る
+	// （SDL_Init(SDL_INIT_VIDEO) は済んでいる）。「縦画面のみ」「横画面のみ」の
+	// ときは見るまでもなく決まっているので、OrientationForMode が捨てる。
+	mxv2::Screen::Orientation orientNow = mxv2::Screen::kLandscape;
+	if (orientEnabled) {
+		orientNow = OrientationForMode(settings.orientationMode, screen.displayOrientation());
+	}
+	// いま使うべきスキン。機能 OFF なら今までどおり [Screen] Skin。
+	const std::string wantSkin =
+	    !orientEnabled ? settings.skinName
+	                   : ((orientNow == mxv2::Screen::kPortrait) ? settings.skinPortrait
+	                                                            : settings.skinLandscape);
+
 	// スキンが画面サイズを決めるので、ウィンドウより先に読む。
 	// 指定のスキンが無ければ同梱の Default へ落ちる（ini に書かれたスキンの
 	// フォルダをユーザーが消しても起動できるように）。
+	// **落ちたことは ini に書き戻さない**（縦横切り替えのときは特に、
+	// スキンを置き直せば次の起動で元の名前へ戻ってほしいため）。
 	mxv2::Skin skin;
 	{
 		std::string err;
-		if (!skin.Load(paths, settings.skinName, &err)) {
+		if (!skin.Load(paths, wantSkin, &err)) {
 			Warn(&warnings, err);
-			settings.skinName = kFallbackSkin;
-			dirtyFields |= mxv2::Settings::kFieldSkin;
-			if (!skin.Load(paths, settings.skinName, &err)) {
+			if (!orientEnabled) {
+				settings.skinName = kFallbackSkin;
+				dirtyFields |= mxv2::Settings::kFieldSkin;
+			}
+			if (!skin.Load(paths, kFallbackSkin, &err)) {
 				printf("ERROR: %s\n", err.c_str());
 				printf("       %s\n", mxv2::Msg("Error.HintAssets"));
 				SDL_Quit();
@@ -1146,7 +1248,6 @@ int main(int argc, char **argv) {
 		}
 	}
 
-	mxv2::Screen screen;
 	{
 		std::string err;
 		if (!screen.Open("mxv2", skin.screenW, skin.screenH, settings.zoomPercent, &err)) {
@@ -1160,7 +1261,11 @@ int main(int argc, char **argv) {
 		// 前回の大きさに戻す。**縮める方向には戻さない**（表示倍率が
 		// 100% を割るとキャンバスが潰れるので、宣言サイズ x 表示倍率を
 		// 下限にする）。伸びたぶんはファイラーの行数として戻ってくる。
-		if (settings.savePosition && settings.windowW > 0 && settings.windowH > 0) {
+		// **窓の大きさを決められるプラットフォームだけ**（Android では窓＝画面で、
+		// SDL_SetWindowSize を呼ぶと SDL 側の記録だけがずれる。Screen の
+		// CanResizeWindow のコメント）。
+		if (mxv2::Screen::CanResizeWindow() && settings.savePosition &&
+		    settings.windowW > 0 && settings.windowH > 0) {
 			const int minW = skin.screenW * settings.zoomPercent / 100;
 			const int minH = skin.screenH * settings.zoomPercent / 100;
 			const int w = (settings.windowW > minW) ? settings.windowW : minW;
@@ -1174,6 +1279,10 @@ int main(int argc, char **argv) {
 		if (settings.scaleFilter != resolved) dirtyFields |= mxv2::Settings::kFieldFilter;
 		settings.scaleFilter = resolved;
 	}
+
+	// 端末の向きを、切り替えかたに合わせて固定する（Android だけ）。
+	// ここまで来ればウィンドウはできているので、Activity へ要求を出せる。
+	if (orientEnabled) ApplyOrientationMode(settings.orientationMode, orientNow);
 
 	// ファイラーと曲名の文字は、キャンバスとは別に出力解像度で描いて重ねる。
 	mxv2::TextLayer textLayer;
@@ -1279,6 +1388,10 @@ int main(int argc, char **argv) {
 	bool autoNext = settings.autoNext;    // CONT
 	bool autoRepeat = settings.autoRepeat;  // REPEAT
 
+	// 次のフレームの頭で取り替えるスキン。設定ウィンドウで選ばれたときと、
+	// 画面の向きが変わったときに入る。
+	std::string pendingSkin;
+
 	// 窓の大きさが変わった印。フレームの頭でキャンバスを合わせ直す。
 	// 起動直後にも 1 回通して、窓の縦横比にキャンバスを寄せる。
 	bool windowResized = true;
@@ -1342,6 +1455,71 @@ int main(int argc, char **argv) {
 	bool dropGroup = false;
 
 	while (!quit) {
+		// 画面の向きが変わったらスキンを取り替える（screen_orientation.md）。
+		// 見るのは窓の縦横比で、端末の「自然な向き」ではない（Screen の
+		// コメント）。「常に切り替える」以外は起動時（と設定を閉じたとき）に
+		// 決めたきりなので、ここでは何もしない。
+		if (orientEnabled && settings.orientationMode == mxv2::Settings::kOrientAlways) {
+			const mxv2::Screen::Orientation now = screen.orientation();
+			if (now != orientNow) {
+				orientNow = now;
+				pendingSkin = (now == mxv2::Screen::kPortrait) ? settings.skinPortrait
+				                                               : settings.skinLandscape;
+			}
+		}
+
+		// スキンの差し替え。設定ウィンドウで選ばれたときと、画面の向きが
+		// 変わったとき（screen_orientation.md）に来る。
+		//
+		// **キャンバスを窓へ合わせるより前に置くこと。** 逆だと、回転した
+		// フレームでキャンバスだけ先に追従して、1 フレームぶん「旧スキンが
+		// 引き伸びた絵」が出る。
+		if (!pendingSkin.empty()) {
+			const std::string name = pendingSkin;
+			pendingSkin.clear();
+
+			mxv2::Skin next;
+			std::string err;
+			if (!next.Load(paths, name, &err)) {
+				printf("warning  : %s\n",
+				       mxv2::MsgF("Log.SkinUnreadable", name, err).c_str());
+			} else {
+				const mxv2::Skin prev = skin;
+				skin = next;
+
+				// 順番が大事: 画面 -> 文字レイヤー -> DrawScreen。
+				// DrawScreen::Init は最後に Reload() まで済ませて曲名を
+				// 描き直すので、その前にレイヤーを作り直しておく。
+				bool ok = screen.Resize(skin.screenW, skin.screenH, &err);
+				if (ok) {
+					textLayer.SetFontDirs(mxv2::FontSearchDirs(skin, paths));
+					textLayer.Rebuild(&screen, &err);
+					ok = draw.Init(&skin, &err);
+				}
+				if (!ok) {
+					printf("warning  : %s\n",
+					       mxv2::MsgF("Log.SkinSwitchFailed", name, err).c_str());
+					skin = prev;
+					screen.Resize(skin.screenW, skin.screenH, &err);
+					textLayer.SetFontDirs(mxv2::FontSearchDirs(skin, paths));
+					textLayer.Rebuild(&screen, &err);
+					draw.Init(&skin, &err);
+				} else if (!orientEnabled) {
+					settings.skinName = name;
+				}
+
+				draw.SetFileListFontSize(settings.fileListFontSize);
+				filer.SetViewMetrics(draw.fileListRows(), draw.fileListItemH());
+				player.RequestStatusRefresh();
+				chromeRefresh = true;
+				fileListRefresh = true;
+				// 宣言サイズが同じスキンへ移ったときは窓の大きさが変わらず、
+				// リサイズのイベントも来ない。分割が違えばキャンバスは
+				// 変わるので、次のフレームで合わせ直させる。
+				windowResized = true;
+			}
+		}
+
 		// 窓の大きさが変わっていたらキャンバスを作り直す。イベントごとでは
 		// なくフレームに 1 回にすることが、そのままリサイズ中のデバウンスに
 		// なる。表示倍率やスキンを変えたあとの追随もここが受け持つ。
@@ -1706,54 +1884,6 @@ int main(int argc, char **argv) {
 			fileListRefresh = true;
 		}
 
-		// 設定ウィンドウでスキンが選ばれていたら、ここで作り直す。
-		// 画面サイズごと変わりうるので、UI の中ではやらない。
-		if (!ui.pendingSkin().empty()) {
-			const std::string name = ui.pendingSkin();
-			ui.ClearPendingSkin();
-
-			mxv2::Skin next;
-			std::string err;
-			if (!next.Load(paths, name, &err)) {
-				printf("warning  : %s\n",
-				       mxv2::MsgF("Log.SkinUnreadable", name, err).c_str());
-			} else {
-				const mxv2::Skin prev = skin;
-				skin = next;
-
-				// 順番が大事: 画面 -> 文字レイヤー -> DrawScreen。
-				// DrawScreen::Init は最後に Reload() まで済ませて曲名を
-				// 描き直すので、その前にレイヤーを作り直しておく。
-				bool ok = screen.Resize(skin.screenW, skin.screenH, &err);
-				if (ok) {
-					textLayer.SetFontDirs(mxv2::FontSearchDirs(skin, paths));
-					textLayer.Rebuild(&screen, &err);
-					ok = draw.Init(&skin, &err);
-				}
-				if (!ok) {
-					printf("warning  : %s\n",
-					       mxv2::MsgF("Log.SkinSwitchFailed", name, err).c_str());
-					skin = prev;
-					screen.Resize(skin.screenW, skin.screenH, &err);
-					textLayer.SetFontDirs(mxv2::FontSearchDirs(skin, paths));
-					textLayer.Rebuild(&screen, &err);
-					draw.Init(&skin, &err);
-				} else {
-					settings.skinName = name;
-				}
-
-				draw.SetFileListFontSize(settings.fileListFontSize);
-				filer.SetViewMetrics(draw.fileListRows(), draw.fileListItemH());
-				player.RequestStatusRefresh();
-				chromeRefresh = true;
-				fileListRefresh = true;
-				// 宣言サイズが同じスキンへ移ったときは窓の大きさが変わらず、
-				// リサイズのイベントも来ない。分割が違えばキャンバスは
-				// 変わるので、次のフレームで合わせ直させる。
-				windowResized = true;
-			}
-		}
-
 		// 出力サンプリングレートが選ばれていたら、ここで開き直す。
 		// レートは MXDRV とオーディオ装置を開くときに決まるので、途中では
 		// 変えられない。曲・演奏位置・一時停止・音量・チャンネルマスクを
@@ -1887,7 +2017,29 @@ int main(int argc, char **argv) {
 				newDirt |= mxv2::Settings::kFieldWindowPos;
 			}
 		}
+		ui.SetOrientationState(orientEnabled, orientNow);
 		ui.Build(&settings, &draw, &player, &filer, &screen);
+		// 設定ウィンドウでスキンが選ばれていたら、次のフレームの頭で
+		// 取り替える（上のブロック）。
+		if (!ui.pendingSkin().empty()) {
+			pendingSkin = ui.pendingSkin();
+			ui.ClearPendingSkin();
+		}
+		// 切り替えかたを変えたときは、**ダイアログを閉じてから**効かせる
+		// （screen_orientation.md）。閉じた時点の向きで選び直す。
+		if (orientEnabled && ui.TakeSettingsClosed()) {
+			ApplyOrientationMode(settings.orientationMode, screen.orientation());
+			if (settings.orientationMode != mxv2::Settings::kOrientAlways) {
+				const mxv2::Screen::Orientation want = OrientationForMode(
+				    settings.orientationMode, screen.orientation());
+				if (want != orientNow) {
+					orientNow = want;
+					pendingSkin = (want == mxv2::Screen::kPortrait)
+					                  ? settings.skinPortrait
+					                  : settings.skinLandscape;
+				}
+			}
+		}
 		newDirt |= ui.TakeChangedFields();
 		// [ファイルシステムの設定] は Vfs のマウント一覧を直に触るので、
 		// 書き戻す前にそこから拾い直す。

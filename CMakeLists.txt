@@ -167,6 +167,7 @@ set(MXV2_SOURCES
 	src/message.cpp
 	src/mouse.cpp
 	src/nowplaying.cpp
+	src/orientlock.cpp
 	src/player.cpp
 	src/safaccess.cpp
 	src/screen.cpp
@@ -196,6 +197,7 @@ set(MXV2_SOURCES
 	src/mouse.h
 	src/mxdrvptr.h
 	src/nowplaying.h
+	src/orientlock.h
 	src/safaccess.h
 	src/player.h
 	src/screen.h

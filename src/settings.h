@@ -21,8 +21,30 @@ struct Settings {
 	// -locale はこれより優先されるが、ini には残さない。
 	std::string locale;
 
+	// 画面の向きでスキンを切り替えるときのふるまい
+	// （screen_orientation.md）。UI では「縦画面のみ」「横画面のみ」
+	// 「起動時の方向で切り替える」「常に切り替える」の 4 つに見せる。
+	enum OrientationMode {
+		kOrientPortraitOnly = 0,
+		kOrientLandscapeOnly,
+		kOrientStartup,  // 起動時（と設定を閉じたとき）の向きで決めて、以後は固定
+		kOrientAlways,   // 向きが変わるたびに切り替える
+		kNumOrientModes
+	};
+	// ini に書く名前との変換。綴りは大文字小文字を問わない。
+	static const char *OrientationModeName(int mode);
+	static int OrientationModeFromName(const std::string &name, int fallback);
+
 	// [Screen]
+	// **スキンの設定は 2 系統ある**（screen_orientation.md）。
+	//   skinName                      … 縦横切り替えが OFF のとき使う（従来どおり）
+	//   skinPortrait / skinLandscape  … ON のとき、向きごとに使う
+	//   orientationMode               … ON のときの切り替えかた
+	// 機能の ON/OFF そのものは起動オプション (-orient) で決まり、保存しない。
 	std::string skinName;  // skin/<名前>（同梱ぶんとユーザーぶんの両方から探す）
+	std::string skinPortrait;
+	std::string skinLandscape;
+	int orientationMode;  // OrientationMode
 	// 表示倍率 (%)。100 でドット等倍。0 なら「まだ決まっていない」で、
 	// 初回起動時にシステムの拡大率 (175% など) を拾って埋める。
 	int zoomPercent;
@@ -118,6 +140,9 @@ struct Settings {
 		kFieldFileListScroll = 1 << 16,
 		kFieldContRepeat = 1 << 17,
 		kFieldLocale = 1 << 18,
+		// 縦横切り替えが ON のときのスキン 2 つと、切り替えかた。
+		kFieldOrientSkin = 1 << 19,
+		kFieldOrientMode = 1 << 20,
 	};
 
 	Settings();

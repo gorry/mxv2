@@ -17,8 +17,35 @@ const char kDefaultSkinName[] = "Phone";
 const char kDefaultSkinName[] = "Default";
 #endif
 
+// 縦横切り替えが ON のときの既定のスキン。どちらも同梱ぶんで、今のところ
+// Phone / Phone-R への別名（layout.ini に Base しか書いていない）。
+const char kDefaultSkinPortrait[] = "assets:Default-Portrait";
+const char kDefaultSkinLandscape[] = "assets:Default-Landscape";
+
+// OrientationMode の並び。ini には名前で書く（手で編集する人に分かるように、
+// また layout.ini の [Screen] FilerSide と同じ流儀に揃えるため）。
+static const char *const kOrientModeNames[Settings::kNumOrientModes] = {
+	"PortraitOnly", "LandscapeOnly", "Startup", "Always",
+};
+
+const char *Settings::OrientationModeName(int mode) {
+	if (mode < 0 || mode >= kNumOrientModes) mode = kOrientAlways;
+	return kOrientModeNames[mode];
+}
+
+int Settings::OrientationModeFromName(const std::string &name, int fallback) {
+	if (name.empty()) return fallback;
+	for (int i = 0; i < kNumOrientModes; i++) {
+		if (CompareNoCase(name, kOrientModeNames[i]) == 0) return i;
+	}
+	return fallback;
+}
+
 Settings::Settings()
     : skinName(kDefaultSkinName),
+      skinPortrait(kDefaultSkinPortrait),
+      skinLandscape(kDefaultSkinLandscape),
+      orientationMode(kOrientAlways),
       zoomPercent(0),
       legacyScale(0),
       scaleFilter("sharp"),
@@ -55,6 +82,10 @@ bool Settings::Load(const std::string &path) {
 
 	// 旧い ini は Theme= だった。スキンのフォルダ名として読み替える。
 	skinName = ini.GetString("Screen", "Skin", ini.GetString("Screen", "Theme", skinName));
+	skinPortrait = ini.GetString("Screen", "SkinPortrait", skinPortrait);
+	skinLandscape = ini.GetString("Screen", "SkinLandscape", skinLandscape);
+	orientationMode =
+	    OrientationModeFromName(ini.GetString("Screen", "Orientation", std::string()), orientationMode);
 	zoomPercent = ini.GetInt("Screen", "Zoom", zoomPercent);
 	legacyScale = ini.GetInt("Screen", "Scale", 0);
 	scaleFilter = ini.GetString("Screen", "Filter", scaleFilter);
@@ -130,6 +161,9 @@ bool Settings::Save(const std::string &path) const {
 	ini.SetString("UI", "Locale", locale);
 
 	ini.SetString("Screen", "Skin", skinName);
+	ini.SetString("Screen", "SkinPortrait", skinPortrait);
+	ini.SetString("Screen", "SkinLandscape", skinLandscape);
+	ini.SetString("Screen", "Orientation", OrientationModeName(orientationMode));
 	ini.SetInt("Screen", "Zoom", zoomPercent);
 	ini.SetString("Screen", "Filter", scaleFilter);
 	ini.SetInt("Screen", "TouchUI", touchUi);
@@ -203,6 +237,11 @@ bool Settings::SaveFields(const std::string &path, unsigned fields) const {
 
 	if (fields & kFieldLocale) out.locale = locale;
 	if (fields & kFieldSkin) out.skinName = skinName;
+	if (fields & kFieldOrientSkin) {
+		out.skinPortrait = skinPortrait;
+		out.skinLandscape = skinLandscape;
+	}
+	if (fields & kFieldOrientMode) out.orientationMode = orientationMode;
 	if (fields & kFieldZoom) out.zoomPercent = zoomPercent;
 	if (fields & kFieldFilter) out.scaleFilter = scaleFilter;
 	if (fields & kFieldTouchUi) out.touchUi = touchUi;

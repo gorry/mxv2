@@ -20,6 +20,8 @@ public class MainActivity extends SDLActivity {
 		SafBridge.setActivity(this);
 		// 演奏状態の通知の窓口（src/nowplaying.cpp）。同じく Activity が要る。
 		PlaybackBridge.setActivity(this);
+		// 端末の向きの固定の窓口（src/orientlock.cpp）。
+		OrientationBridge.setActivity(this);
 		super.onCreate(savedInstanceState);
 		requestNotificationPermission();
 	}

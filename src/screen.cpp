@@ -29,6 +29,7 @@ Screen::Screen()
       width_(0),
       height_(0),
       zoom_(100),
+      orientLock_(kOrientLockNone),
       scaleMode_(kScaleSharp),
       preTexture_(0),
       preScale_(0) {}
@@ -344,9 +345,57 @@ bool Screen::ResetTextures(std::string *err) {
 	return true;
 }
 
+// ---------------------------------------------------------------------------
+// 画面の向き（screen_orientation.md）
+// ---------------------------------------------------------------------------
+
+Screen::Orientation Screen::OrientationOf(int w, int h) const {
+	// -orientlock が指定されていれば、実物は見ない（デバッグ用）。
+	if (orientLock_ == kOrientLockPortrait) return kPortrait;
+	if (orientLock_ == kOrientLockLandscape) return kLandscape;
+
+#ifdef __ANDROID__
+	// 正方形は縦扱い（screen_orientation.md）。スキンの分け方と揃える。
+	if (w > 0 && h > 0) return (w > h) ? kLandscape : kPortrait;
+	return kPortrait;
+#else
+	// デスクトップに「画面の向き」は無い。窓は自由に変形できるので
+	// 縦横比では決められず、常に横を返す。
+	(void)w;
+	(void)h;
+	return kLandscape;
+#endif
+}
+
+Screen::Orientation Screen::orientation() const {
+	int w = 0, h = 0;
+	GetOutputSize(&w, &h);
+	return OrientationOf(w, h);
+}
+
+Screen::Orientation Screen::displayOrientation() const {
+	SDL_Rect r;
+	SDL_zero(r);
+	if (SDL_GetDisplayBounds(0, &r) != 0) {
+		r.w = 0;
+		r.h = 0;
+	}
+	return OrientationOf(r.w, r.h);
+}
+
+bool Screen::CanResizeWindow() {
+#ifdef __ANDROID__
+	return false;
+#else
+	return true;
+#endif
+}
+
 bool Screen::Resize(int width, int height, std::string *err) {
 	if (!SetCanvasSize(width, height, err)) return false;
-	if (window_ != 0) SDL_SetWindowSize(window_, width_ * zoom_ / 100, height_ * zoom_ / 100);
+	if (window_ != 0 && CanResizeWindow()) {
+		SDL_SetWindowSize(window_, width_ * zoom_ / 100, height_ * zoom_ / 100);
+	}
 	return true;
 }
 
@@ -382,7 +431,7 @@ void Screen::SetZoom(int zoomPercent) {
 	if (zoomPercent < kZoomMin) zoomPercent = kZoomMin;
 	if (zoomPercent > kZoomMax) zoomPercent = kZoomMax;
 	zoom_ = zoomPercent;
-	if (window_ == 0) return;
+	if (window_ == 0 || !CanResizeWindow()) return;
 	SDL_SetWindowSize(window_, width_ * zoom_ / 100, height_ * zoom_ / 100);
 }
 
