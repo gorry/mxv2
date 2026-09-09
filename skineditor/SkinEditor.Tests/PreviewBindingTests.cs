@@ -15,7 +15,7 @@ public class PreviewBindingTests
     {
         var doc = SkinDocument.Open(TestPaths.FindDevRoot(), skinName);
         var assets = new SkinEditor.UI.SkinAssetSource(doc);
-        return PreviewRegions.Build(doc.Effective,
+        return PreviewRegions.Build(doc.Placed,
             name =>
             {
                 var a = assets.Find(name);
@@ -77,6 +77,65 @@ public class PreviewBindingTests
         }
     }
 
+    // プレビューをクリックしたとき、ファイラーとスクロールバーがちゃんと
+    // 拾えること。
+    //
+    // 2026-09-09 に `[FileList] Rect` と `[ScrollBar] Rect` を廃止したとき、
+    // その 2 つが持っていた H（10 と 20）を後継のキーへ引き継がせ忘れて、
+    // **一覧やスクロールバーを押しても何も選ばれない**状態になった。
+    // 「対応アイテムはある（枠は出る）が H が 0」は EveryLayoutFieldHasABinding
+    // では拾えないので、実際にクリックしたつもりで確かめる。
+    [Theory]
+    [InlineData("Default")]
+    [InlineData("Phone")]
+    public void ClickingTheFilerAndTheScrollBarPicksTheirFields(string skinName)
+    {
+        var regions = RegionsOf(skinName);
+
+        // SkinEditForm のクリック処理と同じ決め方（その点を含むもののうち
+        // H が一番大きいもの。H が同じなら仕様書の並び順＝登録順で先勝ち）。
+        (string Section, string Key)? Top(Point pt)
+        {
+            (string, string)? best = null;
+            int bestHit = 0;
+            foreach (var f in LayoutFieldSchema.All())
+            {
+                var b = PreviewBindings.For(f.Section, f.Key);
+                if (b.Hit <= 0 || string.IsNullOrEmpty(b.Region)) continue;
+                if (!regions.TryGetValue(b.Region, out var r) || !r.Contains(pt)) continue;
+                if (b.Hit <= bestHit) continue;
+                bestHit = b.Hit;
+                best = (f.Section, f.Key);
+            }
+            return best;
+        }
+
+        static Point Center(Rectangle r) => new(r.X + r.Width / 2, r.Y + r.Height / 2);
+
+        Assert.Equal(("FileList", "Margin"), Top(Center(regions[PreviewRegions.Ids.FileList])));
+        Assert.Equal(("ScrollBar", "Width"), Top(Center(regions[PreviewRegions.Ids.ScrollBar])));
+
+        // 当たり判定を描画より広く取っているスキンでは、はみ出したぶんを
+        // 押すと「当たり判定の幅」が選ばれる（Phone は一覧に 12px 食い込む）。
+        var hit = regions[PreviewRegions.Ids.ScrollHit];
+        var draw = regions[PreviewRegions.Ids.ScrollBar];
+        if (hit.X < draw.X)
+        {
+            var overlap = new Point((hit.X + draw.X) / 2, Center(hit).Y);
+            Assert.Equal(("ScrollBar", "HitWidth"), Top(overlap));
+        }
+
+        // ファイラー側の矩形のうち、一覧にもスクロールバーにもかからない
+        // ところ（マージンの帯）を押すと 2 分割の設定へ飛ぶ。
+        var filer = regions[PreviewRegions.Ids.FilerSide];
+        var list = regions[PreviewRegions.Ids.FileList];
+        if (list.X > filer.X)
+        {
+            var margin = new Point((filer.X + list.X) / 2, Center(filer).Y);
+            Assert.Equal(("Screen", "FilerExtent"), Top(margin));
+        }
+    }
+
     // 「同じ H のアイテムが重なると、先に書いた行が勝つ」という決まりは、
     // **重なっていること自体が事故**（狙ったほうが選べなくなる）。同梱スキンで
     // そうなっていないことを見る。Phone はスクロールバーがファイラーの矩形に
@@ -132,7 +191,7 @@ public class PreviewBindingTests
         try
         {
             var assets = new SkinEditor.UI.SkinAssetSource(doc);
-            Dictionary<string, Rectangle> Regions() => PreviewRegions.Build(doc.Effective,
+            Dictionary<string, Rectangle> Regions() => PreviewRegions.Build(doc.Placed,
                 n => { var a = assets.Find(n); return a == null ? null : new Size(a.Width, a.Height); }, 0);
 
             foreach (var f in LayoutFieldSchema.All())
@@ -170,7 +229,7 @@ public class PreviewBindingTests
         var doc = SkinDocument.Open(TestPaths.FindDevRoot(), skinName);
         var regions = RegionsOf(skinName);
         var all = regions[PreviewRegions.Ids.PlayKey];
-        for (int i = 0; i < doc.Effective.numPlayKeys; i++)
+        for (int i = 0; i < doc.Placed.numPlayKeys; i++)
         {
             var btn = regions[PreviewRegions.Ids.Indexed(PreviewRegions.Ids.PlayKeyButton, i)];
             Assert.True(all.Contains(btn), $"{skinName}: ボタン {i} {btn} が {all} からはみ出している");

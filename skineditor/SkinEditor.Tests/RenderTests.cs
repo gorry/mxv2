@@ -25,6 +25,28 @@ public class RenderTests
         return (bmp.Bits[o + 2], bmp.Bits[o + 1], bmp.Bits[o]);
     }
 
+    // プレビューの文字が出るには、フォントが見つかっていることが要る。
+    //
+    // 自分の font.ttf を持つのは Default だけで、他のスキンは同梱の
+    // MPLUS1p-Regular.ttf へ落ちる。エディタ側が同梱フォントの名前を
+    // 見ていなかったため、**Phone のプレビューだけ曲名とファイラーの文字が
+    // 出なかった**（2026-09-09）。本体 src/textrender.cpp と同じ 2 段の
+    // 探し方になっていることを、同梱スキン全部で押さえる。
+    [Theory]
+    [InlineData("Default")]
+    [InlineData("Default-Midnight")]
+    [InlineData("Phone")]
+    public void EveryBundledSkinResolvesAFont(string skinName)
+    {
+        var root = TestPaths.FindDevRoot();
+        var doc = SkinDocument.Open(root, skinName);
+        var assets = new SkinAssetSource(doc);
+
+        var path = assets.FindFontFile(root.AssetsDir);
+        Assert.False(string.IsNullOrEmpty(path), $"{skinName}: フォントが見つからない");
+        Assert.True(File.Exists(path), $"{skinName}: {path} が無い");
+    }
+
     [Fact]
     public void Fill_Alpha100_WritesTheColor()
     {

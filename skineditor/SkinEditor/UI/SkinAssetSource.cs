@@ -30,16 +30,32 @@ public sealed class SkinAssetSource : IAssetSource
         return bmp;
     }
 
-    // font.ttf の場所。本体 FontSearchDirs と同じ並び（スキン -> 素材のルート）。
+    // 文字描画に使うフォント。本体 src/textrender.cpp と**同じ順**で探す。
+    //
+    // **名前は 2 つある。** font.ttf はスキン（かユーザー）が差し替えるぶんで、
+    // MPLUS1p-Regular.ttf が同梱フォント。名前ごとに全フォルダを見るので、
+    // 土台の font.ttf は自分の同梱フォントより優先される
+    // （FindFirst(dirs, kUserFont) -> FindFirst(dirs, kBundledFont) の順）。
+    // 探す場所はスキンのフォルダ（自分 -> 土台 …）-> assets/ のルート。
+    //
+    // 同梱フォントのほうを見ていなかったので、**自分の font.ttf を持たない
+    // スキン（Phone など）はプレビューの文字が出なかった**（2026-09-09 に修正）。
+    private const string UserFontName = "font.ttf";
+    private const string BundledFontName = "MPLUS1p-Regular.ttf";
+
     public string? FindFontFile(string assetsDir)
     {
-        foreach (var dir in _doc.AllDirsNearToFar())
+        var dirs = new List<string>(_doc.AllDirsNearToFar());
+        if (!string.IsNullOrEmpty(assetsDir)) dirs.Add(assetsDir);
+        foreach (var name in new[] { UserFontName, BundledFontName })
         {
-            var path = Path.Combine(dir, "font.ttf");
-            if (File.Exists(path)) return path;
+            foreach (var dir in dirs)
+            {
+                var path = Path.Combine(dir, name);
+                if (File.Exists(path)) return path;
+            }
         }
-        var root = Path.Combine(assetsDir, "font.ttf");
-        return File.Exists(root) ? root : null;
+        return null;
     }
 
     public void Invalidate() => _cache.Clear();

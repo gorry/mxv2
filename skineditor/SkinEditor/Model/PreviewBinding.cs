@@ -71,9 +71,11 @@ public static class PreviewBindings
             case "Screen":
                 // 2 分割の指定はファイラー側の矩形へ枠を出す（どこで割れて
                 // いるかが見えるように）。それ以外は画面全体。
-                return key is "FilerSide" or "FilerExtent"
-                    ? new PreviewBinding(PreviewRegions.Ids.FilerSide)
-                    : new PreviewBinding(PreviewRegions.Ids.Screen);
+                // 厚みのほうに H を付けて、ファイラーの外側の余白を
+                // クリックしたら 2 分割の設定へ飛べるようにする。
+                if (key == "FilerExtent") return new PreviewBinding(PreviewRegions.Ids.FilerSide, 5);
+                if (key == "FilerSide") return new PreviewBinding(PreviewRegions.Ids.FilerSide);
+                return new PreviewBinding(PreviewRegions.Ids.Screen);
 
             case Kb:
                 switch (key)
@@ -131,16 +133,24 @@ public static class PreviewBindings
             case "Title":
                 return new PreviewBinding(PreviewRegions.Ids.Title, 10, PreviewDrag.Rect);
 
-            // ファイラーの矩形は「ファイラー側の矩形からのマージン」なので、
-            // 掴んで動かす形にはならない（ドラッグ無し。枠だけ出す）。
+            // ファイラーの矩形は「ファイラー側の矩形からのマージン」になったので、
+            // 掴んで動かす形にはならない（ドラッグ無し）。ただし**クリックで
+            // 選べなくなると困る**ので、旧 [FileList] Rect が持っていた H=10 は
+            // マージンのほうへ引き継ぐ。
             case "FileList":
-                return new PreviewBinding(PreviewRegions.Ids.FileList);
+                return key == "Margin"
+                    ? new PreviewBinding(PreviewRegions.Ids.FileList, 10)
+                    : new PreviewBinding(PreviewRegions.Ids.FileList);
 
             case "ScrollBar":
                 switch (key)
                 {
-                    case "Width": return new PreviewBinding(PreviewRegions.Ids.ScrollBar);
-                    case "HitWidth": return new PreviewBinding(PreviewRegions.Ids.ScrollHit);
+                    // 旧 [ScrollBar] Rect の H=20 は描く幅へ引き継ぐ。
+                    // 当たり判定の幅は描画より広い（＝一覧に食い込む）ぶん、
+                    // 一段低い H にして「描画 -> 当たり判定 -> 一覧」の順に
+                    // 選び直せるようにする。
+                    case "Width": return new PreviewBinding(PreviewRegions.Ids.ScrollBar, 20);
+                    case "HitWidth": return new PreviewBinding(PreviewRegions.Ids.ScrollHit, 15);
                     case "SrcThumb": return new PreviewBinding(PreviewRegions.Ids.ScrollThumb);
                     case "SrcUpArrowPress":
                     case "SrcUpArrow": return new PreviewBinding(PreviewRegions.Ids.ScrollUpArrow);
