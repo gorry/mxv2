@@ -953,30 +953,6 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	}
 
 	if (GroupHeader(Msg("Settings.Screen"))) {
-		// スキン。画面サイズごと変わりうるので、選ばれた名前を置いておいて
-		// 実際の作り直しはメインループに任せる。
-		int current = -1;
-		for (size_t i = 0; i < skinNames_.size(); i++) {
-			if (skinNames_[i] == settings->skinName) current = (int)i;
-		}
-		if (ImGui::BeginCombo(Msg("Settings.Skin"), (current >= 0) ? skinNames_[current].c_str()
-		                                              : settings->skinName.c_str())) {
-			for (size_t i = 0; i < skinNames_.size(); i++) {
-				const bool selected = ((int)i == current);
-				if (ImGui::Selectable(skinNames_[i].c_str(), selected)) {
-					pendingSkin_ = skinNames_[i];
-					changedFields_ |= Settings::kFieldSkin;
-				}
-				if (selected) ImGui::SetItemDefaultFocus();
-			}
-			ImGui::EndCombo();
-		}
-		SameLineOrWrap(Msg("Button.Rescan"));
-		if (ImGui::Button(Msg("Button.Rescan"))) {
-			ScanSkins();
-			pendingSkin_ = settings->skinName;
-		}
-
 		// 表示倍率 (%)。100 でドット等倍。
 		// 押している間・入力中に適用してはいけない。ウィンドウが大きくなると
 		// このコントロール自身の座標も変わるので、同じ場所を押しているだけで
@@ -1079,6 +1055,35 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 			} else {
 				TextNote(Msg("Settings.TouchOffNow"));
 			}
+		}
+		GroupTrailingSpace();
+	}
+
+	// ---- スキン ----------------------------------------------------------
+	// 2026-09-10 にユーザーの指示で [画面] から切り出した。
+	if (GroupHeader(Msg("Settings.SkinGroup"))) {
+		// 画面サイズごと変わりうるので、選ばれた名前を置いておいて
+		// 実際の作り直しはメインループに任せる。
+		int current = -1;
+		for (size_t i = 0; i < skinNames_.size(); i++) {
+			if (skinNames_[i] == settings->skinName) current = (int)i;
+		}
+		if (ImGui::BeginCombo(Msg("Settings.Skin"), (current >= 0) ? skinNames_[current].c_str()
+		                                              : settings->skinName.c_str())) {
+			for (size_t i = 0; i < skinNames_.size(); i++) {
+				const bool selected = ((int)i == current);
+				if (ImGui::Selectable(skinNames_[i].c_str(), selected)) {
+					pendingSkin_ = skinNames_[i];
+					changedFields_ |= Settings::kFieldSkin;
+				}
+				if (selected) ImGui::SetItemDefaultFocus();
+			}
+			ImGui::EndCombo();
+		}
+		SameLineOrWrap(Msg("Button.Rescan"));
+		if (ImGui::Button(Msg("Button.Rescan"))) {
+			ScanSkins();
+			pendingSkin_ = settings->skinName;
 		}
 		GroupTrailingSpace();
 	}
