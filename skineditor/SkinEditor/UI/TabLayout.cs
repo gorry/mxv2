@@ -98,6 +98,13 @@ public static class TabLayout
             Colors("背景 (Back)"),
         }),
 
+        new TabDef("ミニフォント", new[]
+        {
+            Bitmap(BitmapRole.MiniFont),
+            Field("MiniFont", "Width"),
+            Field("MiniFont", "Height"),
+        }),
+
         new TabDef("鍵盤", new[]
         {
             // 「位置」はこのページの全アイテムの原点なので一番上
@@ -166,17 +173,44 @@ public static class TabLayout
             Colors("ステータス (Status)"),
         }),
 
-        new TabDef("ミニフォント", new[]
-        {
-            Bitmap(BitmapRole.MiniFont),
-            Field("MiniFont", "Width"),
-            Field("MiniFont", "Height"),
-        }),
-
         new TabDef("バナー", new[]
         {
             Bitmap(BitmapRole.Banner),
             Field("Banner", "Rect"),
+        }),
+
+        new TabDef("操作ボタン", new Node[]
+        {
+            Bitmap(BitmapRole.PlayKey),
+            Field("PlayKey", "Rect"),
+            Field("PlayKey", "Count"),
+            // ボタンごとのサブタブ。中身は 8 個とも同じ形なので組み立てで作る
+            // （ここで作っているのは並びのデータで、描画側に分岐は増えない）。
+            new SubTabsNode(
+                PlayKeyNames.Select((name, i) => (name, PlayKeyPage(name, i)))
+                    .Append(("パレット", Fields("PlayKey",
+                        "PalKey", "PalDark", "PalRed", "PalGreen", "PalYellow", "PalBlue")))
+                    .ToArray()),
+            Colors("操作ボタン (PlayKey)"),
+        }),
+
+        new TabDef("音量バー", new[]
+        {
+            Bitmap(BitmapRole.VolumeBar),
+            Field("VolumeBar", "Rect"),
+            Field("VolumeBar", "TimePos"),
+            Field("VolumeBar", "NobWidth"),
+            Field("VolumeBar", "NobSrc"),
+            Field("VolumeBar", "SlideSrc"),
+            Slider("音量", -100, 100, 0, (p, v) => p.StateVolume = v, PreviewRegions.Ids.VolumeBar),
+        }),
+
+        new TabDef("プログレスバー", new[]
+        {
+            Bitmap(BitmapRole.ProgressBar),
+            Field("ProgressBar", "Rect"),
+            Field("ProgressBar", "TimePos"),
+            Slider("プレイ時間", 0, 100, 40, (p, v) => p.StateProgress = v / 100.0, PreviewRegions.Ids.ProgressBar),
         }),
 
         new TabDef("曲名", new[]
@@ -219,40 +253,6 @@ public static class TabLayout
                     p => p.StateScrollUpPressed, (p, v) => p.StateScrollUpPressed = v),
                 new ToggleDef("下矢印", PreviewRegions.Ids.ScrollDownArrow,
                     p => p.StateScrollDownPressed, (p, v) => p.StateScrollDownPressed = v)),
-        }),
-
-        new TabDef("プログレスバー", new[]
-        {
-            Bitmap(BitmapRole.ProgressBar),
-            Field("ProgressBar", "Rect"),
-            Field("ProgressBar", "TimePos"),
-            Slider("プレイ時間", 0, 100, 40, (p, v) => p.StateProgress = v / 100.0, PreviewRegions.Ids.ProgressBar),
-        }),
-
-        new TabDef("音量バー", new[]
-        {
-            Bitmap(BitmapRole.VolumeBar),
-            Field("VolumeBar", "Rect"),
-            Field("VolumeBar", "TimePos"),
-            Field("VolumeBar", "NobWidth"),
-            Field("VolumeBar", "NobSrc"),
-            Field("VolumeBar", "SlideSrc"),
-            Slider("音量", -100, 100, 0, (p, v) => p.StateVolume = v, PreviewRegions.Ids.VolumeBar),
-        }),
-
-        new TabDef("操作ボタン", new Node[]
-        {
-            Bitmap(BitmapRole.PlayKey),
-            Field("PlayKey", "Rect"),
-            Field("PlayKey", "Count"),
-            // ボタンごとのサブタブ。中身は 8 個とも同じ形なので組み立てで作る
-            // （ここで作っているのは並びのデータで、描画側に分岐は増えない）。
-            new SubTabsNode(
-                PlayKeyNames.Select((name, i) => (name, PlayKeyPage(name, i)))
-                    .Append(("パレット", Fields("PlayKey",
-                        "PalKey", "PalDark", "PalRed", "PalGreen", "PalYellow", "PalBlue")))
-                    .ToArray()),
-            Colors("操作ボタン (PlayKey)"),
         }),
     };
 
