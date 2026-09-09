@@ -185,13 +185,18 @@ public static class TabLayout
             Colors("曲名 (MDXTitle)"),
         }),
 
-        new TabDef("ファイラー", new[]
+        new TabDef("ファイラー", new Node[]
         {
             Field("FileList", "Margin"),
             Field("FileList", "ItemHeight"),
             Field("FileList", "BaseNameX"),
             Field("FileList", "BaseNameWidth"),
             Field("FileList", "TitleX"),
+            // このタブの「小,大」の 2 つ組は、どちらが効いているか見ないと
+            // 分からない。本体の TAB キーと同じ切り替えをプレビューにも置く。
+            // 行数も曲名の幅も大小で変わるので、両方の見え方を確かめられる。
+            new TogglesNode(12, new ToggleDef("大きい文字", PreviewRegions.Ids.FileList,
+                p => p.StateFileListBigFont, (p, v) => p.StateFileListBigFont = v)),
             Colors("ファイラー (Filer)"),
         }),
 

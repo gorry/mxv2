@@ -77,13 +77,32 @@ public sealed class SkinEditForm : Form
         _revertColorsButton = new Button
         {
             Text = "配色を参照先スキンに戻す", AutoSize = true,
-            Margin = new Padding(Dpi.S(this, 16), 0, 0, 0),
         };
+        // 左だけ空けて、**上下と右は [保存] と同じ余白にする**。
+        // FlowLayoutPanel は「行の上端 + Margin.Top」に置くので、ここを 0 に
+        // すると（既定の Margin.Top が 3 の）[保存] より 3px 上へずれる
+        // （実測で 8px と 5px。高さはどちらも同じ 38px）。
+        _revertColorsButton.Margin = new Padding(
+            Dpi.S(this, 16), _saveButton.Margin.Top,
+            _saveButton.Margin.Right, _saveButton.Margin.Bottom);
         _revertColorsButton.Click += (_, _) => { _doc.RevertColorsToInherited(); RefreshAll(); };
+        // 外部のツールで素材（.bmp / font.ttf）を描き換えたときに、
+        // プレビューへ反映させるためのボタン。エディタは読んだ素材を
+        // キャッシュしているので、ファイルの中身だけが変わっても自分では
+        // 気付けない（インポートし直さないかぎり古い絵のままになる）。
+        var reloadAssetsButton = new Button
+        {
+            Text = "素材の再読み込み", AutoSize = true,
+        };
+        reloadAssetsButton.Margin = new Padding(
+            Dpi.S(this, 16), _saveButton.Margin.Top,
+            _saveButton.Margin.Right, _saveButton.Margin.Bottom);
+        reloadAssetsButton.Click += (_, _) => ReloadAssets();
         toolbar.Controls.Add(_saveButton);
         toolbar.Controls.Add(dirtyLabel);
         toolbar.Controls.Add(_baseRefDropdown);
         toolbar.Controls.Add(_revertColorsButton);
+        toolbar.Controls.Add(reloadAssetsButton);
 
         var split = _split = new SplitContainer { Dock = DockStyle.Fill };
 
@@ -380,6 +399,17 @@ public sealed class SkinEditForm : Form
         _revertColorsButton.Enabled = _doc.HasOwnColors && !string.IsNullOrEmpty(_doc.BaseRef);
         Text = $"スキンエディタ - {_doc.Name}{(_doc.IsDirty ? " *" : "")}";
         _saveButton.Enabled = _doc.IsDirty;
+    }
+
+    // 素材を読み直してプレビューを描き直す。**layout.ini / colors.ini は
+    // 読み直さない**（エディタが編集中の値のほうが新しいので、外から
+    // 上書きされては困る）。RefreshAll を続けて呼ぶのは、素材の大きさで
+    // 決まるものを更新するため——素材行の「あり / なし」と、「素材内: …」
+    // のスピンボタンの上限（SkinDocument.ResolveBitmapSize）。
+    private void ReloadAssets()
+    {
+        _preview.InvalidateBitmaps();
+        RefreshAll();
     }
 
     private void DoSave()

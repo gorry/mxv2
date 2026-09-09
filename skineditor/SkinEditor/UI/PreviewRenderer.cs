@@ -31,6 +31,11 @@ public sealed class PreviewState
     public bool ScrollUpPressed;
     public bool ScrollDownPressed;
     public int Level;               // 0..100（レベルメータを左から何%点灯させるか）
+    // ファイラーの文字の大小（本体の TAB キー＝DrawScreen::SetFileListFontSize）。
+    // false = 小さい文字 (0) / true = 大きい文字 (1)。[FileList] の「小,大」の
+    // 2 つ組はどちらが効いているか見ないと分からないので、切り替えられるように
+    // してある。
+    public bool FileListBigFont;
     public int Volume;             // -100..100
     public double Progress = 0.4;  // 0..1
 
@@ -184,6 +189,8 @@ public sealed class PreviewRenderer : IDisposable
         // ファイラーは行数より多めのダミーを流してあるので、スクロールバーで
         // 動かせる余地がある。位置は [スクロールバー] タブの「スクロール」
         // スライダー (0..100%) で決める（2026-09-04、ユーザー指示）。
+        // 行数も 1 行の高さも文字の大小で変わるので、**数える前に**決める。
+        port.FileListFontSize = state.FileListBigFont ? 1 : 0;
         int rows = Math.Max(1, port.FileListRows);
         int itemH = Math.Max(1, port.FileListItemH);
         int maxTopPx = Math.Max(0, (DummyFiles.Length - rows) * itemH);

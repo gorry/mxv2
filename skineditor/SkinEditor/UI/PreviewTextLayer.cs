@@ -28,6 +28,16 @@ public sealed class PreviewTextLayer : IDisposable
     public bool Available => _family != null;
 
     // スキンの font.ttf を読む。同じパスなら読み直さない。
+    // 同じパスなら読み直さない（毎フレーム呼ばれる）。外部でフォントを
+    // 差し替えたときだけ ReloadFont() で読み直させる。
+    public void ReloadFont()
+    {
+        var path = _loadedPath;
+        Release();
+        _loadedPath = null;
+        SetFontFile(path);
+    }
+
     public void SetFontFile(string? path)
     {
         if (path == _loadedPath) return;

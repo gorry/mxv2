@@ -115,6 +115,13 @@ public sealed class PreviewCanvas : Panel
         get => _state.Level;
         set { _state.Level = value; _dirty = true; }
     }
+    // [ファイラー]タブの「大きい文字」トグル。本体の TAB キーと同じ切り替えで、
+    // [FileList] の「小,大」のどちらが効いているかを見るためのもの。
+    public bool StateFileListBigFont
+    {
+        get => _state.FileListBigFont;
+        set { _state.FileListBigFont = value; _dirty = true; }
+    }
 
     // [鍵盤]タブの「押す」トグル。ON にした瞬間だけ乱数を選び直す
     // （OFF にしても選んだ鍵は捨てず、次に ON にしたときにまた選び直す）。
@@ -199,10 +206,17 @@ public sealed class PreviewCanvas : Panel
         return a == null ? null : new Size(a.Width, a.Height);
     }
 
-    // 素材ファイルが差し替わったとき（BitmapRoleRow のインポート）。
+    // 素材ファイルが差し替わったとき（BitmapRoleRow のインポートと、
+    // ツールバーの「素材の再読み込み」）。
+    //
+    // 読んだ素材はキャッシュしてあるので、**ファイルの中身だけが変わっても
+    // 自分では気付けない**（外部のツールで .bmp を描き換えた場合）。
+    // フォントも同じ理由で読み直す（PreviewTextLayer は同じパスなら
+    // 読み直さないため）。
     public void InvalidateBitmaps()
     {
         _renderer.InvalidateAssets();
+        _textLayer.ReloadFont();
         _dirty = true;
         Invalidate();
     }
