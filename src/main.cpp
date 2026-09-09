@@ -725,7 +725,15 @@ void PollSongEnd(const PlayContext &ctx, mxv2::Filer *filer, uint64_t frame,
 	} else if (quitWhenDone) {
 		*quit = true;
 	} else {
+		// 終わったら停止状態にする。[■] を押したときとまったく同じ扱いで、
+		// PLAY の LED が消え、鍵盤も消え、PLAY TIME は 00:00 へ戻る。
+		//
+		// **Player も止めること。** ここの印 (*ctx.playing) を下ろすだけだと
+		// `player.playing()` が true のまま残り、画面はいつまでも鳴っている
+		// ように見える（Visualizer::UpdateChrome が LED を点け続ける）。
+		// 通知 (UpdateNowPlaying) も同じ理由で消えなくなる。
 		*ctx.playing = false;
+		ctx.player->Stop();
 	}
 }
 

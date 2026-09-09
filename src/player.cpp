@@ -740,9 +740,17 @@ void Player::PollStep(uint64_t frame) {
 			fadeoutStarted_ = false;
 			playTerminate_.store(false, std::memory_order_relaxed);
 		}
-		if (playTimeMs_ != 0 && now >= playTimeMs_) {
-			playTerminate_.store(true, std::memory_order_relaxed);
-		}
+	}
+
+	// 最初に測った総演奏時間で打ち切る。
+	//
+	// **フェードアウトしない設定でも要る。** ループする曲は MXDRV が
+	// 終わりを知らせてこない（watch_.terminated() が立たない）ので、
+	// ここで打ち切らないといつまでも鳴り続ける。フェードアウトする設定なら
+	// PlaySong が測った時間にはフェードのぶんも入っているので、
+	// 「消えきったところで終わる」という今までの動きは変わらない。
+	if (playTimeMs_ != 0 && now >= playTimeMs_) {
+		playTerminate_.store(true, std::memory_order_relaxed);
 	}
 
 	if (watch_.terminated()) {
