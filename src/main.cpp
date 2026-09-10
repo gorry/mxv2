@@ -1478,6 +1478,11 @@ int main(int argc, char **argv) {
 				orientNow = now;
 				pendingSkin = (now == mxv2::Screen::kPortrait) ? settings.skinPortrait
 				                                               : settings.skinLandscape;
+				// 出ていたメニューは閉じる（ユーザーの指示）。回転すると
+				// メニューが画面をはみ出すことがあり、配置を計算し直して
+				// 出し直すより閉じてしまうほうがスマート、という判断。
+				// ダイアログはモーダルで中央に出し直すので残す。
+				ui.CloseContextMenu();
 			}
 		}
 

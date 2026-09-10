@@ -202,6 +202,13 @@ public:
 	// 右クリックで開くコンテキストメニュー（旧 mxv の TrackPopupMenu 相当）。
 	// 設定ウィンドウが閉じていても出す。
 	void OpenContextMenu() { openContextMenu_ = true; }
+	// 開いていれば閉じる。画面が回転してスキンが替わるときに呼ぶ。
+	// 回転するとメニューが画面をはみ出すことがあり、配置を計算し直して
+	// 出し直すより閉じるほうがスマート（ユーザーの判断）。
+	// 実際に閉じるのは次の Build()。
+	void CloseContextMenu() {
+		if (contextMenuOpen_) closeContextMenu_ = true;
+	}
 
 	// OS の「フォルダを探す」ダイアログを開いてほしい、という要求。
 	// 開いている間はアプリが止まるので、フレームを描き終えたメインループに
