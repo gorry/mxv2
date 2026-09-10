@@ -42,6 +42,8 @@ MouseInput::MouseInput(DrawScreen *draw, Filer *filer, Player *player)
       pendingOpen_(false),
       swipeArmed_(false),
       dragMoved_(false),
+      pressStartMs_(0),
+      longPressDone_(false),
       seekDragging_(false),
       seekWasPaused_(false),
       seekDragMs_(0),
@@ -147,6 +149,9 @@ MouseRequest MouseInput::OnButtonDown(int x, int y, int clicks) {
 			// 押した時点で開くと、その直後に届く「離した」がその場所の
 			// 選択として効いてしまう。
 			pendingOpen_ = (clicks >= 2 && pendingCursor_ >= 0);
+			// 長押し（文字サイズ）。ブレーキの押下では見ない。
+			pressStartMs_ = SDL_GetTicks();
+			longPressDone_ = braking;
 			return kMouseRequestNone;
 		}
 	}
@@ -158,6 +163,8 @@ MouseRequest MouseInput::OnButtonDown(int x, int y, int clicks) {
 			captured_ = kCapturedPlayKey;
 			capturedHit_ = hit;
 			pressMask_ = 1u << (hit - 1);
+			pressStartMs_ = SDL_GetTicks();
+			longPressDone_ = false;
 			// FASTPLAY だけは押している間だけ効く。
 			if (hit == DrawScreen::kHitPlayKeyFastPlay) player_->SetFastPlay(true);
 			return kMouseRequestNone;
@@ -248,6 +255,9 @@ void MouseInput::OnMotion(int x, int y) {
 			break;
 
 		case kCapturedFileList: {
+			// 長押しが成立したあとは、離すまで何もしない（行の高さが
+			// 変わっているので、掴んだ位置からのドラッグは意味を失う）。
+			if (longPressDone_) break;
 			// 指の速度を控える。離したあとの滑りに使う。
 			{
 				const uint32_t now = SDL_GetTicks();
@@ -330,7 +340,15 @@ MouseRequest MouseInput::OnButtonUp(int x, int y) {
 	const bool seeking = seekDragging_;
 	const bool wasPaused = seekWasPaused_;
 	const uint32_t seekMs = seekDragMs_;
+	const bool longPressed = longPressDone_;
 	ReleaseAll();
+
+	// 長押しが成立した押下は、離しても何もしない（STOP の長押しで
+	// フェードアウトを始めたあとに停止させない、ファイラーの長押しで
+	// 文字サイズを変えたあとに行を選ばせない）。
+	if (longPressed && (captured == kCapturedPlayKey || captured == kCapturedFileList)) {
+		return kMouseRequestNone;
+	}
 
 	// シークバーは離した位置へ飛ぶ。SeekMs は飛ぶ前の一時停止を引き継ぐので、
 	// 掴んだ時点で止めたぶんはここで戻す（もともと一時停止していたなら
@@ -523,18 +541,50 @@ void MouseInput::UpdateFling(uint32_t nowMs) {
 	}
 }
 
-void MouseInput::Poll(uint32_t nowMs) {
+MouseRequest MouseInput::Poll(uint32_t nowMs) {
 	UpdateFling(nowMs);
 
-	if (captured_ != kCapturedScrollBar) return;
-	if (capturedHit_ == DrawScreen::kHitScrollBarThumb) return;
-	if (nowMs < nextRepeatMs_) return;
+	// 長押し。押してから kLongPressMs 経ち、まだ成立していなければ見る。
+	if (!longPressDone_ && (captured_ == kCapturedPlayKey || captured_ == kCapturedFileList) &&
+	    nowMs - pressStartMs_ >= kLongPressMs) {
+		// STOP を押したままならフェードアウト（F キー）。押下表示は戻して
+		// 「受け付けた」ことを見せる。他のボタンに長押しは無い。
+		if (captured_ == kCapturedPlayKey) {
+			if (capturedHit_ == DrawScreen::kHitPlayKeyStop && pressMask_ != 0) {
+				longPressDone_ = true;
+				pressMask_ = 0;
+				player_->Fadeout();
+			}
+			return kMouseRequestNone;
+		}
+		// ファイラーは、掴んだ場所から動かしていないときだけ（TAB と同じ
+		// 文字サイズの切り替え）。縦のドラッグ扱いになっていれば見ない。
+		// 横の動きは dragMoved_ に乗らないので、ここで別に見る。
+		const int dx = lastX_ - dragOriginX_;
+		const int dy = lastY_ - dragOriginY_;
+		const bool still = (dx > -kDragSlopPx && dx < kDragSlopPx) &&
+		                   (dy > -kDragSlopPx && dy < kDragSlopPx);
+		if (!dragMoved_ && still) {
+			longPressDone_ = true;
+			pendingCursor_ = -1;
+			pendingOpen_ = false;
+			return kMouseRequestToggleFontSize;
+		}
+		// 動かしてしまった押下では、以後この押下の長押しは見ない。
+		longPressDone_ = true;
+		return kMouseRequestNone;
+	}
+
+	if (captured_ != kCapturedScrollBar) return kMouseRequestNone;
+	if (capturedHit_ == DrawScreen::kHitScrollBarThumb) return kMouseRequestNone;
+	if (nowMs < nextRepeatMs_) return kMouseRequestNone;
 
 	nextRepeatMs_ = nowMs + kRepeatIntervalMs;
 	// 押した部品の上から外れている間は止める（旧 mxv と同じ）。
 	if (draw_->HitCheckScrollBar(lastX_, lastY_) == capturedHit_) {
 		PressScrollBar(capturedHit_);
 	}
+	return kMouseRequestNone;
 }
 
 void MouseInput::ReleaseAll() {
@@ -545,6 +595,7 @@ void MouseInput::ReleaseAll() {
 	pendingOpen_ = false;
 	swipeArmed_ = false;
 	dragMoved_ = false;
+	longPressDone_ = false;
 	seekDragging_ = false;
 	draw_->SetScrollBarFlags(0);
 }

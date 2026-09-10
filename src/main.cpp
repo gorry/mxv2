@@ -659,6 +659,14 @@ bool PollSong(const PlayContext &ctx) {
 	return false;
 }
 
+// ファイラーの文字サイズ（小 / 大）を切り替える。TAB キーと、ファイラーの
+// 長押し（キーボードの無い端末向け）の 2 か所から同じ手順を通す。
+void ToggleFileListFontSize(mxv2::DrawScreen *draw, mxv2::Filer *filer, bool *fileListRefresh) {
+	draw->SetFileListFontSize(draw->fileListFontSize() ^ 1);
+	filer->SetViewMetrics(draw->fileListRows(), draw->fileListItemH());
+	*fileListRefresh = true;
+}
+
 // ファイラーのカーソルを開く。曲なら演奏、フォルダやファイルシステムなら移動、
 // "[Setting]" ならファイルシステムの設定ダイアログ（"BookMark>" の中なら
 // ブックマークの設定）、ブックマークの行ならその場所へ移る。
@@ -1842,9 +1850,7 @@ int main(int argc, char **argv) {
 					break;
 
 				case SDLK_TAB:
-					draw.SetFileListFontSize(draw.fileListFontSize() ^ 1);
-					filer.SetViewMetrics(draw.fileListRows(), draw.fileListItemH());
-					fileListRefresh = true;
+					ToggleFileListFontSize(&draw, &filer, &fileListRefresh);
 					break;
 
 				case SDLK_MINUS:
@@ -1991,7 +1997,11 @@ int main(int argc, char **argv) {
 			continue;
 		}
 
-		mouse.Poll(SDL_GetTicks());
+		// 長押し（STOP でフェードアウト、ファイラーで文字サイズ）は
+		// イベントではなく時間で決まるので、ここで拾う。
+		if (mouse.Poll(SDL_GetTicks()) == mxv2::kMouseRequestToggleFontSize) {
+			ToggleFileListFontSize(&draw, &filer, &fileListRefresh);
+		}
 
 		// フォルダの中身も MDX のタイトルも曲そのものも別スレッドで
 		// 読んでいる。届いたぶんをここで取り込む。

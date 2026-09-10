@@ -33,6 +33,7 @@ enum MouseRequest {
 	kMouseRequestToggleRepeat,
 	kMouseRequestContextMenu,  // バナーを押した (右クリックの代わり)
 	kMouseRequestGoParent,     // ファイラーで左へはじいた (BACKSPACE と同じ)
+	kMouseRequestToggleFontSize,  // ファイラーを長押しした (TAB と同じ)
 };
 
 class MouseInput {
@@ -42,8 +43,9 @@ public:
 	// SDL のマウスイベントを 1 つ処理する。マウス以外のイベントは無視する。
 	MouseRequest Handle(const SDL_Event &ev);
 
-	// 矢印・ページ送りの押しっぱなしオートリピート。毎フレーム 1 回呼ぶ。
-	void Poll(uint32_t nowMs);
+	// 矢印・ページ送りの押しっぱなしオートリピートと、長押しの判定。
+	// 毎フレーム 1 回呼ぶ。長押しが成立したときはその要求を返す。
+	MouseRequest Poll(uint32_t nowMs);
 
 	// 操作ボタンの押下表示ビット。DrawScreen::PutPlayKey の status へ足す。
 	uint32_t playKeyPressMask() const { return pressMask_; }
@@ -65,6 +67,15 @@ public:
 
 	// これ以上動かしたらドラッグとみなす閾値 (論理 px)。
 	static const int kDragSlopPx = 3;
+
+	// 長押し。指（マウス）を動かさずにこれだけ押し続けたら成立する。
+	// 500ms（ユーザーの指定）。Android の「押し続ける時間」の設定で選べる
+	// **最短**が 400ms なので、それより短くはしない。
+	// キーボードの無い端末のための導線で、今あるのは 2 つ:
+	//   STOP      … フェードアウト（F キー）
+	//   ファイラー … 文字サイズの切り替え（TAB キー）
+	// 成立した押下は、離しても何もしない（停止も選択も慣性も起こさない）。
+	static const uint32_t kLongPressMs = 500;
 
 	// 慣性スクロール（スマートフォンのスワイプに合わせたもの）。
 	// 離したときの速度で滑り続け、指数的に減速する。
@@ -134,6 +145,11 @@ private:
 	bool pendingOpen_;     // W クリックの 2 回目。離したときに開く印
 	bool swipeArmed_;      // 横スワイプを見てよい押下か（ブレーキでは見ない）
 	bool dragMoved_;       // ドラッグ扱いになったか
+
+	// 長押し。押した時刻と、この押下で長押しが成立したか（以後は離すまで
+	// 何もしない）。操作ボタンとファイラーで使う。
+	uint32_t pressStartMs_;
+	bool longPressDone_;
 
 	// シークバーのドラッグ。シーク (MXDRV_PlayAt) は曲の頭から空回しする
 	// 重い処理なので、指に追従して掛けるわけにはいかない。掴んでいる間は
