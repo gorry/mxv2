@@ -334,8 +334,9 @@ bool LoadBookmarks(const mxv2::Vfs &vfs, std::vector<std::string> *refs,
 			fixed = true;
 			continue;
 		}
-		// ファイルシステムの選択そのもの（空の ref）は控えられない。
-		if (fs == 0) {
+		// ファイルシステムの選択そのもの（空の ref）と、ブックマークの
+		// 一覧 (bookmark:) 自身は控えられない。
+		if (fs == 0 || fs->isJumpList()) {
 			fixed = true;
 			continue;
 		}
@@ -659,8 +660,9 @@ bool PollSong(const PlayContext &ctx) {
 }
 
 // ファイラーのカーソルを開く。曲なら演奏、フォルダやファイルシステムなら移動、
-// "[Setting]" ならファイルシステムの設定ダイアログ。
-// キー (ENTER)・マウス・コンテキストメニューの 3 か所から同じ手順を通す。
+// "[Setting]" ならファイルシステムの設定ダイアログ（"BookMark>" の中なら
+// ブックマークの設定）、ブックマークの行ならその場所へ移る。
+// キー (ENTER)・マウス・右へのスワイプから同じ手順を通す。
 void OpenCursor(const PlayContext &ctx, mxv2::Filer *filer, mxv2::SettingsUi *ui) {
 	std::string path;
 	switch (filer->Open(&path)) {
@@ -672,6 +674,13 @@ void OpenCursor(const PlayContext &ctx, mxv2::Filer *filer, mxv2::SettingsUi *ui
 			break;
 		case mxv2::kFilerOpenSettings:
 			ui->OpenFileSystems();
+			break;
+		case mxv2::kFilerOpenBookmark:
+			// 控え直し（ファイルを指していたとき）が要るので UI 側に任せる。
+			ui->OpenBookmarkRef(path);
+			break;
+		case mxv2::kFilerOpenBookmarkSettings:
+			ui->OpenBookmarks();
 			break;
 		default:
 			break;
@@ -1043,12 +1052,16 @@ int main(int argc, char **argv) {
 	// 用意する。場所の指定はここから先すべて ref（vfs.h）。
 	mxv2::Vfs vfs;
 	vfs.Configure(paths.bundledDir, paths.userDir);
+	// ファイラーの "BookMark>" に並ぶのは Settings::bookmarks そのもの。
+	vfs.SetBookmarks(&settings.bookmarks);
 	// ファイラーのルートに並べる順は ini から。読めなかったぶんや足りない
 	// ぶんは LoadFileSystems が補うので、そのときは書き戻す。
 	bool dirtyFileSystems = LoadFileSystems(&vfs, settings.fileSystems, &warnings);
 	settings.fileSystems = SaveFileSystems(vfs);
 	// ブックマークも同じく、読めない指定を捨てたら書き戻す。
-	const bool dirtyBookmarks = LoadBookmarks(vfs, &settings.bookmarks, &warnings);
+	// 初回起動（ini に [Bookmark] が無い）の初期値も、ここで定着させる。
+	const bool dirtyBookmarks =
+	    LoadBookmarks(vfs, &settings.bookmarks, &warnings) || settings.bookmarksDefaulted;
 	// ユーザーフォルダ側の mdx/ は無ければ作る（曲の置き場所として見せる）。
 	{
 		const mxv2::FileSystem *userFs = vfs.FindById("userdir");
@@ -1790,10 +1803,12 @@ int main(int argc, char **argv) {
 					break;
 				case SDLK_m:
 					// Shift 付きはカレントフォルダの控え / 控え外し（確認あり）。
+					// 素の M はファイラーの "BookMark>"（ジャンプ専用の一覧）。
+					// 設定ダイアログは F4 だけ。
 					if (ev.key.keysym.mod & KMOD_SHIFT) {
 						ui.OpenBookmarkToggle();
 					} else {
-						ui.OpenBookmarks();
+						ui.OpenBookmarkList();
 					}
 					break;
 
@@ -2045,6 +2060,11 @@ int main(int argc, char **argv) {
 		// 書き戻す前にそこから拾い直す。
 		if (newDirt & mxv2::Settings::kFieldFileSystems) {
 			settings.fileSystems = SaveFileSystems(vfs);
+		}
+		// ブックマークが変わったら、"BookMark>" を開いていれば並べ直す。
+		if ((newDirt & mxv2::Settings::kFieldBookmarks) && filer.fs() != 0 &&
+		    filer.fs()->isJumpList()) {
+			filer.Refresh();
 		}
 
 		// コンテキストメニューからの要求。フォルダの移動と終了は

@@ -14,6 +14,7 @@ namespace {
 const char kLocalId[] = "localfs";
 const char kDirId[] = "dir";
 const char kAssetsId[] = "assets";
+const char kBookmarkId[] = "bookmark";
 const char kSafId[] = "saf";
 const char kUserDirId[] = "userdir";
 
@@ -376,6 +377,97 @@ private:
 	std::string nativeRoot_;
 };
 
+// -------------------------------------------------------------------------
+// ブックマーク (bookmark:)
+//
+// ファイラーのルートに "BookMark>" として並ぶ、**行き先だけを並べる**
+// ファイルシステム。中に入るとブックマーク（他の FS の ref）が一覧になり、
+// 選ぶとそこへ移る。ジャンプ専用で、管理は [ブックマークの設定] (F4) の
+// 仕事（あちらからも開ける）。
+//
+// 場所は根しか無い（rel は常に空）。List は空の一覧を「開けた」として返し、
+// 実際の行は Filer が JumpTargets() から組み立てる（他の FS を指す行なので
+// DirEntry では表せない）。一覧の実体は Settings::bookmarks で、ここは
+// それを指しているだけ。
+//
+// 初回起動時から使えるので削除できず、ini に無ければ**先頭**に足される。
+// -------------------------------------------------------------------------
+class BookmarkFileSystem : public FileSystem {
+public:
+	BookmarkFileSystem() : list_(0) {}
+
+	void SetList(const std::vector<std::string> *list) { list_ = list; }
+
+	const char *id() const { return kBookmarkId; }
+	std::string label() const { return Msg("Fs.Bookmark"); }
+	const char *prefix() const { return "BookMark>"; }
+
+	bool hasPdxDir() const { return false; }
+	bool isJumpList() const { return true; }
+	bool mountFirst() const { return true; }
+
+	void JumpTargets(std::vector<std::string> *refs) const {
+		refs->clear();
+		if (list_ != 0) *refs = *list_;
+	}
+
+	std::string Root() const { return std::string(); }
+	std::string Normalize(const std::string &rel) const {
+		(void)rel;
+		return std::string();  // 根しか無い
+	}
+	bool IsRoot(const std::string &rel) const {
+		(void)rel;
+		return true;
+	}
+	std::string Parent(const std::string &rel) const {
+		(void)rel;
+		return std::string();
+	}
+	std::string Join(const std::string &dir, const std::string &name) const {
+		(void)dir;
+		(void)name;
+		return std::string();
+	}
+	std::string DisplayPath(const std::string &rel) const {
+		(void)rel;
+		return std::string(prefix());
+	}
+	std::string ResolveInput(const std::string &input, const std::string &base) const {
+		(void)input;
+		(void)base;
+		return std::string();
+	}
+
+	// 根は「開ける」が中身は無い（行は Filer が JumpTargets から作る）。
+	bool List(const std::string &rel, std::vector<DirEntry> *out) const {
+		(void)rel;
+		out->clear();
+		return true;
+	}
+	bool Read(const std::string &rel, std::vector<uint8_t> *out) const {
+		(void)rel;
+		(void)out;
+		return false;
+	}
+	bool Exists(const std::string &rel) const {
+		(void)rel;
+		return true;
+	}
+	bool IsDir(const std::string &rel) const {
+		(void)rel;
+		return true;
+	}
+	bool SamePath(const std::string &a, const std::string &b) const {
+		(void)a;
+		(void)b;
+		return true;
+	}
+
+private:
+	const std::vector<std::string> *list_;
+};
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -395,6 +487,12 @@ void Vfs::Configure(const std::string &assetsDir, const std::string &userDir) {
 	mounted_.clear();
 
 	// 並び順は filesystem.md の記述順。設定が無いときの初期値になる。
+	// ブックマークは先頭（初期状態で最上部に置く。bookmark.md）。
+	{
+		FileSystem *fs = new BookmarkFileSystem();
+		owned_.push_back(fs);
+		all_.push_back(fs);
+	}
 	if (!assetsDir.empty()) {
 		FileSystem *fs = new RootedFileSystem(kAssetsId, Msg("Fs.Assets"), "Assets>",
 		                                      JoinPath(assetsDir, "mdx"));
@@ -412,6 +510,18 @@ void Vfs::Configure(const std::string &assetsDir, const std::string &userDir) {
 		owned_.push_back(fs);
 		all_.push_back(fs);
 	}
+}
+
+void Vfs::SetBookmarks(const std::vector<std::string> *list) {
+	for (size_t i = 0; i < all_.size(); i++) {
+		if (!all_[i]->isJumpList()) continue;
+		static_cast<BookmarkFileSystem *>(all_[i])->SetList(list);
+	}
+}
+
+std::string Vfs::BookmarkRootRef() const {
+	const FileSystem *fs = FindById(kBookmarkId);
+	return (fs == 0) ? std::string() : MakeRef(fs, fs->Root());
 }
 
 FileSystem *Vfs::FindById(const std::string &id) const {
@@ -538,7 +648,11 @@ bool Vfs::EnsureRequired() {
 	for (size_t i = 0; i < all_.size(); i++) {
 		if (all_[i]->removable()) continue;
 		if (IsMounted(all_[i])) continue;
-		mounted_.push_back(all_[i]);
+		if (all_[i]->mountFirst()) {
+			mounted_.insert(mounted_.begin(), all_[i]);
+		} else {
+			mounted_.push_back(all_[i]);
+		}
 		added = true;
 	}
 	return added;

@@ -69,6 +69,19 @@ public:
 		return true;
 	}
 
+	// ブックマークのように「他の場所への行き先」を並べるだけの FS か。
+	// 中に入ると JumpTargets() の ref がフォルダの代わりに並び、選ぶと
+	// その場所へ移る（親へ戻ってもここへは戻らない）。この FS 自身は
+	// ブックマークに控えられず、[フォルダを開く] の一覧にも出さない。
+	virtual bool isJumpList() const { return false; }
+	// 行き先の ref。isJumpList() のものだけが返す。**メインスレッドから
+	// だけ呼ぶこと**（一覧の実体は Settings 側にあり、UI が書き換える）。
+	virtual void JumpTargets(std::vector<std::string> *refs) const { (void)refs; }
+
+	// ini に無かったとき、マウント一覧の末尾ではなく**先頭**へ足すか
+	// （Vfs::EnsureRequired）。ブックマークは初期状態で最上部に置く。
+	virtual bool mountFirst() const { return false; }
+
 	// 親を 1 つずつ辿るのが安いか。ローカルのように「行けなければ 1 つ上」を
 	// 試してよいものは true。外部ファイルシステムは 1 段ごとに通信が要るので
 	// false にする（起動時のフォールバックがルートまで一気に戻る）。
@@ -121,7 +134,16 @@ public:
 	// 使える FS を用意する。assetsDir / userDir は同梱素材とユーザー
 	// フォルダの場所（末尾の区切りはあってもなくてもよい）。空を渡すと
 	// その FS は作らない（mxv2_chunktest はローカルだけで足りる）。
+	// ブックマーク (bookmark:) とローカルは必ず作る。
 	void Configure(const std::string &assetsDir, const std::string &userDir);
+
+	// ブックマーク一覧の実体を教える（Settings::bookmarks）。bookmark: の
+	// 中に並ぶのはこの ref で、書き換えるのは UI（メインスレッド）。
+	// **Configure() のあとに呼ぶこと。** 渡した vector は Vfs より長生き
+	// でなければならない（中身の入れ替えはよい）。
+	void SetBookmarks(const std::vector<std::string> *list);
+	// bookmark: のルートの ref。作っていなければ空。
+	std::string BookmarkRootRef() const;
 
 	// 使える FS 全部。マウントされているとは限らない。
 	int allCount() const { return (int)all_.size(); }
@@ -160,7 +182,8 @@ public:
 	bool MountAt(int pos, FileSystem *fs);
 	void Unmount(int index);
 	void Move(int index, int delta);
-	// 削除できない FS が抜けていたら末尾に足す。足したら true。
+	// 削除できない FS が抜けていたら末尾に足す（mountFirst() のものは
+	// 先頭）。足したら true。
 	bool EnsureRequired();
 
 	// 「2 文字以上の英字 + ':'」の接頭辞を切り出す。無ければ false。

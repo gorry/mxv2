@@ -1000,12 +1000,13 @@ void DrawScreen::PutFileList(const Filer &filer, bool refresh, uint32_t nowMs) {
 		if (shown.baseName.empty() && shown.title.empty()) continue;
 
 		// 種別で文字色を変える。"[Setting]" は MDX と同じ色。
+		// ブックマークの行はフォルダへ移るものなのでフォルダの色。
 		Rgb color = colors_.filer.color;
 		if (shown.type & kFileItemFileSystem) {
 			color = colors_.filer.fileSystemColor;
 		} else if (shown.type & kFileItemDrive) {
 			color = colors_.filer.driveColor;
-		} else if (shown.type & kFileItemDir) {
+		} else if (shown.type & (kFileItemDir | kFileItemBookmark)) {
 			color = colors_.filer.folderColor;
 		}
 

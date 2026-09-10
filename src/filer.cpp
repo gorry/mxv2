@@ -378,6 +378,12 @@ void Filer::BeginLoad(bool resetCursor) {
 void Filer::BuildItems(const std::vector<DirEntry> &entries) {
 	items_.clear();
 	AppendParentRow(&items_);
+	// ブックマーク (bookmark:) はフォルダではなく行き先の一覧。中身は
+	// 読み出しではなく Settings 側の控えから作る（entries は空）。
+	if (fs_->isJumpList()) {
+		AppendBookmarks(&items_);
+		return;
+	}
 	if (folderFirst_) {
 		AppendDirs(entries, &items_);
 		AppendMdx(entries, &items_);
@@ -474,6 +480,48 @@ void Filer::AppendFileSystems(std::vector<FileItem> *out) {
 		f.baseName = "[Setting]";
 		f.title = Msg("Filer.SettingTitle");
 		f.type = kFileItemSetting;
+		out->push_back(f);
+	}
+}
+
+// ブックマークの一覧。1 行が他のファイルシステムの場所を指すので、
+// ファイル名の位置にはその場所のフォルダ名（ルートなら "Assets>" のような
+// 種類の表記）、曲名の位置には場所の全体を出す。末尾は [ブックマークの設定]
+// を開く "[Setting]"（選択画面の "[Setting]" と同じ見た目・色）。
+void Filer::AppendBookmarks(std::vector<FileItem> *out) {
+	std::vector<std::string> refs;
+	fs_->JumpTargets(&refs);
+	for (size_t i = 0; i < refs.size(); i++) {
+		FileItem f;
+		f.path = refs[i];
+		f.type = kFileItemBookmark;
+		FileSystem *target = 0;
+		std::string rel;
+		if (vfs_->Parse(refs[i], &target, &rel) && target != 0) {
+			// 末尾の区切りを落としてから最後の名前を取る。根で名前が無い
+			// （assets: のような）ときは種類の表記に落ちる。ローカルの
+			// "C:\" は "C:" になる（ドライブが分かるほうがよい）。
+			std::string s = target->Normalize(rel);
+			while (!s.empty() && (s[s.size() - 1] == '/' || s[s.size() - 1] == '\\')) {
+				s.erase(s.size() - 1);
+			}
+			const size_t cut = s.find_last_of("/\\");
+			const std::string name =
+			    (cut == std::string::npos) ? s : s.substr(cut + 1);
+			f.baseName = name.empty() ? std::string(target->prefix()) : name;
+			f.title = target->DisplayPath(rel);
+		} else {
+			// 取り外されたファイルシステムの控え。起動し直せば捨てられる。
+			f.baseName = "?";
+			f.title = refs[i];
+		}
+		out->push_back(f);
+	}
+	{
+		FileItem f;
+		f.baseName = "[Setting]";
+		f.title = Msg("Filer.BookmarkSettingTitle");
+		f.type = kFileItemBookmarkSetting;
 		out->push_back(f);
 	}
 }
@@ -625,6 +673,15 @@ FilerOpen Filer::Open(std::string *playPath) {
 	}
 	if (f.type & kFileItemSetting) {
 		return kFilerOpenSettings;
+	}
+	if (f.type & kFileItemBookmarkSetting) {
+		return kFilerOpenBookmarkSettings;
+	}
+	if (f.type & kFileItemBookmark) {
+		// 行き先がファイルになっていることがある（控え直しが要る）ので、
+		// 移動はブックマークを知っている側 (SettingsUi) に任せる。
+		*playPath = f.path;
+		return kFilerOpenBookmark;
 	}
 	if (f.type & kFileItemFileSystem) {
 		// 選択画面の 1 行ならその FS のルートへ、ルートの "[FS]" なら

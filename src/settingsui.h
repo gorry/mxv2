@@ -114,13 +114,28 @@ public:
 		fsSelected_ = 0;
 	}
 
-	// ブックマークの設定 (F4 / M)。よく開く場所を控えておいて、そこへ移る。
-	// コンテキストメニューからも開く。
+	// ブックマークの設定 (F4)。よく開く場所を控えておいて、そこへ移る。
+	// 管理が主で、ジャンプもできる。コンテキストメニューと、ファイラーの
+	// "BookMark>" の中の "[Setting]" からも開く。
 	void OpenBookmarks() {
 		if (busy()) return;
 		showBookmarks_ = true;
 		bmSelected_ = 0;
 		bmError_.clear();
+	}
+
+	// ブックマークの一覧 (M)。ファイラーを "BookMark>"（ジャンプ専用の
+	// 一覧）へ移す。コンテキストメニューの [ブックマークを開く] も同じ。
+	// 実際の移動は TakeRequest() 経由でメインループが行う。
+	void OpenBookmarkList();
+
+	// ファイラーの "BookMark>" で選んだブックマークへ移る。行き先が
+	// ファイルになっていたら「そのファイルのあるフォルダ」へ控え直してから
+	// 開く（設定ダイアログの [開く] と同じ手順）。実際の処理は次の Build()。
+	void OpenBookmarkRef(const std::string &ref) {
+		if (busy()) return;
+		bmJumpRef_ = ref;
+		bmJumpPending_ = true;
 	}
 
 	// カレントフォルダをブックマークへ追加する / から削除する (Shift+M)。
@@ -485,7 +500,7 @@ private:
 	bool fsConfirmOpen_;     // いま開いている（ESC の判断に使う）
 	bool fsCloseConfirm_;    // ESC で閉じてほしい
 
-	// ブックマークの設定 (F4 / M)。控えるのはフォルダの ref で、実体は
+	// ブックマークの設定 (F4)。控えるのはフォルダの ref で、実体は
 	// Settings::bookmarks（ファイルシステムの設定と違って Vfs 側には
 	// 持たない。UI が直に触っても設定と食い違わないようにするため）。
 	void BuildBookmarksWindow(Settings *settings, Filer *filer);
@@ -499,6 +514,15 @@ private:
 	// index のブックマークを開く。ファイルを指していたら「そのファイルの
 	// あるフォルダ」へ直してから開く（開けなければ bmError_ に理由）。
 	void OpenBookmark(Settings *settings, int index);
+	// ファイラーの "BookMark>" から。OpenBookmark と同じだが、開けない
+	// ときはそのままファイラーに開かせて、あちらの「開けなければ元の場所に
+	// 留まる」に任せる（ダイアログは出ていないので bmError_ は見せられない）。
+	void JumpToBookmarkRef(Settings *settings, const std::string &ref);
+	// ref をブックマークに控えられるか。ファイルシステムの選択（空）と
+	// "BookMark>" 自身は控えられない。
+	bool CanBookmark(const std::string &ref) const;
+	bool bmJumpPending_;       // 次の Build() で bmJumpRef_ へ移る
+	std::string bmJumpRef_;
 	// 同じ場所を指す行を探す。無ければ -1。
 	int FindBookmark(const std::vector<std::string> &list, const std::string &ref) const;
 	bool showBookmarks_;

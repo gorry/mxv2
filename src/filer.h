@@ -43,6 +43,11 @@ enum FileItemType {
 	// 読み込みに手間取っているときだけ出る「読み込み中」の行。
 	// 開いても何も起きない。
 	kFileItemLoading = 32,
+	// ブックマークの一覧 ("BookMark>" の中) の 1 行。path は行き先の ref
+	// （他のファイルシステムを指す）。開くとそこへ移る。
+	kFileItemBookmark = 64,
+	// ブックマークの一覧の末尾の "[Setting]"。開くとブックマークの設定。
+	kFileItemBookmarkSetting = 128,
 };
 
 struct FileItem {
@@ -60,6 +65,8 @@ enum FilerOpen {
 	kFilerOpenPlay,      // playPath に曲の ref が入っている
 	kFilerOpenMoved,     // 場所が変わった
 	kFilerOpenSettings,  // ファイルシステムの設定を開いてほしい
+	kFilerOpenBookmark,  // playPath のブックマークへ移ってほしい
+	kFilerOpenBookmarkSettings,  // ブックマークの設定を開いてほしい
 };
 
 class Filer {
@@ -177,6 +184,8 @@ private:
 	void AppendParentRow(std::vector<FileItem> *out);
 	// ファイルシステムの選択（ref が空のとき）の一覧。
 	void AppendFileSystems(std::vector<FileItem> *out);
+	// ブックマークの一覧（FileSystem::isJumpList() の中）。
+	void AppendBookmarks(std::vector<FileItem> *out);
 	void AppendDirs(const std::vector<DirEntry> &entries, std::vector<FileItem> *out);
 	void AppendMdx(const std::vector<DirEntry> &entries, std::vector<FileItem> *out);
 	void AppendExtras(std::vector<FileItem> *out);

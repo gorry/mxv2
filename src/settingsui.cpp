@@ -439,6 +439,7 @@ SettingsUi::SettingsUi()
       bmRemoveOpen_(false),
       bmCloseRemove_(false),
       bmOpenToggle_(false),
+      bmJumpPending_(false),
       bmToggleOpen_(false),
       quitAsk_(false),
       quitOpen_(false),
@@ -955,6 +956,11 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	BuildFolderWindow(settings, filer);
 	PollSafPicked(filer);
 	BuildFileSystemsWindow(filer);
+	// ファイラーの "BookMark>" で選ばれたぶん。
+	if (bmJumpPending_) {
+		bmJumpPending_ = false;
+		JumpToBookmarkRef(settings, bmJumpRef_);
+	}
 	BuildBookmarksWindow(settings, filer);
 	BuildBookmarkToggleWindow(settings, filer);
 	BuildQuitWindow();
@@ -1903,7 +1909,7 @@ void SettingsUi::BuildFsRemoveWindow(Filer *filer) {
 }
 
 // ---------------------------------------------------------------------------
-// ブックマーク (F4 / M)
+// ブックマーク (F4)。ジャンプ専用の一覧はファイラーの "BookMark>" (M)。
 //
 // 控えるのはフォルダの ref だけ。実体は Settings::bookmarks で、触ったら
 // kFieldBookmarks を立ててメインループに ini へ書き戻してもらう。
@@ -1951,6 +1957,34 @@ void SettingsUi::OpenBookmark(Settings *settings, int index) {
 	request_ = kRequestSetFolder;
 	bmError_.clear();
 	showBookmarks_ = false;
+}
+
+void SettingsUi::OpenBookmarkList() {
+	if (busy() || vfs_ == 0) return;
+	requestedFolder_ = vfs_->BookmarkRootRef();
+	if (requestedFolder_.empty()) return;
+	request_ = kRequestSetFolder;
+}
+
+void SettingsUi::JumpToBookmarkRef(Settings *settings, const std::string &ref) {
+	if (vfs_ == 0 || ref.empty()) return;
+	const int index = FindBookmark(settings->bookmarks, ref);
+	if (index >= 0) {
+		OpenBookmark(settings, index);
+		if (bmError_.empty()) return;  // request_ に積まれた
+		bmError_.clear();
+	}
+	// 控えに無い（並べ替え中に消えた）か、開けない。ファイラーに任せる。
+	requestedFolder_ = ref;
+	request_ = kRequestSetFolder;
+}
+
+bool SettingsUi::CanBookmark(const std::string &ref) const {
+	if (vfs_ == 0 || ref.empty()) return false;
+	FileSystem *fs = 0;
+	std::string rel;
+	if (!vfs_->Parse(ref, &fs, &rel) || fs == 0) return false;
+	return !fs->isJumpList();
 }
 
 void SettingsUi::BuildBookmarksWindow(Settings *settings, Filer *filer) {
@@ -2029,12 +2063,13 @@ void SettingsUi::BuildBookmarksWindow(Settings *settings, Filer *filer) {
 	ImGui::EndDisabled();
 
 	// [追加] はカレントフォルダを選択位置へ挿し込む。ルート（ファイル
-	// システムの選択）と、すでに控えてある場所は入れられない。
+	// システムの選択）と "BookMark>" 自身、すでに控えてある場所は入れられない。
 	const std::string cur = (filer != 0) ? filer->currentRef() : std::string();
+	const bool bookmarkable = CanBookmark(cur);
 	const bool dup = (FindBookmark(list, cur) >= 0);
 	const bool full = (count >= Settings::kMaxBookmarks);
 	ImGui::SameLine();
-	ImGui::BeginDisabled(cur.empty() || dup || full);
+	ImGui::BeginDisabled(!bookmarkable || dup || full);
 	if (ImGui::Button(Msg("Button.Add"))) {
 		const int at = (bmSelected_ >= 0) ? bmSelected_ : count;
 		list.insert(list.begin() + at, cur);
@@ -2044,7 +2079,7 @@ void SettingsUi::BuildBookmarksWindow(Settings *settings, Filer *filer) {
 	}
 	ImGui::EndDisabled();
 	if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-		if (cur.empty()) {
+		if (!bookmarkable) {
 			ImGui::SetTooltip("%s", Msg("Bookmark.AddRoot"));
 		} else if (dup) {
 			ImGui::SetTooltip("%s",
@@ -2122,8 +2157,8 @@ void SettingsUi::BuildBookmarkToggleWindow(Settings *settings, Filer *filer) {
 	if (bmOpenToggle_) {
 		bmOpenToggle_ = false;
 		const std::string cur = (filer != 0) ? filer->currentRef() : std::string();
-		// 追加できない場所（ファイルシステムの選択）では何もしない。
-		if (!cur.empty()) {
+		// 追加できない場所（ファイルシステムの選択、"BookMark>"）では何もしない。
+		if (CanBookmark(cur)) {
 			bmToggleRef_ = cur;
 			ImGui::OpenPopup(kBmToggleTitle);
 		}
@@ -2187,6 +2222,12 @@ void SettingsUi::RelistFolder(const std::string &dir) {
 	FileSystem *fs = 0;
 	std::string rel;
 	if (!vfs_->Parse(dir, &fs, &rel)) return;
+	// "BookMark>" の中からはファイルシステムの選択から始める（あちらは
+	// フォルダの一覧ではないので、開いても空になるだけ）。
+	if (fs != 0 && fs->isJumpList()) {
+		fs = 0;
+		rel.clear();
+	}
 	const std::string want = Vfs::MakeRef(fs, rel);
 
 	// 読めなかったときに戻る先を控える。読み込み中の（まだ空の）姿は
@@ -2209,6 +2250,7 @@ void SettingsUi::RelistFolder(const std::string &dir) {
 		for (int i = 0; i < vfs_->count(); i++) {
 			FileSystem *m = vfs_->at(i);
 			if (!m->available()) continue;
+			if (m->isJumpList()) continue;  // "BookMark>" はフォルダではない
 			FolderEntry e;
 			e.name = m->prefix();
 			e.ref = Vfs::MakeRef(m, m->Root());
@@ -2622,11 +2664,15 @@ void SettingsUi::BuildContextMenu(Settings *settings, DrawScreen *draw, Player *
 			ImGui::CloseCurrentPopup();
 		}
 
+		// 並びは bookmark.md の「メインメニュー」のとおり:
+		// 移動（フォルダを開く / ブックマークを開く / ブックマークに追加）→
+		// 設定 4 つ → 操作方法・バージョン情報 →（デスクトップのみ）終了。
 		if (ImGui::MenuItem(Msg("Menu.Folder"), "L")) {
 			SetFolderDir(filer->currentRef());
 			showFolder_ = true;
 		}
-		if (ImGui::MenuItem(Msg("Menu.Bookmarks"), "F4")) OpenBookmarks();
+		// ファイラーの "BookMark>"（ジャンプ専用）。設定ダイアログは下の段。
+		if (ImGui::MenuItem(Msg("Menu.BookmarkList"), "M")) OpenBookmarkList();
 		{
 			// カレントを控える / 控えを外す。どちらも確認してから実行するので、
 			// ここでは印を立てるだけ（メニューの中で OpenPopup すると入れ子の
@@ -2634,7 +2680,7 @@ void SettingsUi::BuildContextMenu(Settings *settings, DrawScreen *draw, Player *
 			const std::string cur = filer->currentRef();
 			const bool has = (FindBookmark(settings->bookmarks, cur) >= 0);
 			if (ImGui::MenuItem(has ? Msg("Menu.BookmarkRemove") : Msg("Menu.BookmarkAdd"),
-			                    "Shift+M", false, !cur.empty())) {
+			                    "Shift+M", false, CanBookmark(cur))) {
 				bmOpenToggle_ = true;
 			}
 		}
@@ -2644,6 +2690,9 @@ void SettingsUi::BuildContextMenu(Settings *settings, DrawScreen *draw, Player *
 		// F2 と同じ経路を通す（スキン名の欄を埋め直すため）。
 		if (ImGui::MenuItem(Msg("Menu.Colors"), "F2")) OpenColors();
 		if (ImGui::MenuItem(Msg("Menu.FileSystems"), "F3")) OpenFileSystems();
+		if (ImGui::MenuItem(Msg("Menu.Bookmarks"), "F4")) OpenBookmarks();
+
+		ImGui::Separator();
 		if (ImGui::MenuItem(Msg("Menu.Help"), "F11")) showHelp_ = true;
 		if (ImGui::MenuItem(Msg("Menu.About"), "F12")) showAbout_ = true;
 		// [終了] はモバイルには置かない（区切り線ごと）。

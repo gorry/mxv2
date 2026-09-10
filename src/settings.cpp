@@ -61,11 +61,16 @@ Settings::Settings()
       masterVolume(0),  // 中央
       latencyAuto(true),
       latencyMs(0),
+      bookmarksDefaulted(true),
       savePosition(true),
       windowX(-1),
       windowY(-1),
       windowW(0),
-      windowH(0) {}
+      windowH(0) {
+	// 初回起動のブックマーク（bookmark.md）。ini に [Bookmark] があれば
+	// Load() が置き換える。
+	bookmarks.push_back("assets:");
+}
 
 std::string Settings::PathIn(const std::string &dir) {
 	return JoinPath(dir, "mxv2.ini");
@@ -130,9 +135,12 @@ bool Settings::Load(const std::string &path) {
 	}
 
 	// 中身の妥当性（知らないファイルシステム）は VFS を持っている側で見る。
-	// ここは書いてある順に並べるだけ。
-	bookmarks.clear();
-	{
+	// ここは書いてある順に並べるだけ。[Bookmark] Count そのものが無ければ
+	// 初回起動なので、コンストラクタの初期値 ("assets:") をそのまま使う
+	// （Count=0 は「全部消した」なので空のまま）。
+	if (ini.Has("Bookmark", "Count")) {
+		bookmarksDefaulted = false;
+		bookmarks.clear();
 		int count = ini.GetInt("Bookmark", "Count", 0);
 		if (count > kMaxBookmarks) count = kMaxBookmarks;
 		for (int i = 1; i <= count; i++) {
