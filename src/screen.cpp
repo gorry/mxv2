@@ -391,6 +391,14 @@ bool Screen::CanResizeWindow() {
 #endif
 }
 
+bool Screen::CanQuitApp() {
+#if defined(__ANDROID__) || defined(__IPHONEOS__)
+	return false;
+#else
+	return true;
+#endif
+}
+
 bool Screen::Resize(int width, int height, std::string *err) {
 	if (!SetCanvasSize(width, height, err)) return false;
 	if (window_ != 0 && CanResizeWindow()) {

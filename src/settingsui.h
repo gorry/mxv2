@@ -208,16 +208,10 @@ public:
 	void SetAboutHeader(const std::string &text) { aboutHeader_ = text; }
 
 	// メニューから出た「メインループにやってもらうこと」。読んだら消える。
-	// 演奏の開始・曲送り・終了はメインループが状態を持っているので、
+	// フォルダの移動と終了はメインループが状態を持っているので、
 	// ここでは要求だけ返す。
 	enum Request {
 		kRequestNone = 0,
-		kRequestOpenCursor,   // ファイラーのカーソルを開く
-		kRequestReplay,       // 今の曲を掛け直す
-		kRequestPrev,
-		kRequestNext,
-		kRequestToggleCont,
-		kRequestToggleRepeat,
 		kRequestSetFolder,    // ファイラーを requestedFolder() へ移す
 		kRequestQuit,
 	};

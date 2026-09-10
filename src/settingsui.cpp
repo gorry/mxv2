@@ -2590,10 +2590,16 @@ void SettingsUi::BuildFolderWindow(Settings *settings, Filer *filer) {
 }
 
 // 旧 mxv の右クリックメニュー (mxv.cpp の CreateContextMenu) にあたる。
-// 演奏の開始・曲送り・終了はメインループの持ち物なので request_ に積んで返す。
+// 終了はメインループの持ち物なので request_ に積んで返す。
+//
+// **[操作] と [マスク] は 2026-09-10 に外した**（ユーザーの指示）。旧 mxv で
+// まだ画面をクリックして操作できなかった頃の名残で、操作ボタン・鍵盤・
+// ステータス欄を押せるようになった今はもう要らない。モバイルでは階層のある
+// メニューが扱いづらく、横画面では項目数そのものに余裕が無い、という事情もある。
 void SettingsUi::BuildContextMenu(Settings *settings, DrawScreen *draw, Player *player,
                                   Filer *filer) {
 	(void)draw;
+	(void)player;
 
 	// バナーを押したときはこちらから開ける（右クリックできない環境向け）。
 	// BeginPopupContextVoid と同じ id なので、下の Begin がそのまま拾う。
@@ -2611,13 +2617,11 @@ void SettingsUi::BuildContextMenu(Settings *settings, DrawScreen *draw, Player *
 		// 素通りしてしまう（そのまま終了に使われていた）。main から
 		// CloseDialog() 経由で来た印をここで始末する。CloseCurrentPopup は
 		// ポップアップの中でしか呼べないので、この位置でないといけない。
-		// 開いているサブメニューもまとめて閉じる。
 		if (closeContextMenu_) {
 			closeContextMenu_ = false;
 			ImGui::CloseCurrentPopup();
 		}
 
-		if (ImGui::MenuItem(Msg("Menu.Open"))) request_ = kRequestOpenCursor;
 		if (ImGui::MenuItem(Msg("Menu.Folder"), "L")) {
 			SetFolderDir(filer->currentRef());
 			showFolder_ = true;
@@ -2635,46 +2639,6 @@ void SettingsUi::BuildContextMenu(Settings *settings, DrawScreen *draw, Player *
 			}
 		}
 
-		if (ImGui::BeginMenu(Msg("Menu.Control"))) {
-			if (player->paused()) {
-				if (ImGui::MenuItem(Msg("Menu.Resume"))) player->Resume();
-			} else {
-				if (ImGui::MenuItem(Msg("Menu.Pause"))) player->Pause();
-			}
-			if (ImGui::MenuItem(Msg("Menu.Replay"))) request_ = kRequestReplay;
-			if (ImGui::MenuItem(Msg("Menu.Stop"))) player->Stop();
-			if (ImGui::MenuItem(Msg("Menu.Fadeout"))) player->Fadeout();
-			ImGui::Separator();
-			if (ImGui::MenuItem(Msg("Menu.Prev"))) request_ = kRequestPrev;
-			if (ImGui::MenuItem(Msg("Menu.Next"))) request_ = kRequestNext;
-			ImGui::Separator();
-			// 文言は短めにしてある。スキンの下限が横 480px で、そこでは
-			// サブメニューを左右どちらにも逃がせず、長いとルートに重なる。
-			if (ImGui::MenuItem(Msg("Menu.Cont"))) request_ = kRequestToggleCont;
-			if (ImGui::MenuItem(Msg("Menu.Repeat"))) request_ = kRequestToggleRepeat;
-			ImGui::EndMenu();
-		}
-
-		if (ImGui::BeginMenu(Msg("Menu.Mask"))) {
-			// チェックが付いている = 鳴っている。ドライバのビットは
-			// 「立っていると飛ばす」ので、表示は反転させる。
-			static const char *kNames[16] = { "ch.1", "ch.2", "ch.3", "ch.4", "ch.5",
-				                              "ch.6", "ch.7", "ch.8", "ch.P", "ch.Q",
-				                              "ch.R", "ch.S", "ch.T", "ch.U", "ch.V",
-				                              "ch.W" };
-			const uint16_t mask = player->channelMask();
-			for (int i = 0; i < 16; i++) {
-				if (i == 8) ImGui::Separator();
-				const bool on = ((mask & (1 << i)) == 0);
-				if (ImGui::MenuItem(kNames[i], 0, on)) player->ToggleChannel(i);
-			}
-			ImGui::Separator();
-			if (ImGui::MenuItem(Msg("Menu.MaskFm"))) player->ToggleChannelGroup(0x00ff);
-			if (ImGui::MenuItem(Msg("Menu.MaskPcm"))) player->ToggleChannelGroup(0xff00);
-			if (ImGui::MenuItem(Msg("Menu.MaskAll"))) player->ToggleChannelGroup(0xffff);
-			ImGui::EndMenu();
-		}
-
 		ImGui::Separator();
 		if (ImGui::MenuItem(Msg("Menu.Settings"), "F1")) visible_ = true;
 		// F2 と同じ経路を通す（スキン名の欄を埋め直すため）。
@@ -2682,8 +2646,11 @@ void SettingsUi::BuildContextMenu(Settings *settings, DrawScreen *draw, Player *
 		if (ImGui::MenuItem(Msg("Menu.FileSystems"), "F3")) OpenFileSystems();
 		if (ImGui::MenuItem(Msg("Menu.Help"), "F11")) showHelp_ = true;
 		if (ImGui::MenuItem(Msg("Menu.About"), "F12")) showAbout_ = true;
-		ImGui::Separator();
-		if (ImGui::MenuItem(Msg("Menu.Quit"))) request_ = kRequestQuit;
+		// [終了] はモバイルには置かない（区切り線ごと）。
+		if (Screen::CanQuitApp()) {
+			ImGui::Separator();
+			if (ImGui::MenuItem(Msg("Menu.Quit"))) request_ = kRequestQuit;
+		}
 
 		ImGui::EndPopup();
 	}

@@ -2047,33 +2047,9 @@ int main(int argc, char **argv) {
 			settings.fileSystems = SaveFileSystems(vfs);
 		}
 
-		// コンテキストメニューからの要求。演奏の開始・曲送り・終了は
+		// コンテキストメニューからの要求。フォルダの移動と終了は
 		// メインループが状態を持っているのでここで実行する。
 		switch (ui.TakeRequest()) {
-			case mxv2::SettingsUi::kRequestOpenCursor:
-				OpenCursor(ctx, &filer, &ui);
-				break;
-			case mxv2::SettingsUi::kRequestReplay:
-				if (!currentPath.empty()) StartPlay(ctx, currentPath);
-				break;
-			case mxv2::SettingsUi::kRequestPrev: {
-				std::string path;
-				if (filer.PrevMdx(&path)) StartPlay(ctx, path);
-				break;
-			}
-			case mxv2::SettingsUi::kRequestNext: {
-				std::string path;
-				if (filer.NextMdx(&path)) StartPlay(ctx, path);
-				break;
-			}
-			case mxv2::SettingsUi::kRequestToggleCont:
-				autoNext = !autoNext;
-				chromeRefresh = true;
-				break;
-			case mxv2::SettingsUi::kRequestToggleRepeat:
-				autoRepeat = !autoRepeat;
-				chromeRefresh = true;
-				break;
 			case mxv2::SettingsUi::kRequestSetFolder:
 				filer.SetCurrentRef(ui.requestedFolder());
 				fileListRefresh = true;
