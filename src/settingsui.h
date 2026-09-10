@@ -294,6 +294,17 @@ private:
 	// 作り直すため）。
 	bool ApplyScale(float scale, bool touch);
 
+	// ダイアログを出す位置と大きさに使う ImGuiCond。ふつうは Appearing
+	// （開いたときだけ中央に出し、あとは掴んで動かせる）。倍率が変わった
+	// フレームと**表示サイズが変わったフレーム（画面の回転・窓のリサイズ）**
+	// だけ Always にして、開いているダイアログを矩形ごと置き直す。
+	// ImGui はウィンドウの矩形をピクセルで覚えているので、放っておくと
+	// 回転後の画面からはみ出したままになる。**すべてのダイアログがこれを
+	// 使うこと**（ImGuiCond_Appearing を直に書かない）。
+	ImGuiCond placeCond() const { return relayout_ ? ImGuiCond_Always : ImGuiCond_Appearing; }
+	bool relayout_;
+	ImVec2 lastDisplaySize_;  // 前のフレームの io.DisplaySize
+
 	// ダイアログの既定の大きさ。渡すのは倍率 1 倍のときの大きさで、
 	// 表示倍率と「指で操作する」ぶんを掛けてから画面に収まるまで詰める。
 	// h に 0 を渡すと高さは中身任せ（AlwaysAutoResize と組で使う）。
