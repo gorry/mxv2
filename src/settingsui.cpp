@@ -60,6 +60,19 @@ const int kNumFontCandidates = (int)(sizeof(kFontCandidates) / sizeof(kFontCandi
 
 const float kFontSizePx = 15.0f;
 
+// 三点リーダー (U+2026) を下付きにするための下げ幅 (em)。
+//
+// UI 文言の「…」（省略と「選ぶと次にダイアログが出る」の印。Android の流儀）
+// は欧文フォントではベースライン上の点だが、M PLUS 1p は JIS の作法で
+// **行の中央**に置く（点は yMin 290〜yMax 430 / 1000、ピリオドは 0〜140）。
+// そこで同じ TTF を U+2026 だけもう 1 度重ね読みし、GlyphOffset で
+// 0.29 em 下げて点の下端をベースラインに揃える（本体側はこの 1 文字を
+// GlyphExcludeRanges で外す。ImGui 1.92 は「先に読んだ源が持つ字が勝つ」）。
+// 値は同梱フォントを測って決めたものなので、**同梱フォントのときだけ効かせる**
+// （欧文フォントに落ちたときに二重に下がらないように）。
+const float kEllipsisDropEm = 0.29f;
+const ImWchar kEllipsisRange[] = { 0x2026, 0x2026, 0 };
+
 // 指で押すところの高さの下限 (mm)。指の腹が当たる幅として Material Design は
 // 48dp (約 7.6mm)、Apple は 44pt (約 7mm) を勧めているが、mxv2 のダイアログは
 // 項目が多く画面が狭いので、下限として 6mm を採る。
@@ -521,12 +534,30 @@ bool SettingsUi::Init(Screen *screen, const AssetPaths &paths, std::string *err)
 			if (FileExists(bundled)) path = bundled;
 		}
 		if (path.empty()) path = paths_.Find(kBundledFont);
+		const bool isBundled = !path.empty();  // 名指しで見つかった = 同梱ぶん
 		if (path.empty()) path = paths_.Find(kUserFont);
 		for (int i = 0; path.empty() && i < kNumFontCandidates; i++) {
 			if (FileExists(kFontCandidates[i])) path = kFontCandidates[i];
 		}
-		if (!path.empty() && io.Fonts->AddFontFromFileTTF(path.c_str(), kFontSizePx) != 0) {
-			hasJapaneseFont_ = true;
+		// 中身は 1 度だけ読んで 2 つの源で共有する（所有権はこちら。
+		// アトラスが生きている間は fontData_ を捨てないこと）。
+		if (!path.empty() && ReadWholeFile(path, &fontData_) && !fontData_.empty()) {
+			ImFontConfig cfg;
+			cfg.FontDataOwnedByAtlas = false;
+			if (isBundled) cfg.GlyphExcludeRanges = kEllipsisRange;
+			if (io.Fonts->AddFontFromMemoryTTF(&fontData_[0], (int)fontData_.size(),
+			                                   kFontSizePx, &cfg) != 0) {
+				hasJapaneseFont_ = true;
+				if (isBundled) {
+					// 三点リーダーだけを下げた源を重ねる（kEllipsisDropEm）。
+					ImFontConfig drop;
+					drop.FontDataOwnedByAtlas = false;
+					drop.MergeMode = true;
+					drop.GlyphOffset = ImVec2(0.0f, kFontSizePx * kEllipsisDropEm);
+					io.Fonts->AddFontFromMemoryTTF(&fontData_[0], (int)fontData_.size(),
+					                               kFontSizePx, &drop);
+				}
+			}
 		}
 	}
 

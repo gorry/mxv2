@@ -313,6 +313,9 @@ private:
 	bool settingsWasVisible_;  // 前のフレームの visible_（閉じた瞬間を拾う）
 	bool settingsClosed_;
 	bool hasJapaneseFont_;
+	// ダイアログのフォントの中身。ImGui のアトラスが参照し続けるので、
+	// 終了まで持つ（FontDataOwnedByAtlas=false で 2 つの源に渡している）。
+	std::vector<uint8_t> fontData_;
 	float styleScale_;
 	ImGuiStyle baseStyle_;
 
