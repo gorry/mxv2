@@ -173,7 +173,7 @@ public static class PreviewBindings
                 return key switch
                 {
                     "Rect" => new PreviewBinding(PreviewRegions.Ids.VolumeBar, 20, PreviewDrag.Rect),
-                    "TimePos" => new PreviewBinding(PreviewRegions.Ids.VolumeTime, 21,
+                    "VolumePos" => new PreviewBinding(PreviewRegions.Ids.VolumeTime, 21,
                         PreviewDrag.Xy, PreviewRegions.Ids.VolumeBar),
                     "SrcThumb" => new PreviewBinding(PreviewRegions.Ids.VolumeNob),
                     _ => new PreviewBinding(PreviewRegions.Ids.VolumeBar),

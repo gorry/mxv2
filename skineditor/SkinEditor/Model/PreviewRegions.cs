@@ -230,7 +230,7 @@ public static class PreviewRegions
             TextWidth(ProgressTimeDigits, e.miniFontW, glyphW), glyphH);
 
         r[Ids.VolumeBar] = new Rectangle(e.volX, e.volY, e.volW, e.volH);
-        r[Ids.VolumeTime] = new Rectangle(e.volX + e.volTimePos[0], e.volY + e.volTimePos[1],
+        r[Ids.VolumeTime] = new Rectangle(e.volX + e.volVolumePos[0], e.volY + e.volVolumePos[1],
             TextWidth(VolumeTimeDigits, e.miniFontW, glyphW), glyphH);
 
         // つまみは音量で左右に動く。プレビューが今出している音量に合わせる。

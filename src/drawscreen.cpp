@@ -1263,7 +1263,7 @@ void DrawScreen::PutTotalVolBar(int volume, bool refresh) {
 	// 桁数は固定にする。短い文字列を書くと前の表示の末尾が残る。
 	char s[64];
 	snprintf(s, sizeof(s), "%c%03d", (volume >= 0) ? '+' : '-', abs(volume));
-	PrintMiniCompose(layout_.volX + layout_.volTimePos[0], layout_.volY + layout_.volTimePos[1], s,
+	PrintMiniCompose(layout_.volX + layout_.volVolumePos[0], layout_.volY + layout_.volVolumePos[1], s,
 	                 colors_.playKey.color, colors_.playKey.colorBright);
 }
 

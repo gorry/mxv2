@@ -804,7 +804,7 @@ public sealed class DrawScreenPort
 
         // 桁数は固定にする。短い文字列を書くと前の表示の末尾が残る。
         string s = $"{(volume >= 0 ? '+' : '-')}{Math.Abs(volume):D3}";
-        PrintMiniCompose(_skin.volX + _skin.volTimePos[0], _skin.volY + _skin.volTimePos[1], s,
+        PrintMiniCompose(_skin.volX + _skin.volVolumePos[0], _skin.volY + _skin.volVolumePos[1], s,
             _colors.playKey.color, _colors.playKey.colorBright);
     }
 

@@ -198,7 +198,7 @@ public static class TabLayout
         {
             Bitmap(BitmapRole.VolumeBar),
             Field("VolumeBar", "Rect"),
-            Field("VolumeBar", "TimePos"),
+            Field("VolumeBar", "VolumePos"),
             Field("VolumeBar", "SrcThumb"),
             Field("VolumeBar", "SrcBarLeft"),
             Field("VolumeBar", "SrcBarRight"),

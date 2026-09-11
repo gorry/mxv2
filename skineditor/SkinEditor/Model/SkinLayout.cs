@@ -118,7 +118,7 @@ public sealed class SkinLayout
 
     // ---- 音量バー -----------------------------------------------------
     public int volX = 476, volY = 300, volW = 64, volH = 16;
-    public int[] volTimePos = { 64, 6 };
+    public int[] volVolumePos = { 64, 6 };  // 音量値の表示位置（旧 TimePos）
     // 素材内の つまみ / バー左端 / バー右端 / バー中央（skin.h の volSrc*）。
     // バーは左端・中央の繰り返し・右端で敷く（スクロールバーの溝と同じ作法）。
     public Xywh volSrcThumb = new(0, 0, 8, 16);

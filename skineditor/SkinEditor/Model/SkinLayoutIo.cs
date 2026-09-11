@@ -92,7 +92,7 @@ public static class SkinLayoutIo
             GetXywh(ini, "VolumeBar", "Rect", ref r);
             t.volX = r.X; t.volY = r.Y; t.volW = r.W; t.volH = r.H;
         }
-        GetIntList(ini, "VolumeBar", "TimePos", t.volTimePos, 2);
+        GetIntList(ini, "VolumeBar", "VolumePos", t.volVolumePos, 2);
         GetXywh(ini, "VolumeBar", "SrcThumb", ref t.volSrcThumb);
         GetXywh(ini, "VolumeBar", "SrcBarLeft", ref t.volSrcBarLeft);
         GetXywh(ini, "VolumeBar", "SrcBarRight", ref t.volSrcBarRight);
@@ -187,7 +187,7 @@ public static class SkinLayoutIo
         ini.SetString("ProgressBar", "ImgProgressBar", t.progressBarBitmap);
 
         ini.SetString("VolumeBar", "Rect", $"{t.volX},{t.volY},{t.volW},{t.volH}");
-        ini.SetString("VolumeBar", "TimePos", Join(t.volTimePos));
+        ini.SetString("VolumeBar", "VolumePos", Join(t.volVolumePos));
         ini.SetString("VolumeBar", "SrcThumb", t.volSrcThumb.ToString());
         ini.SetString("VolumeBar", "SrcBarLeft", t.volSrcBarLeft.ToString());
         ini.SetString("VolumeBar", "SrcBarRight", t.volSrcBarRight.ToString());

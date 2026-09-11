@@ -271,8 +271,8 @@ Skin::Skin() {
 	volY = 300;
 	volW = 64;
 	volH = 16;
-	volTimePos[0] = 64;
-	volTimePos[1] = 6;
+	volVolumePos[0] = 64;
+	volVolumePos[1] = 6;
 	{
 		// 同梱素材の並び: つまみ / 左端 / 右端 / 中央（残り）。
 		const Xywh thumb = { 0, 0, 8, 16 };
@@ -482,7 +482,7 @@ void Skin::ApplyLayout(const std::string &skinDir) {
 		volW = r.w;
 		volH = r.h;
 	}
-	GetIntList(ini, "VolumeBar", "TimePos", volTimePos, 2);
+	GetIntList(ini, "VolumeBar", "VolumePos", volVolumePos, 2);
 	GetXywh(ini, "VolumeBar", "SrcThumb", &volSrcThumb);
 	GetXywh(ini, "VolumeBar", "SrcBarLeft", &volSrcBarLeft);
 	GetXywh(ini, "VolumeBar", "SrcBarRight", &volSrcBarRight);

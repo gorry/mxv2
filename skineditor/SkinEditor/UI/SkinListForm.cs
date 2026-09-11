@@ -43,6 +43,8 @@ public sealed class SkinListForm : Form
         var chooseFolder = new Button { Text = "フォルダを選ぶ…", AutoSize = true, MinimumSize = new Size(Dpi.S(this, 100), 0) };
         var exit = new Button { Text = "終了", AutoSize = true, MinimumSize = new Size(Dpi.S(this, 80), 0) };
         _openButton.Click += (_, _) => OpenSelected();
+        // Enter で [開く]（ユーザーの指示）。一覧で選んで Enter だけで入れる。
+        AcceptButton = _openButton;
         _newButton.Click += (_, _) => CreateNew();
         rescan.Click += (_, _) => Reload();
         chooseFolder.Click += (_, _) => ChooseFolder();

@@ -110,7 +110,7 @@ public class SkinDocumentTests
     {
         var e = SkinDocument.Open(TestPaths.FindDevRoot(), "Phone").Effective;
 
-        Assert.Equal(new[] { 128, 8 }, e.volTimePos);
+        Assert.Equal(new[] { 128, 8 }, e.volVolumePos);
         Assert.Equal(new[] { 16, 8 }, e.progTimePos);
     }
 
