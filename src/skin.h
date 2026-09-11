@@ -199,14 +199,35 @@ struct Skin {
 	// TimePos に "x,y" で書く（2026-09-04 に TimeX / TimeY をまとめた）。
 	int progX, progY, progW, progH;
 	int progTimePos[2];
+	// 素材の中の位置と大きさ。音量バーと同じ分け方（つまみが無いだけ）で、
+	// 左端 / 中央 / 右端 の 3 つ（2026-09-12。それまでは Rect と同じ幅の
+	// 絵をそのまま貼っていた）。左端は Rect の左端、右端は Rect の右端に
+	// 貼り付き、中央 (SrcBar) は残りの幅ぶん**左から繰り返して**敷かれる。
+	// **矩形は上段（未再生）の位置**で、下段（再生済み）は同じ矩形を
+	// その高さぶん下へずらした位置にある。再生位置より左は下段から、
+	// 右は上段から取る。同梱素材の並びは左から 左端 / 右端 / 中央（残り全部）
+	// で、左端と右端は同じ大きさ。
+	Xywh progSrcBarLeft;
+	Xywh progSrcBarRight;
+	Xywh progSrcBar;
 
 	// ---- 音量バー -----------------------------------------------------
 	// TimePos はプログレスバーと同じ（こちらに出るのは時刻ではなく音量値だが、
 	// 原典からのキー名をそのまま引き継いでいる）。
 	int volX, volY, volW, volH;
 	int volTimePos[2];
-	int volNobW;
-	Xywh volRect[2];  // volbar.bmp 内の つまみ / スライド
+	// 素材の中の位置と大きさ。スクロールバーと同じ分け方で、バーは
+	// 左端 / 中央 / 右端 の 3 つに分かれる（2026-09-12。それまでは
+	// つまみとスライド 1 枚だった）。左端は Rect の左端、右端は Rect の
+	// 右端に貼り付き、中央 (SrcBar) は残りの幅ぶん**左から繰り返して**
+	// 敷かれる（素材より長ければ繰り返し、短ければ途中で切る）。つまみは
+	// 音量に応じて Rect の中を左右に動く（動ける幅は volBarMovement）。
+	// 同梱素材の並びは左から つまみ / 左端 / 右端 / 中央（残り全部）で、
+	// つまみ・左端・右端は同じ大きさ。
+	Xywh volSrcThumb;
+	Xywh volSrcBarLeft;
+	Xywh volSrcBarRight;
+	Xywh volSrcBar;
 
 	// ---- 操作ボタン -----------------------------------------------------
 	// layout.ini では [PlayKey] Rect に "x,y,w,h" で書く（2026-09-04 に Pos
@@ -296,7 +317,7 @@ struct Skin {
 	// つまみは溝の中を動くので、**描く溝**の高さからつまみの高さを引いたもの
 	// （素材の溝の高さではない。溝は繰り返して敷くので伸び縮みする）。
 	int scrollBarMovement() const { return scrollGrooveH - scrollSrcThumb.h; }
-	int volBarMovement() const { return volW - volNobW; }
+	int volBarMovement() const { return volW - volSrcThumb.w; }
 
 private:
 	// skinDir/layout.ini を今の値の上に重ねる。無ければ何もしない。

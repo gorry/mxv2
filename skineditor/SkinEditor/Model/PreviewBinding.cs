@@ -175,7 +175,7 @@ public static class PreviewBindings
                     "Rect" => new PreviewBinding(PreviewRegions.Ids.VolumeBar, 20, PreviewDrag.Rect),
                     "TimePos" => new PreviewBinding(PreviewRegions.Ids.VolumeTime, 21,
                         PreviewDrag.Xy, PreviewRegions.Ids.VolumeBar),
-                    "NobWidth" or "NobSrc" => new PreviewBinding(PreviewRegions.Ids.VolumeNob),
+                    "SrcThumb" => new PreviewBinding(PreviewRegions.Ids.VolumeNob),
                     _ => new PreviewBinding(PreviewRegions.Ids.VolumeBar),
                 };
 

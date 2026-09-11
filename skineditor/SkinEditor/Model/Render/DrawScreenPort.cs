@@ -719,9 +719,27 @@ public sealed class DrawScreenPort
         int len = 0;
         if (playTimeMs != 0) len = (int)((long)_skin.progW * now / playTimeMs);
 
-        // 進んだ部分は素材の 2 段目、残りは 1 段目。
-        Blitter.Copy(_progressBar, 0, 0, len, _skin.progH, _progressBarBase, 0, _skin.progH, 100);
-        Blitter.Copy(_progressBar, len, 0, _skin.progW - len, _skin.progH, _progressBarBase, len, 0, 100);
+        // バーは 左端 / 中央の繰り返し / 右端 の 3 つで敷く（音量バーと同じ。
+        // つまみが無いだけ）。進んだ部分 [0,len) は素材の下段、残りは上段。
+        // 下段は同じ矩形をその高さぶん下へずらした位置。
+        Blitter.Fill(_progressBar, 0, 0, _skin.progW, _skin.progH, 0, 0, 0, 100);
+        var left = _skin.progSrcBarLeft;
+        var right = _skin.progSrcBarRight;
+        var bar = _skin.progSrcBar;
+        int middleW = _skin.progW - left.W - right.W;
+        for (int pass = 0; pass < 2; pass++)
+        {
+            bool played = pass == 0;
+            int xFrom = played ? 0 : len;
+            int xTo = played ? len : _skin.progW;
+            PutBarPiece(left, 0, left.W, xFrom, xTo, played ? left.H : 0);
+            if (bar.W > 0 && bar.H > 0)
+            {
+                for (int x = 0; x < middleW; x += bar.W)
+                    PutBarPiece(bar, left.W + x, Math.Min(bar.W, middleW - x), xFrom, xTo, played ? bar.H : 0);
+            }
+            PutBarPiece(right, _skin.progW - right.W, right.W, xFrom, xTo, played ? right.H : 0);
+        }
         Blitter.CopyComposite(_screen, _skin.progX, _skin.progY, _skin.progW, _skin.progH,
             _progressBar, 0, 0, _back, _skin.progX, _skin.progY, Blend.Mul);
 
@@ -731,6 +749,17 @@ public sealed class DrawScreenPort
         string s = $"PLAY TIME: {t / 60:D2}:{t % 60:D2} / {t2 / 60:D2}:{t2 % 60:D2}";
         PrintMiniCompose(_skin.progX + _skin.progTimePos[0], _skin.progY + _skin.progTimePos[1], s,
             _colors.playKey.color, _colors.playKey.colorBright);
+    }
+
+    // プログレスバーの部品 1 つを、横の範囲 [xFrom, xTo) に掛かるぶんだけ写す
+    // （drawscreen.cpp の PutBarPiece）。
+    private void PutBarPiece(Xywh piece, int dx, int pieceW, int xFrom, int xTo, int srcYOfs)
+    {
+        int start = Math.Max(dx, xFrom);
+        int end = Math.Min(dx + pieceW, xTo);
+        if (end <= start) return;
+        Blitter.Copy(_progressBar, start, 0, end - start, piece.H, _progressBarBase,
+            piece.X + (start - dx), piece.Y + srcYOfs, 100);
     }
 
     // ---- 音量バー ----------------------------------------------------------
@@ -747,10 +776,29 @@ public sealed class DrawScreenPort
 
         volume = Math.Max(-100, Math.Min(100, volume));
         int barPos = TotalVolBarPosFromVolume(volume);
-        Blitter.Copy(_totalVolBar, 0, 0, _skin.volRect[1].W, _skin.volRect[1].H, _totalVolBarBase,
-            _skin.volRect[1].X, _skin.volRect[1].Y, 100);
-        Blitter.Copy(_totalVolBar, barPos, 0, _skin.volRect[0].W, _skin.volRect[1].H,
-            _totalVolBarBase, _skin.volRect[0].X, _skin.volRect[1].Y, 100);
+
+        // バーは 左端 / 中央の繰り返し / 右端 の 3 つで敷く（スクロールバーの溝と
+        // 同じ作法。あちらは縦、こちらは横）。書かれない隙間はパレット 0 に
+        // したいので、まず消す。
+        Blitter.Fill(_totalVolBar, 0, 0, _skin.volW, _skin.volH, 0, 0, 0, 100);
+
+        var left = _skin.volSrcBarLeft;
+        var right = _skin.volSrcBarRight;
+        var bar = _skin.volSrcBar;
+        var thumb = _skin.volSrcThumb;
+        Blitter.Copy(_totalVolBar, 0, 0, left.W, left.H, _totalVolBarBase, left.X, left.Y, 100);
+        int middleW = _skin.volW - left.W - right.W;
+        if (bar.W > 0 && bar.H > 0)
+        {
+            for (int x = 0; x < middleW; x += bar.W)
+            {
+                int w = Math.Min(bar.W, middleW - x);
+                Blitter.Copy(_totalVolBar, left.W + x, 0, w, bar.H, _totalVolBarBase, bar.X, bar.Y, 100);
+            }
+        }
+        Blitter.Copy(_totalVolBar, _skin.volW - right.W, 0, right.W, right.H, _totalVolBarBase,
+            right.X, right.Y, 100);
+        Blitter.Copy(_totalVolBar, barPos, 0, thumb.W, thumb.H, _totalVolBarBase, thumb.X, thumb.Y, 100);
         Blitter.CopyComposite(_screen, _skin.volX, _skin.volY, _skin.volW, _skin.volH,
             _totalVolBar, 0, 0, _back, _skin.volX, _skin.volY, Blend.Mul);
 

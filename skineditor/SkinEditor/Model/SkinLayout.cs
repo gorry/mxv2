@@ -110,12 +110,21 @@ public sealed class SkinLayout
     // TimePos は時刻表示の位置（Rect の左上からの相対）。
     public int progX = 476, progY = 270, progW = 160, progH = 6;
     public int[] progTimePos = { 16, 8 };
+    // 素材内の バー左端 / バー右端 / バー中央（上段 = 未再生。下段は同じ矩形を
+    // その高さぶん下へずらした位置）。skin.h の progSrc*。
+    public Xywh progSrcBarLeft = new(0, 0, 12, 6);
+    public Xywh progSrcBarRight = new(12, 0, 12, 6);
+    public Xywh progSrcBar = new(24, 0, 136, 6);
 
     // ---- 音量バー -----------------------------------------------------
     public int volX = 476, volY = 300, volW = 64, volH = 16;
     public int[] volTimePos = { 64, 6 };
-    public int volNobW = 8;
-    public Xywh[] volRect = { new(0, 0, 8, 16), new(8, 0, 64, 16) };  // [0]=つまみ [1]=スライド
+    // 素材内の つまみ / バー左端 / バー右端 / バー中央（skin.h の volSrc*）。
+    // バーは左端・中央の繰り返し・右端で敷く（スクロールバーの溝と同じ作法）。
+    public Xywh volSrcThumb = new(0, 0, 8, 16);
+    public Xywh volSrcBarLeft = new(8, 0, 8, 16);
+    public Xywh volSrcBarRight = new(16, 0, 8, 16);
+    public Xywh volSrcBar = new(24, 0, 48, 16);
 
     // ---- 操作ボタン -----------------------------------------------------
     // [PlayKey] Rect の x,y は Pos<n> の原点、w,h は使うボタン全体を覆う
@@ -158,7 +167,7 @@ public sealed class SkinLayout
     // つまみが動ける幅は「**描いた**溝の高さ - つまみの高さ」。溝は繰り返して
     // 敷くので、素材の高さではなく描く高さで決まる。
     public int ScrollBarMovement() => scrollGrooveH - scrollSrcThumb.H;
-    public int VolBarMovement() => volW - volNobW;
+    public int VolBarMovement() => volW - volSrcThumb.W;
 
     // ---- キャンバスの大きさに合わせる（skin.cpp の Skin::PlacedFor） -------
     //
@@ -266,7 +275,6 @@ public sealed class SkinLayout
         c.scrollPosUpArrow = (int[])scrollPosUpArrow.Clone();
         c.scrollPosBar = (int[])scrollPosBar.Clone();
         c.scrollPosDownArrow = (int[])scrollPosDownArrow.Clone();
-        c.volRect = (Xywh[])volRect.Clone();
         c.playKeyRect = (Xywh[])playKeyRect.Clone();
         c.playKeyPos = playKeyPos.Select(p => (int[])p.Clone()).ToArray();
         return c;

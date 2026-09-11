@@ -257,6 +257,15 @@ Skin::Skin() {
 	progH = 6;
 	progTimePos[0] = 16;
 	progTimePos[1] = 8;
+	{
+		// 同梱素材の並び: 左端 / 右端 / 中央（残り）。上段が未再生。
+		const Xywh left = { 0, 0, 12, 6 };
+		const Xywh right = { 12, 0, 12, 6 };
+		const Xywh bar = { 24, 0, 136, 6 };
+		progSrcBarLeft = left;
+		progSrcBarRight = right;
+		progSrcBar = bar;
+	}
 
 	volX = 476;
 	volY = 300;
@@ -264,12 +273,16 @@ Skin::Skin() {
 	volH = 16;
 	volTimePos[0] = 64;
 	volTimePos[1] = 6;
-	volNobW = 8;
 	{
-		const Xywh nob = { 0, 0, 8, 16 };
-		const Xywh slide = { 8, 0, 64, 16 };
-		volRect[0] = nob;
-		volRect[1] = slide;
+		// 同梱素材の並び: つまみ / 左端 / 右端 / 中央（残り）。
+		const Xywh thumb = { 0, 0, 8, 16 };
+		const Xywh left = { 8, 0, 8, 16 };
+		const Xywh right = { 16, 0, 8, 16 };
+		const Xywh bar = { 24, 0, 48, 16 };
+		volSrcThumb = thumb;
+		volSrcBarLeft = left;
+		volSrcBarRight = right;
+		volSrcBar = bar;
 	}
 
 	playKeyX = 476;
@@ -456,6 +469,9 @@ void Skin::ApplyLayout(const std::string &skinDir) {
 		progH = r.h;
 	}
 	GetIntList(ini, "ProgressBar", "TimePos", progTimePos, 2);
+	GetXywh(ini, "ProgressBar", "SrcBarLeft", &progSrcBarLeft);
+	GetXywh(ini, "ProgressBar", "SrcBarRight", &progSrcBarRight);
+	GetXywh(ini, "ProgressBar", "SrcBar", &progSrcBar);
 	progressBarBitmap = ini.GetString("ProgressBar", "ImgProgressBar", progressBarBitmap);
 
 	{
@@ -467,9 +483,10 @@ void Skin::ApplyLayout(const std::string &skinDir) {
 		volH = r.h;
 	}
 	GetIntList(ini, "VolumeBar", "TimePos", volTimePos, 2);
-	volNobW = ini.GetInt("VolumeBar", "NobWidth", volNobW);
-	GetXywh(ini, "VolumeBar", "NobSrc", &volRect[0]);
-	GetXywh(ini, "VolumeBar", "SlideSrc", &volRect[1]);
+	GetXywh(ini, "VolumeBar", "SrcThumb", &volSrcThumb);
+	GetXywh(ini, "VolumeBar", "SrcBarLeft", &volSrcBarLeft);
+	GetXywh(ini, "VolumeBar", "SrcBarRight", &volSrcBarRight);
+	GetXywh(ini, "VolumeBar", "SrcBar", &volSrcBar);
 	volBarBitmap = ini.GetString("VolumeBar", "ImgVolumeBar", volBarBitmap);
 
 	{

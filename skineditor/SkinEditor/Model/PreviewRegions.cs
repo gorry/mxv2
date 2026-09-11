@@ -234,10 +234,10 @@ public static class PreviewRegions
             TextWidth(VolumeTimeDigits, e.miniFontW, glyphW), glyphH);
 
         // つまみは音量で左右に動く。プレビューが今出している音量に合わせる。
-        int movement = Math.Max(0, e.volW - e.volNobW);
+        int movement = Math.Max(0, e.volW - e.volSrcThumb.W);
         int v = Math.Max(-100, Math.Min(100, volume));
         int barPos = movement <= 0 ? 0 : Math.Max(0, Math.Min(movement, (v + 100) * movement / 200));
-        r[Ids.VolumeNob] = new Rectangle(e.volX + barPos, e.volY, e.volRect[0].W, e.volRect[1].H);
+        r[Ids.VolumeNob] = new Rectangle(e.volX + barPos, e.volY, e.volSrcThumb.W, e.volSrcThumb.H);
     }
 
     private static void AddPlayKey(Dictionary<string, Rectangle> r, SkinLayout e)

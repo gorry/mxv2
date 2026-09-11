@@ -1133,6 +1133,18 @@ void DrawScreen::CompositeScrollBar(int x, int y, int w, int h) {
 // プログレスバー
 // ---------------------------------------------------------------------------
 
+// プログレスバーの部品 1 つを、横の範囲 [xFrom, xTo) に掛かるぶんだけ写す。
+// piece は素材内の矩形（上段）、dx は器の中での置き場所、srcYOfs は下段
+// （再生済み）を取るときの縦のずらし。
+static void PutBarPiece(Bitmap *dst, const Bitmap *src, const Xywh &piece, int dx, int pieceW,
+                        int xFrom, int xTo, int srcYOfs) {
+	const int start = Max(dx, xFrom);
+	const int end = Min(dx + pieceW, xTo);
+	if (end <= start) return;
+	BmpCopy(dst, start, 0, end - start, piece.h, src, piece.x + (start - dx), piece.y + srcYOfs,
+	        100);
+}
+
 void DrawScreen::PutProgressBar(uint32_t nowTimeMs, uint32_t playTimeMs, bool refresh) {
 	if (!progressBar_.valid()) return;
 
@@ -1148,9 +1160,31 @@ void DrawScreen::PutProgressBar(uint32_t nowTimeMs, uint32_t playTimeMs, bool re
 		disp = true;
 	}
 	if (disp) {
-		// 進んだ部分は素材の 2 段目、残りは 1 段目。
-		BmpCopy(&progressBar_, 0, 0, len, layout_.progH, &progressBarBase_, 0, layout_.progH, 100);
-		BmpCopy(&progressBar_, len, 0, layout_.progW - len, layout_.progH, &progressBarBase_, len, 0, 100);
+		// バーは 左端 / 中央の繰り返し / 右端 の 3 つで敷く（音量バーと同じ。
+		// つまみが無いだけ）。進んだ部分 [0,len) は素材の下段、残りは上段。
+		// 下段は同じ矩形をその高さぶん下へずらした位置。
+		BmpFill(&progressBar_, 0, 0, layout_.progW, layout_.progH, 0, 0, 0, 100);
+		const Xywh &left = layout_.progSrcBarLeft;
+		const Xywh &right = layout_.progSrcBarRight;
+		const Xywh &bar = layout_.progSrcBar;
+		const int middleW = layout_.progW - left.w - right.w;
+		for (int pass = 0; pass < 2; pass++) {
+			const bool played = (pass == 0);
+			const int xFrom = played ? 0 : len;
+			const int xTo = played ? len : layout_.progW;
+			PutBarPiece(&progressBar_, &progressBarBase_, left, 0, left.w, xFrom, xTo,
+			            played ? left.h : 0);
+			if (bar.w > 0 && bar.h > 0) {
+				for (int x = 0; x < middleW; x += bar.w) {
+					int w = middleW - x;
+					if (w > bar.w) w = bar.w;
+					PutBarPiece(&progressBar_, &progressBarBase_, bar, left.w + x, w, xFrom, xTo,
+					            played ? bar.h : 0);
+				}
+			}
+			PutBarPiece(&progressBar_, &progressBarBase_, right, layout_.progW - right.w, right.w,
+			            xFrom, xTo, played ? right.h : 0);
+		}
 		BmpCopyComposite(&screen_, layout_.progX, layout_.progY, layout_.progW, layout_.progH, &progressBar_, 0, 0, &back_,
 		                 layout_.progX, layout_.progY, kBlendMul);
 	}
@@ -1188,7 +1222,7 @@ int DrawScreen::TotalVolBarPosFromVolume(int volume) const {
 int DrawScreen::VolumeFromX(int x) const {
 	const int m = totalVolBarMovement();
 	if (m <= 0) return 0;
-	const int pos = Max(0, Min(m, x - (layout_.volX + layout_.volNobW / 2)));
+	const int pos = Max(0, Min(m, x - (layout_.volX + layout_.volSrcThumb.w / 2)));
 	return pos * 200 / m - 100;
 }
 
@@ -1201,10 +1235,28 @@ void DrawScreen::PutTotalVolBar(int volume, bool refresh) {
 	totalVolBarLast_ = volume;
 
 	const int barPos = TotalVolBarPosFromVolume(volume);
-	BmpCopy(&totalVolBar_, 0, 0, layout_.volRect[1].w, layout_.volRect[1].h, &totalVolBarBase_,
-	        layout_.volRect[1].x, layout_.volRect[1].y, 100);
-	BmpCopy(&totalVolBar_, barPos, 0, layout_.volRect[0].w, layout_.volRect[1].h,
-	        &totalVolBarBase_, layout_.volRect[0].x, layout_.volRect[1].y, 100);
+
+	// バーは 左端 / 中央の繰り返し / 右端 の 3 つで敷く（スクロールバーの溝と
+	// 同じ作法。あちらは縦、こちらは横）。書かれない隙間はパレット 0 に
+	// したいので、まず消す。
+	BmpFill(&totalVolBar_, 0, 0, layout_.volW, layout_.volH, 0, 0, 0, 100);
+
+	const Xywh &left = layout_.volSrcBarLeft;
+	const Xywh &right = layout_.volSrcBarRight;
+	const Xywh &bar = layout_.volSrcBar;
+	const Xywh &thumb = layout_.volSrcThumb;
+	BmpCopy(&totalVolBar_, 0, 0, left.w, left.h, &totalVolBarBase_, left.x, left.y, 100);
+	const int middleW = layout_.volW - left.w - right.w;
+	if (bar.w > 0 && bar.h > 0) {
+		for (int x = 0; x < middleW; x += bar.w) {
+			int w = middleW - x;
+			if (w > bar.w) w = bar.w;
+			BmpCopy(&totalVolBar_, left.w + x, 0, w, bar.h, &totalVolBarBase_, bar.x, bar.y, 100);
+		}
+	}
+	BmpCopy(&totalVolBar_, layout_.volW - right.w, 0, right.w, right.h, &totalVolBarBase_, right.x,
+	        right.y, 100);
+	BmpCopy(&totalVolBar_, barPos, 0, thumb.w, thumb.h, &totalVolBarBase_, thumb.x, thumb.y, 100);
 	BmpCopyComposite(&screen_, layout_.volX, layout_.volY, layout_.volW, layout_.volH, &totalVolBar_, 0, 0, &back_, layout_.volX,
 	                 layout_.volY, kBlendMul);
 

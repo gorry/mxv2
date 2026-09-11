@@ -82,6 +82,9 @@ public static class SkinLayoutIo
             t.progX = r.X; t.progY = r.Y; t.progW = r.W; t.progH = r.H;
         }
         GetIntList(ini, "ProgressBar", "TimePos", t.progTimePos, 2);
+        GetXywh(ini, "ProgressBar", "SrcBarLeft", ref t.progSrcBarLeft);
+        GetXywh(ini, "ProgressBar", "SrcBarRight", ref t.progSrcBarRight);
+        GetXywh(ini, "ProgressBar", "SrcBar", ref t.progSrcBar);
         t.progressBarBitmap = ini.GetString("ProgressBar", "ImgProgressBar", t.progressBarBitmap);
 
         {
@@ -90,15 +93,10 @@ public static class SkinLayoutIo
             t.volX = r.X; t.volY = r.Y; t.volW = r.W; t.volH = r.H;
         }
         GetIntList(ini, "VolumeBar", "TimePos", t.volTimePos, 2);
-        t.volNobW = ini.GetInt("VolumeBar", "NobWidth", t.volNobW);
-        {
-            var nob = t.volRect[0];
-            GetXywh(ini, "VolumeBar", "NobSrc", ref nob);
-            t.volRect[0] = nob;
-            var slide = t.volRect[1];
-            GetXywh(ini, "VolumeBar", "SlideSrc", ref slide);
-            t.volRect[1] = slide;
-        }
+        GetXywh(ini, "VolumeBar", "SrcThumb", ref t.volSrcThumb);
+        GetXywh(ini, "VolumeBar", "SrcBarLeft", ref t.volSrcBarLeft);
+        GetXywh(ini, "VolumeBar", "SrcBarRight", ref t.volSrcBarRight);
+        GetXywh(ini, "VolumeBar", "SrcBar", ref t.volSrcBar);
         t.volBarBitmap = ini.GetString("VolumeBar", "ImgVolumeBar", t.volBarBitmap);
 
         {
@@ -183,13 +181,17 @@ public static class SkinLayoutIo
 
         ini.SetString("ProgressBar", "Rect", $"{t.progX},{t.progY},{t.progW},{t.progH}");
         ini.SetString("ProgressBar", "TimePos", Join(t.progTimePos));
+        ini.SetString("ProgressBar", "SrcBarLeft", t.progSrcBarLeft.ToString());
+        ini.SetString("ProgressBar", "SrcBarRight", t.progSrcBarRight.ToString());
+        ini.SetString("ProgressBar", "SrcBar", t.progSrcBar.ToString());
         ini.SetString("ProgressBar", "ImgProgressBar", t.progressBarBitmap);
 
         ini.SetString("VolumeBar", "Rect", $"{t.volX},{t.volY},{t.volW},{t.volH}");
         ini.SetString("VolumeBar", "TimePos", Join(t.volTimePos));
-        ini.SetInt("VolumeBar", "NobWidth", t.volNobW);
-        ini.SetString("VolumeBar", "NobSrc", t.volRect[0].ToString());
-        ini.SetString("VolumeBar", "SlideSrc", t.volRect[1].ToString());
+        ini.SetString("VolumeBar", "SrcThumb", t.volSrcThumb.ToString());
+        ini.SetString("VolumeBar", "SrcBarLeft", t.volSrcBarLeft.ToString());
+        ini.SetString("VolumeBar", "SrcBarRight", t.volSrcBarRight.ToString());
+        ini.SetString("VolumeBar", "SrcBar", t.volSrcBar.ToString());
         ini.SetString("VolumeBar", "ImgVolumeBar", t.volBarBitmap);
 
         ini.SetString("PlayKey", "Rect", $"{t.playKeyX},{t.playKeyY},{t.playKeyW},{t.playKeyH}");

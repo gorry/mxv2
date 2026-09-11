@@ -199,9 +199,10 @@ public static class TabLayout
             Bitmap(BitmapRole.VolumeBar),
             Field("VolumeBar", "Rect"),
             Field("VolumeBar", "TimePos"),
-            Field("VolumeBar", "NobWidth"),
-            Field("VolumeBar", "NobSrc"),
-            Field("VolumeBar", "SlideSrc"),
+            Field("VolumeBar", "SrcThumb"),
+            Field("VolumeBar", "SrcBarLeft"),
+            Field("VolumeBar", "SrcBarRight"),
+            Field("VolumeBar", "SrcBar"),
             Slider("音量", -100, 100, 0, (p, v) => p.StateVolume = v, PreviewRegions.Ids.VolumeBar),
         }),
 
@@ -210,6 +211,9 @@ public static class TabLayout
             Bitmap(BitmapRole.ProgressBar),
             Field("ProgressBar", "Rect"),
             Field("ProgressBar", "TimePos"),
+            Field("ProgressBar", "SrcBarLeft"),
+            Field("ProgressBar", "SrcBarRight"),
+            Field("ProgressBar", "SrcBar"),
             Slider("プレイ時間", 0, 100, 40, (p, v) => p.StateProgress = v / 100.0, PreviewRegions.Ids.ProgressBar),
         }),
 

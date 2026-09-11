@@ -339,8 +339,10 @@ public sealed class SkinDocument
                 ClipOne("ScrollBar", "SrcDownArrow", e => e.scrollSrcDownArrow);
                 break;
             case BitmapRole.VolumeBar:
-                ClipOne("VolumeBar", "NobSrc", e => e.volRect[0]);
-                ClipOne("VolumeBar", "SlideSrc", e => e.volRect[1]);
+                ClipOne("VolumeBar", "SrcThumb", e => e.volSrcThumb);
+                ClipOne("VolumeBar", "SrcBarLeft", e => e.volSrcBarLeft);
+                ClipOne("VolumeBar", "SrcBarRight", e => e.volSrcBarRight);
+                ClipOne("VolumeBar", "SrcBar", e => e.volSrcBar);
                 break;
             case BitmapRole.Banner:
             {
@@ -351,15 +353,12 @@ public sealed class SkinDocument
                 break;
             }
             case BitmapRole.ProgressBar:
-            {
-                // 素材は上段・下段の 2 段構成（skin.cpp のコメント参照）。
-                int maxH = Math.Max(1, bmpH / 2);
-                int w = Math.Min(Effective.progW, bmpW);
-                int h = Math.Min(Effective.progH, maxH);
-                if (w != Effective.progW || h != Effective.progH)
-                    SetLayoutRaw("ProgressBar", "Rect", $"{Effective.progX},{Effective.progY},{w},{h}");
+                // Rect の幅は中央を繰り返して埋めるので素材の幅と無関係。丸めるのは
+                // 素材内の矩形だけ（音量バーと同じ）。下段ぶんの高さは見ない。
+                ClipOne("ProgressBar", "SrcBarLeft", e => e.progSrcBarLeft);
+                ClipOne("ProgressBar", "SrcBarRight", e => e.progSrcBarRight);
+                ClipOne("ProgressBar", "SrcBar", e => e.progSrcBar);
                 break;
-            }
             default:
                 // Back / Kb0-2 / MiniFont / LevelMeter は明示の Src 矩形を持たないため対象外。
                 break;
