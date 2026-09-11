@@ -670,7 +670,7 @@ void ToggleFileListFontSize(mxv2::DrawScreen *draw, mxv2::Filer *filer, bool *fi
 }
 
 // ファイラーのカーソルを開く。曲なら演奏、フォルダやファイルシステムなら移動、
-// "[Setting]" ならファイルシステムの設定ダイアログ（"BookMark>" の中なら
+// "[Setting]" ならファイルシステムの設定ダイアログ（"Bookmarks>" の中なら
 // ブックマークの設定）、ブックマークの行ならその場所へ移る。
 // キー (ENTER)・マウス・右へのスワイプから同じ手順を通す。
 void OpenCursor(const PlayContext &ctx, mxv2::Filer *filer, mxv2::SettingsUi *ui) {
@@ -1062,7 +1062,7 @@ int main(int argc, char **argv) {
 	// 用意する。場所の指定はここから先すべて ref（vfs.h）。
 	mxv2::Vfs vfs;
 	vfs.Configure(paths.bundledDir, paths.userDir);
-	// ファイラーの "BookMark>" に並ぶのは Settings::bookmarks そのもの。
+	// ファイラーの "Bookmarks>" に並ぶのは Settings::bookmarks そのもの。
 	vfs.SetBookmarks(&settings.bookmarks);
 	// ファイラーのルートに並べる順は ini から。読めなかったぶんや足りない
 	// ぶんは LoadFileSystems が補うので、そのときは書き戻す。
@@ -1818,7 +1818,7 @@ int main(int argc, char **argv) {
 					break;
 				case SDLK_m:
 					// Shift 付きはカレントフォルダの控え / 控え外し（確認あり）。
-					// 素の M はファイラーの "BookMark>"（ジャンプ専用の一覧）。
+					// 素の M はファイラーの "Bookmarks>"（ジャンプ専用の一覧）。
 					// 設定ダイアログは F4 だけ。
 					if (ev.key.keysym.mod & KMOD_SHIFT) {
 						ui.OpenBookmarkToggle();
@@ -2078,7 +2078,7 @@ int main(int argc, char **argv) {
 		if (newDirt & mxv2::Settings::kFieldFileSystems) {
 			settings.fileSystems = SaveFileSystems(vfs);
 		}
-		// ブックマークが変わったら、"BookMark>" を開いていれば並べ直す。
+		// ブックマークが変わったら、"Bookmarks>" を開いていれば並べ直す。
 		if ((newDirt & mxv2::Settings::kFieldBookmarks) && filer.fs() != 0 &&
 		    filer.fs()->isJumpList()) {
 			filer.Refresh();

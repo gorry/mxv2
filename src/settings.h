@@ -105,7 +105,7 @@ struct Settings {
 
 	// [Bookmark]
 	// よく開く場所の控え。中身はフォルダの ref で、並び順がそのまま
-	// ダイアログとファイラーの "BookMark>" の並び。初回起動時（ini に
+	// ダイアログとファイラーの "Bookmarks>" の並び。初回起動時（ini に
 	// [Bookmark] Count が無いとき）は "assets:" が 1 つ入る（消してよい）。
 	std::vector<std::string> bookmarks;
 	static const int kMaxBookmarks = 64;

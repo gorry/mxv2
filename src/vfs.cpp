@@ -380,7 +380,7 @@ private:
 // -------------------------------------------------------------------------
 // ブックマーク (bookmark:)
 //
-// ファイラーのルートに "BookMark>" として並ぶ、**行き先だけを並べる**
+// ファイラーのルートに "Bookmarks>" として並ぶ、**行き先だけを並べる**
 // ファイルシステム。中に入るとブックマーク（他の FS の ref）が一覧になり、
 // 選ぶとそこへ移る。ジャンプ専用で、管理は [ブックマークの設定] (F4) の
 // 仕事（あちらからも開ける）。
@@ -400,7 +400,7 @@ public:
 
 	const char *id() const { return kBookmarkId; }
 	std::string label() const { return Msg("Fs.Bookmark"); }
-	const char *prefix() const { return "BookMark>"; }
+	const char *prefix() const { return "Bookmarks>"; }
 
 	bool hasPdxDir() const { return false; }
 	bool isJumpList() const { return true; }

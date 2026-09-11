@@ -43,7 +43,7 @@ enum FileItemType {
 	// 読み込みに手間取っているときだけ出る「読み込み中」の行。
 	// 開いても何も起きない。
 	kFileItemLoading = 32,
-	// ブックマークの一覧 ("BookMark>" の中) の 1 行。path は行き先の ref
+	// ブックマークの一覧 ("Bookmarks>" の中) の 1 行。path は行き先の ref
 	// （他のファイルシステムを指す）。開くとそこへ移る。
 	kFileItemBookmark = 64,
 	// ブックマークの一覧の末尾の "[Setting]"。開くとブックマークの設定。

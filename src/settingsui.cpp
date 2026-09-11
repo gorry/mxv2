@@ -1015,7 +1015,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	BuildFolderWindow(settings, filer);
 	PollSafPicked(filer);
 	BuildFileSystemsWindow(filer);
-	// ファイラーの "BookMark>" で選ばれたぶん。
+	// ファイラーの "Bookmarks>" で選ばれたぶん。
 	if (bmJumpPending_) {
 		bmJumpPending_ = false;
 		JumpToBookmarkRef(settings, bmJumpRef_);
@@ -1965,7 +1965,7 @@ void SettingsUi::BuildFsRemoveWindow(Filer *filer) {
 }
 
 // ---------------------------------------------------------------------------
-// ブックマーク (F4)。ジャンプ専用の一覧はファイラーの "BookMark>" (M)。
+// ブックマーク (F4)。ジャンプ専用の一覧はファイラーの "Bookmarks>" (M)。
 //
 // 控えるのはフォルダの ref だけ。実体は Settings::bookmarks で、触ったら
 // kFieldBookmarks を立ててメインループに ini へ書き戻してもらう。
@@ -2119,7 +2119,7 @@ void SettingsUi::BuildBookmarksWindow(Settings *settings, Filer *filer) {
 	ImGui::EndDisabled();
 
 	// [追加] はカレントフォルダを選択位置へ挿し込む。ルート（ファイル
-	// システムの選択）と "BookMark>" 自身、すでに控えてある場所は入れられない。
+	// システムの選択）と "Bookmarks>" 自身、すでに控えてある場所は入れられない。
 	const std::string cur = (filer != 0) ? filer->currentRef() : std::string();
 	const bool bookmarkable = CanBookmark(cur);
 	const bool dup = (FindBookmark(list, cur) >= 0);
@@ -2213,7 +2213,7 @@ void SettingsUi::BuildBookmarkToggleWindow(Settings *settings, Filer *filer) {
 	if (bmOpenToggle_) {
 		bmOpenToggle_ = false;
 		const std::string cur = (filer != 0) ? filer->currentRef() : std::string();
-		// 追加できない場所（ファイルシステムの選択、"BookMark>"）では何もしない。
+		// 追加できない場所（ファイルシステムの選択、"Bookmarks>"）では何もしない。
 		if (CanBookmark(cur)) {
 			bmToggleRef_ = cur;
 			ImGui::OpenPopup(kBmToggleTitle);
@@ -2278,7 +2278,7 @@ void SettingsUi::RelistFolder(const std::string &dir) {
 	FileSystem *fs = 0;
 	std::string rel;
 	if (!vfs_->Parse(dir, &fs, &rel)) return;
-	// "BookMark>" の中からはファイルシステムの選択から始める（あちらは
+	// "Bookmarks>" の中からはファイルシステムの選択から始める（あちらは
 	// フォルダの一覧ではないので、開いても空になるだけ）。
 	if (fs != 0 && fs->isJumpList()) {
 		fs = 0;
@@ -2306,7 +2306,7 @@ void SettingsUi::RelistFolder(const std::string &dir) {
 		for (int i = 0; i < vfs_->count(); i++) {
 			FileSystem *m = vfs_->at(i);
 			if (!m->available()) continue;
-			if (m->isJumpList()) continue;  // "BookMark>" はフォルダではない
+			if (m->isJumpList()) continue;  // "Bookmarks>" はフォルダではない
 			FolderEntry e;
 			e.name = m->prefix();
 			e.ref = Vfs::MakeRef(m, m->Root());
@@ -2727,7 +2727,7 @@ void SettingsUi::BuildContextMenu(Settings *settings, DrawScreen *draw, Player *
 			SetFolderDir(filer->currentRef());
 			showFolder_ = true;
 		}
-		// ファイラーの "BookMark>"（ジャンプ専用）。設定ダイアログは下の段。
+		// ファイラーの "Bookmarks>"（ジャンプ専用）。設定ダイアログは下の段。
 		if (ImGui::MenuItem(Msg("Menu.BookmarkList"), "M")) OpenBookmarkList();
 		{
 			// カレントを控える / 控えを外す。どちらも確認してから実行するので、

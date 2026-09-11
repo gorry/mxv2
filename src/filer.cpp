@@ -498,18 +498,22 @@ void Filer::AppendBookmarks(std::vector<FileItem> *out) {
 		FileSystem *target = 0;
 		std::string rel;
 		if (vfs_->Parse(refs[i], &target, &rel) && target != 0) {
-			// 末尾の区切りを落としてから最後の名前を取る。根で名前が無い
-			// （assets: のような）ときは種類の表記に落ちる。ローカルの
-			// "C:\" は "C:" になる（ドライブが分かるほうがよい）。
-			std::string s = target->Normalize(rel);
+			// 名前は**表示用の文字列 (DisplayPath)** の最後の要素から取る。
+			// rel から切り出すと、SAF の URI では "primary%3Amdx" のような
+			// 符号化されたままの断片が出てしまう（Pixel 7a で実際に出た）。
+			// 末尾の区切りを落としてから、"/" "\" と種類の表記の ">" の後ろを
+			// 取る。根で名前が無い（"Assets>" のような）ときは種類の表記に
+			// 落ちる。ローカルの "C:\" は "C:" になる（ドライブが分かる
+			// ほうがよい）。SAF の根はツリーの名前（"SAF>mdx" → "mdx"）。
+			f.title = target->DisplayPath(rel);
+			std::string s = f.title;
 			while (!s.empty() && (s[s.size() - 1] == '/' || s[s.size() - 1] == '\\')) {
 				s.erase(s.size() - 1);
 			}
-			const size_t cut = s.find_last_of("/\\");
+			const size_t cut = s.find_last_of("/\\>");
 			const std::string name =
 			    (cut == std::string::npos) ? s : s.substr(cut + 1);
 			f.baseName = name.empty() ? std::string(target->prefix()) : name;
-			f.title = target->DisplayPath(rel);
 		} else {
 			// 取り外されたファイルシステムの控え。起動し直せば捨てられる。
 			f.baseName = "?";

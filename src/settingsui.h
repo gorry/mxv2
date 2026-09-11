@@ -116,7 +116,7 @@ public:
 
 	// ブックマークの設定 (F4)。よく開く場所を控えておいて、そこへ移る。
 	// 管理が主で、ジャンプもできる。コンテキストメニューと、ファイラーの
-	// "BookMark>" の中の "[Setting]" からも開く。
+	// "Bookmarks>" の中の "[Setting]" からも開く。
 	void OpenBookmarks() {
 		if (busy()) return;
 		showBookmarks_ = true;
@@ -124,12 +124,12 @@ public:
 		bmError_.clear();
 	}
 
-	// ブックマークの一覧 (M)。ファイラーを "BookMark>"（ジャンプ専用の
+	// ブックマークの一覧 (M)。ファイラーを "Bookmarks>"（ジャンプ専用の
 	// 一覧）へ移す。コンテキストメニューの [ブックマークを開く] も同じ。
 	// 実際の移動は TakeRequest() 経由でメインループが行う。
 	void OpenBookmarkList();
 
-	// ファイラーの "BookMark>" で選んだブックマークへ移る。行き先が
+	// ファイラーの "Bookmarks>" で選んだブックマークへ移る。行き先が
 	// ファイルになっていたら「そのファイルのあるフォルダ」へ控え直してから
 	// 開く（設定ダイアログの [開く] と同じ手順）。実際の処理は次の Build()。
 	void OpenBookmarkRef(const std::string &ref) {
@@ -535,12 +535,12 @@ private:
 	// index のブックマークを開く。ファイルを指していたら「そのファイルの
 	// あるフォルダ」へ直してから開く（開けなければ bmError_ に理由）。
 	void OpenBookmark(Settings *settings, int index);
-	// ファイラーの "BookMark>" から。OpenBookmark と同じだが、開けない
+	// ファイラーの "Bookmarks>" から。OpenBookmark と同じだが、開けない
 	// ときはそのままファイラーに開かせて、あちらの「開けなければ元の場所に
 	// 留まる」に任せる（ダイアログは出ていないので bmError_ は見せられない）。
 	void JumpToBookmarkRef(Settings *settings, const std::string &ref);
 	// ref をブックマークに控えられるか。ファイルシステムの選択（空）と
-	// "BookMark>" 自身は控えられない。
+	// "Bookmarks>" 自身は控えられない。
 	bool CanBookmark(const std::string &ref) const;
 	bool bmJumpPending_;       // 次の Build() で bmJumpRef_ へ移る
 	std::string bmJumpRef_;
