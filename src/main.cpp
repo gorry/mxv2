@@ -312,7 +312,9 @@ bool LoadFileSystems(mxv2::Vfs *vfs, const std::vector<std::string> &refs,
 			fixed = true;
 			continue;
 		}
-		if (!vfs->Mount(fs)) fixed = true;  // 同じものが二重に書かれていた
+		// 同じものが二重に書かれていたか、この環境では使えない
+		// （Android のローカル FS）。どちらも書き戻して消す。
+		if (!vfs->Mount(fs)) fixed = true;
 	}
 	if (vfs->EnsureRequired()) fixed = true;
 	return fixed;

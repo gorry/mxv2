@@ -176,7 +176,8 @@ public:
 	void RemoveMounted(int index);
 
 	void ClearMounts() { mounted_.clear(); }
-	// 末尾に足す。既に入っていれば何もしない。
+	// 末尾に足す。既に入っていれば何もしない。**使えない FS
+	// (available() が false) も足さない**（false を返す）。
 	bool Mount(FileSystem *fs);
 	// pos の位置へ入れる。
 	bool MountAt(int pos, FileSystem *fs);

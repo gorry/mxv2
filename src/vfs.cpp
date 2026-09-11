@@ -623,6 +623,10 @@ bool Vfs::Mount(FileSystem *fs) {
 
 bool Vfs::MountAt(int pos, FileSystem *fs) {
 	if (fs == 0 || IsMounted(fs)) return false;
+	// 使えないもの（Android のローカル FS）はマウントしない。ここで弾けば
+	// ファイラーの選択画面にも [ファイルシステムの設定] にも出ない
+	// （ini に書かれていても LoadFileSystems が「直した」として書き戻す）。
+	if (!fs->available()) return false;
 	if (pos < 0) pos = 0;
 	if (pos > (int)mounted_.size()) pos = (int)mounted_.size();
 	mounted_.insert(mounted_.begin() + pos, fs);
@@ -647,6 +651,7 @@ bool Vfs::EnsureRequired() {
 	bool added = false;
 	for (size_t i = 0; i < all_.size(); i++) {
 		if (all_[i]->removable()) continue;
+		if (!all_[i]->available()) continue;  // MountAt と同じ理由
 		if (IsMounted(all_[i])) continue;
 		if (all_[i]->mountFirst()) {
 			mounted_.insert(mounted_.begin(), all_[i]);
