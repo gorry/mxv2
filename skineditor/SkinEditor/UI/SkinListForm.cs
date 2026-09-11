@@ -84,7 +84,16 @@ public sealed class SkinListForm : Form
         }
 
         _root = detection.Root;
+        // 読み直す前に選んでいたものがあれば、それを選び直す。
+        string? before = _list.SelectedItem as string;
         foreach (var name in _root.ListSkinNames()) _list.Items.Add(name);
+        // 必ずどれかを選択状態にしておく（先頭）。フォーカスの点線枠だけで
+        // 未選択だと、[開く] を押しても何も起きない（ユーザーの指摘）。
+        if (_list.Items.Count > 0)
+        {
+            int idx = before == null ? -1 : _list.Items.IndexOf(before);
+            _list.SelectedIndex = idx >= 0 ? idx : 0;
+        }
         _openButton.Enabled = _list.Items.Count > 0;
         _newButton.Enabled = true;
     }

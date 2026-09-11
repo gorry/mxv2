@@ -12,6 +12,7 @@ public sealed class SkinEditForm : Form
 {
     private readonly SkinDocument _doc;
     private readonly PreviewCanvas _preview;
+    private bool _refreshAfterDrag;  // ドラッグ中に見送った RefreshAll があるか
     private readonly TabPageBuilder _builder;
     // ウィンドウの最小高さと初期サイズを中身から算出する（OnLoad）ために持っておく。
     private readonly FlowLayoutPanel _toolbar;
@@ -217,7 +218,26 @@ public sealed class SkinEditForm : Form
             else SelectTarget(null, moveFocus: false);
         };
 
-        doc.Changed += RefreshAll;
+        // ドラッグ中は Changed のたびに全コントロールを更新しない（重くて
+        // プレビューの再描画が後回しになる。PreviewCanvas.Dragging）。
+        // **動かしている項目の欄だけ**はその場で追従させて、ドラッグしながら
+        // 座標を読めるようにする（ユーザーの指示）。残りは離したときに 1 回。
+        doc.Changed += () =>
+        {
+            if (_preview.Dragging)
+            {
+                _refreshAfterDrag = true;
+                if (_selectedTarget?.Ctrl is FieldEditControl dragged) dragged.Refresh();
+                return;
+            }
+            RefreshAll();
+        };
+        _preview.DragEnded += () =>
+        {
+            if (!_refreshAfterDrag) return;
+            _refreshAfterDrag = false;
+            RefreshAll();
+        };
         KeyPreview = true;
         KeyDown += (_, e) => { if (e.Control && e.KeyCode == Keys.S) DoSave(); };
         FormClosing += OnFormClosing;

@@ -41,6 +41,14 @@ public sealed class PreviewCanvas : Panel
     // （優先順位 H はコントロール側に付いていて、ここからは見えないため）。
     public event Action<Point>? PreviewClicked;
 
+    // ドラッグで動かしている最中か。SkinEditForm はこの間、文書の Changed で
+    // 全コントロールを更新するのをやめる（下の DragEnded で 1 回にまとめる）。
+    // 更新を毎回やると、その重さでマウス移動のたびに再描画が後回しになり、
+    // 離すまでプレビューが動かないように見える（WM_PAINT は入力より後回し）。
+    public bool Dragging => _dragging;
+    // ドラッグを終えた（離した）。動かしていない押下では出ない。
+    public event Action? DragEnded;
+
     // 選択中のアイテム。枠を出す矩形と、ドラッグでの書き戻し先。
     private string? _selectedRegion;
     private Action<int, int>? _selectedMove;
@@ -336,6 +344,9 @@ public sealed class PreviewCanvas : Panel
         int nx = (int)Math.Round(_dragOriginSkin.X + (cur.X - _dragStartSkin.X));
         int ny = (int)Math.Round(_dragOriginSkin.Y + (cur.Y - _dragStartSkin.Y));
         _selectedMove?.Invoke(nx, ny);
+        // 文書が変わっていれば Changed 経由で Invalidate されている。
+        // 次のマウス移動より先に描かせて、指に付いてくるようにする。
+        Update();
     }
 
     private void OnMouseUp(object? sender, MouseEventArgs e)
@@ -344,7 +355,12 @@ public sealed class PreviewCanvas : Panel
         _pressed = false;
         _canDrag = false;
         _dragging = false;
-        if (e.Button != MouseButtons.Left || wasDrag) return;
+        if (e.Button != MouseButtons.Left) return;
+        if (wasDrag)
+        {
+            DragEnded?.Invoke();
+            return;
+        }
         var p = ToSkin(e.Location);
         PreviewClicked?.Invoke(new Point((int)Math.Floor(p.X), (int)Math.Floor(p.Y)));
     }
