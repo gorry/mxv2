@@ -60,7 +60,9 @@ public static class SkinLayoutIo
             GetXywh(ini, "Title", "Rect", ref r);
             t.titleX = r.X; t.titleY = r.Y; t.titleW = r.W; t.titleH = r.H;
         }
+        t.titleScrollSpeed = Math.Clamp(ini.GetInt("Title", "ScrollSpeed", t.titleScrollSpeed), 1, 1000);
         GetIntList(ini, "FileList", "Margin", t.fileListMargin, 4);
+        t.fileListScrollSpeed = Math.Clamp(ini.GetInt("FileList", "ScrollSpeed", t.fileListScrollSpeed), 1, 1000);
         GetFontSizePair(ini, "FileList", "ItemHeight", t.fileListItemH);
         GetFontSizePair(ini, "FileList", "BaseNameX", t.fileListBaseNameX);
         GetFontSizePair(ini, "FileList", "BaseNameWidth", t.fileListBaseNameW);
@@ -163,7 +165,9 @@ public static class SkinLayoutIo
 
         ini.SetString("Title", "Rect", $"{t.titleX},{t.titleY},{t.titleW},{t.titleH}");
 
+        ini.SetInt("Title", "ScrollSpeed", t.titleScrollSpeed);
         ini.SetString("FileList", "Margin", Join(t.fileListMargin));
+        ini.SetInt("FileList", "ScrollSpeed", t.fileListScrollSpeed);
         ini.SetString("FileList", "ItemHeight", Join(t.fileListItemH));
         ini.SetString("FileList", "BaseNameX", Join(t.fileListBaseNameX));
         ini.SetString("FileList", "BaseNameWidth", Join(t.fileListBaseNameW));

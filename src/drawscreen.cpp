@@ -28,10 +28,15 @@ const size_t kMaxAsciiChars = 128;
 const int kTitleMarginX = 4;
 
 // 曲名が枠に収まらないときのスクロール。
-//   先頭で止まる → kScrollPxPerSec で末尾まで送る → 末尾で止まる →
+//   先頭で止まる → 一定の速さで末尾まで送る → 末尾で止まる →
 //   先頭へ戻る、の繰り返し。止まる長さは曲名欄とファイラーで別。
-// 速さは仕様に無いので、Phone (480px) の曲名を無理なく読める速さにした。
-const float kScrollPxPerSec = 40.0f;
+// 速さは**文字の高さの何倍を 1 秒に送るか**で持つ（2026-09-12、ユーザーの
+// 指示）。画素で決めると解像度やスキンの字の大きさで読める速さが変わる
+// ため。基準は、それまでの 40 論理px/秒を Pixel 7a の Phone スキンの
+// 曲名欄（高さ 24px）で換算した 40/24 で、スキンの `[Title] ScrollSpeed` /
+// `[FileList] ScrollSpeed` (%) がこれに掛かる（100% = 基準）。曲名欄と
+// ファイラーで式は同じで、掛ける高さがそれぞれ titleH / ItemHeight。
+const float kScrollBaseHeightsPerSec = 40.0f / 24.0f;
 const uint32_t kTitleScrollHoldMs = 3000;     // 画面下の曲名欄
 const uint32_t kFileListScrollHoldMs = 1000;  // ファイラーの曲名（短めに）
 // 幅の測り方（切り上げ）と字の置き方の端数で、収まっているのに 1〜2px だけ
@@ -39,19 +44,25 @@ const uint32_t kFileListScrollHoldMs = 1000;  // ファイラーの曲名（短�
 // 震えて見えるので、これ以下のはみ出しは無視する。
 const int kTitleScrollSlack = 2;
 
-// 周期の先頭から t ミリ秒経ったときの送り量 (px)。
+// 文字の高さ (論理px) とスキンの速さ (%) から、送る速さ (論理px/秒) へ。
+float ScrollPxPerSec(int textHeight, int speedPercent) {
+	return (float)textHeight * kScrollBaseHeightsPerSec * (float)speedPercent / 100.0f;
+}
+
+// 周期の先頭から t ミリ秒経ったときの送り量 (px)。pxPerSec は送る速さ
+// （文字の高さ × k*HeightsPerSec で呼ぶ側が決める）。
 //   0..hold          … 先頭のまま
 //   hold..hold+移動  … 一定の速さで送る
 //   その後 hold      … 末尾のまま
 // を繰り返す。
-float ScrollOffsetAt(uint32_t t, float maxPx, uint32_t holdMs) {
-	if (maxPx <= 0.0f) return 0.0f;
-	const uint32_t moveMs = (uint32_t)(maxPx * 1000.0f / kScrollPxPerSec + 0.5f);
+float ScrollOffsetAt(uint32_t t, float maxPx, uint32_t holdMs, float pxPerSec) {
+	if (maxPx <= 0.0f || pxPerSec <= 0.0f) return 0.0f;
+	const uint32_t moveMs = (uint32_t)(maxPx * 1000.0f / pxPerSec + 0.5f);
 	const uint32_t cycleMs = holdMs * 2 + moveMs;
 	const uint32_t u = t % cycleMs;
 	if (u < holdMs) return 0.0f;
 	if (u >= holdMs + moveMs) return maxPx;
-	const float off = (u - holdMs) * kScrollPxPerSec / 1000.0f;
+	const float off = (u - holdMs) * pxPerSec / 1000.0f;
 	return (off > maxPx) ? maxPx : off;
 }
 
@@ -839,7 +850,8 @@ void DrawScreen::UpdateTitleScroll(uint32_t nowMs) {
 	}
 
 	const float scrollX =
-	    ScrollOffsetAt(nowMs - titleScrollBaseMs_, titleScrollMax_, kTitleScrollHoldMs);
+	    ScrollOffsetAt(nowMs - titleScrollBaseMs_, titleScrollMax_, kTitleScrollHoldMs,
+	                   ScrollPxPerSec(layout_.titleH, layout_.titleScrollSpeed));
 
 	// 変わっていなければ描き直さない（止まっている間は何もしない）。
 	const float diff = scrollX - titleScrollShown_;
@@ -966,7 +978,8 @@ void DrawScreen::PutFileList(const Filer &filer, bool refresh, uint32_t nowMs) {
 				const uint32_t phase =
 				    (j >= 0 && j < itemCount) ? fileListPhaseMs_[j] : 0;
 				scrollX = ScrollOffsetAt(phase, (float)(fileListTitleW_[i] - inner),
-				                         kFileListScrollHoldMs);
+				                         kFileListScrollHoldMs,
+				                         ScrollPxPerSec(itemH, layout_.fileListScrollSpeed));
 			}
 		}
 		if (!redraw) {

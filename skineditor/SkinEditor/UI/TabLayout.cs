@@ -220,6 +220,7 @@ public static class TabLayout
         new TabDef("曲名", new[]
         {
             Field("Title", "Rect"),
+            Field("Title", "ScrollSpeed"),
             Colors("曲名 (MDXTitle)"),
         }),
 
@@ -230,6 +231,7 @@ public static class TabLayout
             Field("FileList", "BaseNameX"),
             Field("FileList", "BaseNameWidth"),
             Field("FileList", "TitleX"),
+            Field("FileList", "ScrollSpeed"),
             // このタブの「小,大」の 2 つ組は、どちらが効いているか見ないと
             // 分からない。本体の TAB キーと同じ切り替えをプレビューにも置く。
             // 行数も曲名の幅も大小で変わるので、両方の見え方を確かめられる。

@@ -65,6 +65,13 @@ int GetIntList(const Ini &ini, const char *section, const char *key, int *out, i
 
 // ファイラーの「小さい文字, 大きい文字」の 2 つ組を読む。
 // 1 つしか書かれていなければ、その値が両方に効く。
+// スクロールの速さ (%) の範囲。1 未満は止まってしまうので下限 1。
+int ClampScrollSpeed(int v) {
+	if (v < 1) return 1;
+	if (v > 1000) return 1000;
+	return v;
+}
+
 void GetFontSizePair(const Ini &ini, const char *section, const char *key, int *out) {
 	int v[2] = { out[0], out[1] };
 	const int n = GetIntList(ini, section, key, v, 2);
@@ -189,6 +196,10 @@ Skin::Skin() {
 	titleY = 348;
 	titleW = 632;
 	titleH = 14;
+	// 既定はそれまでの速さ（40 論理px/秒を Pixel 7a の Phone スキンで換算）。
+	// 曲名欄は高さ 24px で 100%、ファイラーは小さい字 16px で 150%。
+	titleScrollSpeed = 100;
+	fileListScrollSpeed = 150;
 
 	// ファイラー側の矩形 (0,366,640,114) からの内側マージン。
 	// 一覧 + スクロールバーで (4,366,632,110) になる。
@@ -443,7 +454,10 @@ void Skin::ApplyLayout(const std::string &skinDir) {
 		titleW = r.w;
 		titleH = r.h;
 	}
+	titleScrollSpeed = ClampScrollSpeed(ini.GetInt("Title", "ScrollSpeed", titleScrollSpeed));
 	GetIntList(ini, "FileList", "Margin", fileListMargin, 4);
+	fileListScrollSpeed =
+	    ClampScrollSpeed(ini.GetInt("FileList", "ScrollSpeed", fileListScrollSpeed));
 	// どれも「小さい文字, 大きい文字」の 2 つ組。1 つだけなら両方に効く。
 	GetFontSizePair(ini, "FileList", "ItemHeight", fileListItemH);
 	GetFontSizePair(ini, "FileList", "BaseNameX", fileListBaseNameX);

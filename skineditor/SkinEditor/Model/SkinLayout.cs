@@ -72,12 +72,14 @@ public sealed class SkinLayout
 
     // ---- 曲名 ------------------------------------------------------------
     public int titleX = 4, titleY = 348, titleW = 632, titleH = 14;
+    public int titleScrollSpeed = 100;      // 横スクロールの速さ (%)。1..1000
 
     // ---- ファイラー -------------------------------------------------------
     // layout.ini に書くのは「ファイラー側の矩形からの内側マージン」だけ
     // （左,上,右,下）。矩形はキャンバスの大きさで変わるので絶対座標では書けない。
     public int[] fileListMargin = { 4, 0, 4, 4 };
     public int[] fileListItemH = { 10, 13 };
+    public int fileListScrollSpeed = 150;   // 曲名の横スクロールの速さ (%)。小大の別なし
     public int[] fileListBaseNameX = { 5, 6 };
     public int[] fileListBaseNameW = { 120, 156 };
     public int[] fileListTitleX = { 125, 162 };

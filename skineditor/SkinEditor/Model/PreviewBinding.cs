@@ -131,7 +131,10 @@ public static class PreviewBindings
                 return new PreviewBinding(PreviewRegions.Ids.Banner, 10, PreviewDrag.Rect);
 
             case "Title":
-                return new PreviewBinding(PreviewRegions.Ids.Title, 10, PreviewDrag.Rect);
+                // 掴んで動かせるのは矩形だけ。ScrollSpeed などは曲名の枠を選ぶだけ。
+                return key == "Rect"
+                    ? new PreviewBinding(PreviewRegions.Ids.Title, 10, PreviewDrag.Rect)
+                    : new PreviewBinding(PreviewRegions.Ids.Title);
 
             // ファイラーの矩形は「ファイラー側の矩形からのマージン」になったので、
             // 掴んで動かす形にはならない（ドラッグ無し）。ただし**クリックで

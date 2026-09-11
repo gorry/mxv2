@@ -118,6 +118,9 @@ public static class LayoutFieldSchema
             new("Title", "Rect", "矩形", FieldKind.Xywh,
                 e => $"{e.titleX},{e.titleY},{e.titleW},{e.titleH}", Suffix: "(x,y,w,h)",
                 ComponentMin: RectMin, ComponentMax: RectMax),
+            // 100 で「文字の高さ × 40/24 px/秒」。曲名欄とファイラーで式は同じ。
+            new("Title", "ScrollSpeed", "スクロール速度", FieldKind.Int,
+                e => $"{e.titleScrollSpeed}", Suffix: "(%)", IntMin: 1, IntMax: 1000),
 
             // ---- ファイラー ------------------------------------------------
             // 矩形は「ファイラー側の矩形からの内側マージン」で書く。行数と
@@ -133,6 +136,8 @@ public static class LayoutFieldSchema
                 e => SkinLayoutIo.Join(e.fileListBaseNameW), Suffix: "(小,大)", IntMin: 1, IntMax: 9999),
             new("FileList", "TitleX", "曲名開始X", FieldKind.IntList,
                 e => SkinLayoutIo.Join(e.fileListTitleX), Suffix: "(小,大)", IntMin: 0, IntMax: 9999),
+            new("FileList", "ScrollSpeed", "曲名スクロール速度", FieldKind.Int,
+                e => $"{e.fileListScrollSpeed}", Suffix: "(%)", IntMin: 1, IntMax: 1000),
 
             // ---- スクロールバー --------------------------------------------
             // 位置はファイラーの矩形から決まる。書くのは幅だけで、
