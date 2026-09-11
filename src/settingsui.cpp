@@ -60,6 +60,17 @@ const int kNumFontCandidates = (int)(sizeof(kFontCandidates) / sizeof(kFontCandi
 
 const float kFontSizePx = 15.0f;
 
+// ダブルクリックの判定を SDL（＝メイン画面のファイラーの clicks）に揃える。
+// ImGui の既定は 300ms・6 実ピクセル未満で、指では事実上成立しない
+// （Pixel 7a では 6px ≒ 0.4mm）。SDL は 500ms・縦横それぞれ 32 窓ピクセル
+// 以内（SDL_mouse.c。「タッチ向けにこのくらい」との注記）。ImGui は直線
+// 距離で見るので、SDL の箱を覆うように √2 倍しておく。窓ピクセルから
+// 実ピクセルへの換算 (inputScale_) は毎フレーム変わりうるので、Build() で
+// 毎回入れ直す。
+const float kDoubleClickTimeSec = 0.5f;
+const float kDoubleClickRadiusWindowPx = 32.0f;
+const float kDoubleClickBoxToCircle = 1.4143f;
+
 // 三点リーダー (U+2026) を下付きにするための下げ幅 (em)。
 //
 // UI 文言の「…」（省略と「選ぶと次にダイアログが出る」の印。Android の流儀）
@@ -901,6 +912,13 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	if (scale <= 0.0f) scale = 1.0f;
 	inputScale_ = screen->WindowToOutputScale();
 	if (inputScale_ <= 0.0f) inputScale_ = 1.0f;
+	{
+		// ダブルクリックの判定（上の kDoubleClick*）。
+		ImGuiIO &io = ImGui::GetIO();
+		io.MouseDoubleClickTime = kDoubleClickTimeSec;
+		io.MouseDoubleClickMaxDist =
+		    kDoubleClickRadiusWindowPx * inputScale_ * kDoubleClickBoxToCircle;
+	}
 	{
 		ImGuiIO &io = ImGui::GetIO();
 		// 描く場所は窓の左上が原点（BeginNativeScale が論理サイズを外す）
