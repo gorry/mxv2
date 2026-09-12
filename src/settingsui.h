@@ -483,6 +483,9 @@ private:
 	// 通信が要るので、打ち込むたびにここで待つと入力ごと固まる。
 	SongLoader *songLoader_;
 	DirLister *folderLister_;
+	// Vfs の一覧 (all_) を触る前に、それを読んでいるスレッドの手を離させる。
+	// 追加 (Vfs::Add) も削除 (RemoveMounted) も、必ずこれを通してから。
+	void QuiesceVfsReaders(Filer *filer);
 	bool folderLoading_;
 	uint32_t folderTicks_;                     // 読み始めた時刻
 	// 開けなかったときの戻り先（打ち込みの途中は開けない場所を通るので、

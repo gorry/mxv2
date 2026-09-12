@@ -1817,6 +1817,18 @@ void SettingsUi::SetBrowsedPath(const std::string &path) {
 // ここでは使わない。
 // 端末の「フォルダを選ぶ」画面 (SAF) の結果を拾う。あちらが出ている間
 // mxv2 はバックグラウンドへ回っているので、結果が届くのは戻ってきたあと。
+// Vfs::all_ は std::vector で、Add の push_back で再確保が起きうる。
+// 曲名・フォルダ・曲の 3 本の読みスレッドは const Vfs* 越しに Parse で
+// all_ を舐めるので、足すときも消すときも、先に読みかけを捨てさせて
+// 手が離れるまで待つ（それぞれの Quiesce は待ち合わせまで行う）。
+// 読みかけは捨てられるが、ファイラーは操作の直後に Refresh() で
+// 読み直すので見た目には残らない。
+void SettingsUi::QuiesceVfsReaders(Filer *filer) {
+	if (filer != 0) filer->WaitIo();
+	if (folderLister_ != 0) folderLister_->Quiesce();
+	if (songLoader_ != 0) songLoader_->Quiesce();
+}
+
 void SettingsUi::PollSafPicked(Filer *filer) {
 	if (!safPicking_) return;
 
@@ -1831,6 +1843,7 @@ void SettingsUi::PollSafPicked(Filer *filer) {
 		fsError_ = Msg("AddFs.NotFound");
 		return;
 	}
+	QuiesceVfsReaders(filer);
 	if (!vfs_->Add(made)) {
 		fsError_ = MsgF("AddFs.Duplicate", made->mountRef());
 		delete made;
@@ -1898,6 +1911,7 @@ void SettingsUi::BuildAddFsWindow(Filer *filer) {
 		    (path.empty() || !IsDirectory(path) || vfs_ == 0)
 		        ? 0
 		        : vfs_->CreateFromMountRef(std::string("dir:") + path);
+		if (made != 0) QuiesceVfsReaders(filer);
 		if (made == 0) {
 			addFsError_ = Msg("AddFs.NotFound");
 		} else if (!vfs_->Add(made)) {
@@ -1946,9 +1960,7 @@ void SettingsUi::BuildFsRemoveWindow(Filer *filer) {
 	if (ImGui::Button(Msg("Button.Remove"))) {
 		// 動的に足したファイルシステムは実体も捨てるので、フォルダと
 		// タイトルを読んでいるスレッドの手が離れるのを待ってからにする。
-		if (filer != 0) filer->WaitIo();
-		folderLister_->Quiesce();
-		if (songLoader_ != 0) songLoader_->Quiesce();
+		QuiesceVfsReaders(filer);
 		vfs_->RemoveMounted(fsSelected_);
 		if (fsSelected_ >= vfs_->count()) fsSelected_ = vfs_->count() - 1;
 		if (fsSelected_ < 0) fsSelected_ = 0;
