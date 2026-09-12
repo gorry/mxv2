@@ -128,6 +128,10 @@ struct Settings {
 	int windowX, windowY;
 	int windowW, windowH;
 
+	// [Tutorial] Done。初回起動のチュートリアルを見終えた（またはスキップ
+	// した）。無ければ次の起動で出す（tutorial.md）。
+	bool tutorialDone;
+
 	// 保存する項目。「変わった項目だけを書き戻す」ために使う。
 	// 設定ウィンドウには保存ボタンが無く、触った時点で保存する作りなので、
 	// 何を触ったかをこのビットで積んでいく。
@@ -154,6 +158,7 @@ struct Settings {
 		// 縦横切り替えが ON のときのスキン 2 つと、切り替えかた。
 		kFieldOrientSkin = 1 << 19,
 		kFieldOrientMode = 1 << 20,
+		kFieldTutorial = 1 << 21,
 	};
 
 	Settings();

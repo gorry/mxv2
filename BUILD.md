@@ -171,6 +171,7 @@ mxv2 [options] [<mdxfile> | <dir>]
     -userdir <dir>  設定とユーザー素材の場所
     -locale <name>  文言の言語 (assets/locale/<name>/message.ini)
     -quit           演奏し終えたら終了する (デバッグ用)
+    -tutorial       チュートリアルを表示する (デバッグ用。見終えても Done は書かない)
 ```
 
 `mxv2 -h` で全オプションとキー割り当てが出る。

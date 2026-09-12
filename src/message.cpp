@@ -57,6 +57,23 @@ Catalog &Cat() {
 // 混ぜると落とし先の行がそのまま残り、英語と日本語が並んでしまう。
 // 同じ言語の重ね方（同梱の上にユーザーぶん）では false にして、行の
 // 差し替えと追加ができるようにする。
+// 値の中の 2 文字 "\n"（バックスラッシュ + n）を改行にする。ini の値は
+// 1 行なので、段落を分けたいときはこれで書く（2026-09-13）。
+// 他のエスケープは扱わない（パスに使う "\\" はそのまま）。
+std::string DecodeNewlines(const std::string &v) {
+	std::string out;
+	out.reserve(v.size());
+	for (size_t i = 0; i < v.size(); i++) {
+		if (v[i] == '\\' && i + 1 < v.size() && v[i + 1] == 'n') {
+			out.push_back('\n');
+			i++;
+		} else {
+			out.push_back(v[i]);
+		}
+	}
+	return out;
+}
+
 bool Merge(const std::string &path, bool replaceLists) {
 	Ini ini;
 	if (!ini.Load(path)) return false;
@@ -68,7 +85,8 @@ bool Merge(const std::string &path, bool replaceLists) {
 		std::vector<MsgRow> &list = (*cat.lists)[sections[i]];
 		if (replaceLists && !keys.empty()) list.clear();
 		for (size_t j = 0; j < keys.size(); j++) {
-			const std::string value = ini.GetString(sections[i], keys[j], std::string());
+			const std::string value =
+			    DecodeNewlines(ini.GetString(sections[i], keys[j], std::string()));
 			(*cat.values)[sections[i] + "." + keys[j]] = value;
 
 			// 並び順つきの一覧。同じキーが後から来たら差し替える。
@@ -248,6 +266,12 @@ std::string MatchLocale(const std::vector<LocaleInfo> &list, const std::string &
 		}
 	}
 	return list[0].name;
+}
+
+bool HasMsg(const char *key) {
+	if (key == 0) return false;
+	Catalog &cat = Cat();
+	return cat.values->find(key) != cat.values->end();
 }
 
 const char *Msg(const char *key) {

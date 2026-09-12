@@ -35,6 +35,7 @@
 #include "player.h"
 #include "screen.h"
 #include "settings.h"
+#include "tutorial.h"
 #include "settingsui.h"
 #include "skin.h"
 #include "songloader.h"
@@ -213,6 +214,9 @@ struct Options {
 	// -skin が指定されたか。指定されていたら縦横切り替えは OFF にする
 	// （名指しされたスキンを勝手に差し替えない）。
 	bool skinSet;
+	// -tutorial。見終えていてもチュートリアルを出す（**デバッグ用**。
+	// 終わっても ini の Done は触らない）。
+	bool tutorial;
 
 	Options()
 	    : latencyMs(0),
@@ -221,7 +225,8 @@ struct Options {
 	      sampleRate(0),
 	      orient(-1),
 	      orientLock(0),
-	      skinSet(false) {}
+	      skinSet(false),
+	      tutorial(false) {}
 };
 
 // 演奏位置の移動幅。, / . が普通、Shift 付きの < / > が高速。
@@ -436,6 +441,8 @@ bool ParseArgs(int argc, char **argv, Options *opt, mxv2::Settings *st) {
 			st->fadeout = false;
 		} else if (strcmp(a, "-quit") == 0) {
 			opt->quitOnEnd = true;
+		} else if (strcmp(a, "-tutorial") == 0) {
+			opt->tutorial = true;
 		} else if (strcmp(a, "-folderfirst") == 0) {
 			st->folderFirst = true;
 		} else if (strcmp(a, "-zoom") == 0 && i + 1 < argc) {
@@ -1487,6 +1494,14 @@ int main(int argc, char **argv) {
 
 	if (!startFile.empty()) StartPlay(ctx, startFile);
 
+	// 初回起動のチュートリアル（tutorial.md）。ini の [Tutorial] Done が
+	// 立っていないときに出す（[設定] の [動作]「次回起動時にチュートリアルを
+	// 表示する」で外せる）。曲を渡されて起動したときは出さない（もう使い方を
+	// 知っている人）。-tutorial は Done を無視して出すが、終わっても Done を
+	// 書かない。実際に始めるのは起動時の警告を閉じてから（メインループの中）。
+	mxv2::Tutorial tutorial;
+	bool tutorialPending = opt.tutorial || (!settings.tutorialDone && startFile.empty());
+
 	// -quit は「演奏し終えたら終わる」デバッグ用の指定。**明示したときだけ**
 	// 効くので、曲を渡して起動したかどうかは見ない（渡さずに指定したときは、
 	// 手で選んだ曲が終わったところで終わる）。
@@ -1692,10 +1707,51 @@ int main(int argc, char **argv) {
 			// 右クリックのコンテキストメニューは ImGui 側が自分で拾う
 			// （SettingsUi::BuildContextMenu の BeginPopupContextVoid）。
 			// ESC は mxv2 では終了に割り当ててあるので、そちらには足さない。
-			if (isMouse && ui.wantCaptureMouse()) continue;
+			if (isMouse && ui.wantCaptureMouse()) {
+				// チュートリアル中で他のダイアログが無ければ、吹き出しの上で
+				// 押したときだけ ImGui に譲る。指で操作すると、前の触りが
+				// 吹き出しの上で終わっただけで ImGui が次の押下を掴んでしまう
+				// （tutorial.h の BubbleContains）。動かすだけなら本体にも通す。
+				bool pass = false;
+				if (tutorial.active() && !ui.anyDialogOpen()) {
+					if (ev.type == SDL_MOUSEBUTTONDOWN || ev.type == SDL_MOUSEBUTTONUP) {
+						int ox = 0, oy = 0;
+						screen.WindowToOutput(ev.button.x, ev.button.y, &ox, &oy);
+						pass = !tutorial.BubbleContains(ox, oy);
+					} else {
+						pass = true;
+					}
+				}
+				if (!pass) continue;
+			}
 			// ダイアログが開いている間はアプリ側でキーを扱わない。
 			// F1/F2 は開くだけなので通す必要はなく、閉じるのは上の ESC。
-			if (isKey && ui.wantCaptureKeyboard()) continue;
+			// チュートリアルの吹き出しにフォーカスが付いているだけのときは
+			// 通す（吹き出しに入力欄は無い。tutorial.cpp の末尾）。
+			if (isKey && ui.wantCaptureKeyboard() &&
+			    !(tutorial.active() && !ui.anyDialogOpen())) {
+				continue;
+			}
+
+			// チュートリアルの幕。そのステップで期待している操作
+			// （スポットの中のマウス、そのステップのキー）だけ通し、
+			// それ以外は幕が吸い取る。ESC と戻るキーはスキップの確認。
+			if (tutorial.active()) {
+				if (ev.type == SDL_KEYDOWN && (ev.key.keysym.sym == SDLK_ESCAPE ||
+				                               ev.key.keysym.sym == SDLK_AC_BACK)) {
+					tutorial.RequestSkip();
+					continue;
+				}
+				if (ev.type == SDL_KEYDOWN &&
+				    !tutorial.AllowsKey(ev.key.keysym.sym, ev.key.keysym.mod)) {
+					continue;
+				}
+				if (isMouse) {
+					SDL_Event cev = ev;
+					screen.WindowEventToCanvas(&cev);
+					if (!tutorial.AllowsMouse(cev)) continue;
+				}
+			}
 
 			// マウス。イベントは窓の画素で届くので、キャンバスの論理座標へ
 			// 直してから配る（当たり判定はすべて論理座標）。
@@ -2095,6 +2151,44 @@ int main(int argc, char **argv) {
 		}
 		ui.SetOrientationState(orientEnabled, orientNow);
 		ui.Build(&settings, &draw, &player, &filer, &screen);
+
+		// チュートリアル（tutorial.md）。ImGui のフレームの中で、ダイアログの
+		// あとに描く（幕は背景の描画リストに置くので順番は問わない）。
+		if (tutorialPending && !ui.anyDialogOpen()) {
+			tutorialPending = false;
+			tutorial.Start(!opt.tutorial && !settings.tutorialDone);
+			// CONT / REPEAT は消した状態から始める（「CONT ボタンを押して、
+			// 点けてください」の文言と合わせる。ユーザーの指示）。ini には
+			// 下の見比べで書き戻される。
+			autoNext = false;
+			autoRepeat = false;
+			chromeRefresh = true;
+			// ファイラーは同梱の曲 (assets:) の根から始める。ステップ 2 の
+			// 「ArctanX を開いてください」がその場にある状態にするため
+			// （ユーザーの指示）。前回の場所 (LastDir) を引き継いだ起動でも同じ。
+			filer.SetCurrentRef("assets:");
+			fileListRefresh = true;
+		}
+		if (tutorial.active()) {
+			mxv2::Tutorial::State ts;
+			ts.currentRef = filer.currentRef();
+			ts.fsSelect = (filer.fs() == 0);
+			ts.playing = playing;
+			ts.paused = player.paused();
+			ts.channelMask = player.channelMask();
+			ts.cont = autoNext;
+			ts.menuOpen = ui.contextMenuOpen();
+			ts.settingsOpen = ui.visible();
+			ts.touch = ui.touchUi();
+			tutorial.Build(draw, screen, ts, ui.uiScale(), ImGuiCond_Appearing);
+		}
+		// 鍵盤のステップを抜けるときはマスクを全部解除する（音が欠けたまま
+		// 先へ行かない）。見終えた／スキップしたら Done を書く。
+		if (tutorial.TakeMaskReset()) player.SetChannelMask(0);
+		if (tutorial.TakeFinished() && tutorial.recordDone()) {
+			settings.tutorialDone = true;
+			dirtyFields |= mxv2::Settings::kFieldTutorial;
+		}
 		// 設定ウィンドウでスキンが選ばれていたら、次のフレームの頭で
 		// 取り替える（上のブロック）。
 		if (!ui.pendingSkin().empty()) {

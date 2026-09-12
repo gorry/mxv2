@@ -246,6 +246,15 @@ public:
 	// kRequestSetFolder の行き先。
 	const std::string &requestedFolder() const { return requestedFolder_; }
 
+	// チュートリアル (tutorial.cpp) が吹き出しを描くのに要るもの。
+	// ダイアログの字の倍率、「指で操作する」の判定結果、メニューの開閉。
+	float uiScale() const { return styleScale_; }
+	bool touchUi() const { return touchUi_; }
+	bool contextMenuOpen() const { return contextMenuOpen_; }
+	// 何かしら開いているか（ダイアログ・メニュー・終了の確認）。
+	// チュートリアルは起動時の警告を閉じてから始めるので、その見張りに使う。
+	bool anyDialogOpen() const { return busy() || contextMenuOpen_ || quitOpen_; }
+
 	// 1 フレーム分の UI を組み立てる。設定の変更はその場で反映する。
 	// 非表示のときも ImGui のフレームは回す必要があるので毎フレーム呼ぶ。
 	void Build(Settings *settings, DrawScreen *draw, Player *player, Filer *filer,

@@ -72,7 +72,8 @@ Settings::Settings()
       windowX(-1),
       windowY(-1),
       windowW(0),
-      windowH(0) {
+      windowH(0),
+      tutorialDone(false) {
 	// 初回起動のブックマーク（bookmark.md）。ini に [Bookmark] があれば
 	// Load() が置き換える。
 	bookmarks.push_back("assets:");
@@ -163,6 +164,8 @@ bool Settings::Load(const std::string &path) {
 	windowW = ini.GetInt("Position", "Width", windowW);
 	windowH = ini.GetInt("Position", "Height", windowH);
 
+	tutorialDone = ini.GetInt("Tutorial", "Done", tutorialDone ? 1 : 0) != 0;
+
 	if (loops < 1) loops = 1;
 	if (loops > 99) loops = 99;
 	return true;
@@ -239,6 +242,8 @@ bool Settings::Save(const std::string &path) const {
 	ini.SetInt("Position", "Width", windowW);
 	ini.SetInt("Position", "Height", windowH);
 
+	ini.SetInt("Tutorial", "Done", tutorialDone ? 1 : 0);
+
 	return ini.Save(path);
 }
 
@@ -282,6 +287,7 @@ bool Settings::SaveFields(const std::string &path, unsigned fields) const {
 		out.windowX = windowX;
 		out.windowY = windowY;
 	}
+	if (fields & kFieldTutorial) out.tutorialDone = tutorialDone;
 	return out.Save(path);
 }
 

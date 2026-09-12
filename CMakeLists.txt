@@ -163,6 +163,7 @@ set(MXV2_SOURCES
 	src/filer.cpp
 	src/fileutil.cpp
 	src/ini.cpp
+	src/kinsoku.cpp
 	src/mdxsong.cpp
 	src/message.cpp
 	src/mouse.cpp
@@ -179,6 +180,7 @@ set(MXV2_SOURCES
 	src/text.cpp
 	src/textlayer.cpp
 	src/textrender.cpp
+	src/tutorial.cpp
 	src/vfs.cpp
 	src/visualizer.cpp
 	src/assetpath.h
@@ -192,6 +194,7 @@ set(MXV2_SOURCES
 	src/filer.h
 	src/fileutil.h
 	src/ini.h
+	src/kinsoku.h
 	src/mdxsong.h
 	src/message.h
 	src/mouse.h
@@ -209,6 +212,7 @@ set(MXV2_SOURCES
 	src/text.h
 	src/textlayer.h
 	src/textrender.h
+	src/tutorial.h
 	src/vfs.h
 	src/visualizer.h
 )

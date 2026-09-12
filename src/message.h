@@ -77,6 +77,9 @@ std::string MatchLocale(const std::vector<LocaleInfo> &list, const std::string &
 // 無ければキーそのものを返す（画面が空になるより、どのキーが無いのかが
 // 見えたほうがよい）。返り値はプロセスが終わるまで有効。
 const char *Msg(const char *key);
+// キーがカタログにあるか。任意のキー（無くてもよい補足文など）を引く前に
+// 見る。Msg() は無いキーを警告つきでキー名に置き換えるので、それを避ける。
+bool HasMsg(const char *key);
 
 // {0} {1} … を置き換えたものを返す。
 std::string MsgF(const char *key, const std::string &a0);

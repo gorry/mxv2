@@ -183,6 +183,13 @@ public:
 	// 当たらなければ -1。鍵盤と違って段の中は割らない（呼び出し側は FM か
 	// PCM かの一括操作に使う）。
 	int HitCheckStatus(int x, int y) const;
+
+	// チャンネル ch (0..15) の鍵盤の矩形。灰色を乗せる場所とクリックの
+	// 当たり判定で同じものを使う。鍵盤が無ければ false。
+	// チュートリアルのスポットライト (tutorial.cpp) も見る。
+	bool ChannelKeyRect(int ch, int *x0, int *y0, int *x1, int *y1) const;
+	// ステータス欄 1 段ぶんの矩形。下地を敷く場所と当たり判定で共用する。
+	bool StatusRect(int row, int *x, int *y, int *w, int *h) const;
 	// 音量をつまみの画素位置へ写す。
 	int TotalVolBarPosFromVolume(int volume) const;
 
@@ -289,11 +296,6 @@ private:
 	// マスクしているチャンネル（SetChannelMask）。BlitTo で灰色を乗せる。
 	uint16_t channelMask_;
 	void OverlayChannelMask(Screen *out) const;
-	// チャンネル ch (0..15) の鍵盤の矩形。灰色を乗せる場所とクリックの
-	// 当たり判定で同じものを使う。鍵盤が無ければ false。
-	bool ChannelKeyRect(int ch, int *x0, int *y0, int *x1, int *y1) const;
-	// ステータス欄 1 段ぶんの矩形。下地を敷く場所と当たり判定で共用する。
-	bool StatusRect(int row, int *x, int *y, int *w, int *h) const;
 
 	int scrollBarFlags_;
 	int scrollBarThumb_;  // 溝の中のつまみ位置 0..kScrollBarMovement

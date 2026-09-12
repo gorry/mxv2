@@ -15,6 +15,7 @@
 #include "fileutil.h"
 #include "dirlister.h"
 #include "filer.h"
+#include "kinsoku.h"
 #include "songloader.h"
 #include "ini.h"
 #include "message.h"
@@ -284,9 +285,9 @@ void DragToScroll(bool *dragging, bool *moved, bool hasTitleBar, bool fromItems)
 // そちらは短いままにしておくこと。
 void TextWrapColor(const ImVec4 &color, const char *text) {
 	ImGui::PushStyleColor(ImGuiCol_Text, color);
-	ImGui::PushTextWrapPos(0.0f);
-	ImGui::TextUnformatted(text);
-	ImGui::PopTextWrapPos();
+	// 折り返しは禁則つきで自前に（kinsoku.h）。ImGui の折り返しは
+	// 「。」や「」」を行頭に置いてしまう。
+	TextWrappedKinsoku(text);
 	ImGui::PopStyleColor();
 }
 
@@ -306,9 +307,7 @@ void ConfirmText(const char *text) {
 	float w = ImGui::GetFontSize() * 24.0f;  // 24 文字ぶんを目安に
 	const float max = io.DisplaySize.x - style.WindowPadding.x * 2.0f;
 	if (w > max) w = max;
-	ImGui::PushTextWrapPos(ImGui::GetCursorScreenPos().x + w);
-	ImGui::TextUnformatted(text);
-	ImGui::PopTextWrapPos();
+	TextWrappedKinsoku(text, w);
 }
 
 // 横に並べる。ただし次に置くものが残り幅に入らないなら、並べずに次の行へ
@@ -1410,6 +1409,19 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 		GroupTrailingSpace();
 	}
 
+	// ---- 動作 ----------------------------------------------------------
+	// 初回起動のチュートリアル (tutorial.md)。ini の [Tutorial] Done を
+	// 「次回起動時に表示する」の裏返しで見せる。入れておくと次の起動で
+	// 出て、見終える（終了する）とまた外れる。
+	if (GroupHeader(Msg("Settings.Behavior"))) {
+		bool showTutorial = !settings->tutorialDone;
+		if (ImGui::Checkbox(Msg("Settings.TutorialNext"), &showTutorial)) {
+			settings->tutorialDone = !showTutorial;
+			changedFields_ |= Settings::kFieldTutorial;
+		}
+		GroupTrailingSpace();
+	}
+
 	// 保存ボタンは無い。触った時点で mxv2.ini へ書き戻す（スマートフォンでの
 	// 作法に合わせてある。デスクトップでも不自然ではないという判断）。
 	DragToScroll(&dragScroll_, &dragMoved_, true, false);
@@ -2425,7 +2437,7 @@ void SettingsUi::BuildStartupWindow() {
 		ImGui::BeginChild("##startup", ImVec2(0, -foot), ImGuiChildFlags_Borders);
 		for (size_t i = 0; i < startupLines_.size(); i++) {
 			ImGui::Bullet();
-			ImGui::TextWrapped("%s", startupLines_[i].c_str());
+			TextWrappedKinsoku(startupLines_[i].c_str());
 		}
 		DragToScroll(&dragScroll_, &dragMoved_, false, false);
 		ImGui::EndChild();
