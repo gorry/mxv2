@@ -203,8 +203,11 @@ BUILD の値に関わらず release でビルドする。
 
 - zip の中身は同じ名前のフォルダに `mxv2.exe` / `SDL2.dll` / `assets/` /
   `NOTICE` / `LICENSE` / `README.md`。`assets/` はソース側から取り、試験用の `font.ttf`
-  （.gitignore 済み）は入れない。zip は Windows では PowerShell の
-  Compress-Archive、それ以外では `zip` コマンド。
+  （.gitignore 済み）は入れない。zip は Info-ZIP の `zip`（GnuWin32 の zip
+  パッケージなど。PATH に要る）で、`-D` でフォルダのエントリを入れずに作る。
+  PowerShell の Compress-Archive や CMake 内蔵の tar は、古い 7-Zip
+  （LhaForge 内蔵の 9.22 など）がフォルダのエントリをファイルとして取り出して
+  展開に失敗する zip を作るので使わない。
 - apk は `android/keystore.properties` があれば署名済み。無ければ
   `-unsigned` を付けた名前になり、そのままでは端末に入らない
   （下の「Android のリリース署名」）。

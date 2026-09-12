@@ -301,8 +301,7 @@ test-android: build-android
 # で、win32 / win64 なら .zip（実行ファイル + SDL2.dll + assets + NOTICE +
 # LICENSE + README.md を、同じ名前のフォルダに入れたもの）、android なら .apk。
 # **BUILD の値に関わらず release でビルドする。**
-# Windows 側の zip は PowerShell の Compress-Archive（標準で入っている）、
-# それ以外では zip コマンドを使う。
+# zip 化は CMake 内蔵の tar（下の ARC_ZIP_CMD）。
 #
 # Profile.ini の値は sed で引く（[Section] から次の [ までの範囲で Key= を
 # 探す）。sed は GnuWin32 にもある。値が取れなければ止める。
@@ -323,11 +322,14 @@ check-profile:
 	$(if $(PROFILE_VERSION),,$(error Profile.ini: [Version] Text could not be read))
 	@echo mxv2: archive name = $(ARC_NAME)
 
-ifeq ($(OS),Windows_NT)
-ARC_ZIP_CMD = powershell -NoProfile -Command "Compress-Archive -Path '$(ARC_STAGE)' -DestinationPath '$(ARC_DIR)/$(ARC_NAME).zip' -Force"
-else
-ARC_ZIP_CMD = cd "$(ARC_DIR)/stage" && zip -r "../$(ARC_NAME).zip" "$(ARC_NAME)"
-endif
+# zip 化は Info-ZIP の zip（GnuWin32 の zip パッケージ。PATH にあること）。
+# **-D でフォルダのエントリを入れない**。古い 7-Zip（LhaForge 内蔵の 9.22 など）は
+# MS-DOS のディレクトリ属性 (0x10) の無いフォルダのエントリを**ファイルとして
+# 取り出す**ので、その下のファイルが "can not open output file" で全部失敗する
+# （2026-09-13 にユーザーが踏んだ）。PowerShell 5.1 の Compress-Archive（属性
+# 無し）も CMake 内蔵の tar --format=zip（Unix の属性だけ）も駄目だった。
+# フォルダのエントリが無ければ、どの展開ツールも親フォルダを自分で作る。
+ARC_ZIP_CMD = cmake -E chdir "$(ARC_DIR)/stage" zip -r -D -q "../$(ARC_NAME).zip" "$(ARC_NAME)"
 
 # 素材は build/ 側のコピーではなく、CMakeLists.txt の POST_BUILD と同じ手順で
 # **ソースから組み立て直す**（ソースの assets/ + 空の assets/mdx/ + 同梱曲
