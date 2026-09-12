@@ -188,6 +188,21 @@ mxv2 [options] [<mdxfile> | <dir>]
 | 画面の文字が `Menu.Open` のようなキー名になる | `assets/locale/` が無い。ログに `message not found:` が出る。ロケール名が違うだけなら英語で出る（`Locale ... was not found`） |
 | 設定を変えても次の起動で戻る | ユーザーフォルダに書けていない。起動ログの `userdir :` の行を見る |
 
+## アプリの名前・版・著作権（Profile.ini）
+
+`mxv2/Profile.ini` が唯一の置き場（著作者専用）。ビルド時に写される:
+
+- CMake: `src/appprofile.h.in` → `build/<構成>/generated/appprofile.h`
+  （`main.cpp` の `kAppName` / `kAppVersion` / `kAppCopyright`）と、Windows では
+  `res/mxv2.rc.in` → `generated/mxv2.rc`（アイコンと VERSIONINFO。exe の
+  プロパティに出る）。Profile.ini を変えると configure が自動で走る。
+- Gradle: `android/app/build.gradle` が同じファイルを読み、`namespace`
+  （[AppId] Namespace）・`applicationId`（[AppId] Android）・`versionName`
+  （[Version] Text）・`versionCode`（[Version] Number）・`app_name`
+  （[Title] ShortText。ホーム画面の名前）に写す。[AppId] Windows は
+  いまは使い道が無く、`appprofile.h` に定義が出るだけ。`res/values/strings.xml` に
+  `app_name` は置かない（重複で止まる）。
+
 ## 6. Android 版のビルド
 
 `android/` に Gradle プロジェクトがある。ネイティブ側は Windows と同じ

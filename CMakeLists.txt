@@ -223,12 +223,77 @@ if(ANDROID)
 	list(APPEND MXV2_SOURCES src/androidassets.cpp src/androidassets.h)
 endif()
 
-# 実行ファイルに埋めるアイコン。SDL2 はウィンドウクラスのアイコンとして
-# 「最初のアイコンリソース」を拾うので、これだけでエクスプローラにも
-# ウィンドウにもタスクバーにも効く（res/mxv2.rc）。
+# ---- Profile.ini（アプリの名前・版・著作権。著作者専用） --------------------
+# 値はここにだけあり、ビルド時に src/appprofile.h.in → appprofile.h（main.cpp
+# の kApp*）と res/mxv2.rc.in → mxv2.rc（Windows の VERSIONINFO）へ写す。
+# Android の versionName などは android/app/build.gradle が同じファイルを読む。
+# Profile.ini を変えたら configure し直す（CMAKE_CONFIGURE_DEPENDS）。
+set(MXV2_PROFILE "${CMAKE_CURRENT_SOURCE_DIR}/Profile.ini")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${MXV2_PROFILE}")
+file(READ "${MXV2_PROFILE}" _mxv2_profile_text)
+# 行に割る。";" は CMake のリストの区切りなので先に守る（コメント行に出る）。
+string(REPLACE ";" "\\;" _mxv2_profile_text "${_mxv2_profile_text}")
+string(REGEX REPLACE "\r?\n" ";" _mxv2_profile_lines "${_mxv2_profile_text}")
+function(mxv2_profile_get section key outvar)
+	set(cur "")
+	set(found "")
+	foreach(line IN LISTS _mxv2_profile_lines)
+		if(line MATCHES "^[ \t]*\\[([^]]+)\\]")
+			set(cur "${CMAKE_MATCH_1}")
+		elseif(line MATCHES "^[ \t]*[;#]")
+			# コメント
+		elseif(cur STREQUAL "${section}" AND line MATCHES "^[ \t]*${key}[ \t]*=(.*)$")
+			string(STRIP "${CMAKE_MATCH_1}" found)
+		endif()
+	endforeach()
+	if(found STREQUAL "")
+		message(FATAL_ERROR "Profile.ini: [${section}] ${key} がありません")
+	endif()
+	set(${outvar} "${found}" PARENT_SCOPE)
+endfunction()
+mxv2_profile_get(Title Text MXV2_TITLE_TEXT)
+mxv2_profile_get(Title ShortText MXV2_TITLE_SHORT_TEXT)
+mxv2_profile_get(Version Text MXV2_VERSION_TEXT)
+mxv2_profile_get(Version Number MXV2_VERSION_NUMBER)
+mxv2_profile_get(Copyright Text MXV2_COPYRIGHT_TEXT)
+mxv2_profile_get(Copyright Name MXV2_COPYRIGHT_NAME)
+# [AppId] は Android の namespace / applicationId が主（Gradle が読む）。
+# Windows のぶんは使い道が無いが、定義としてヘッダに出しておく。
+mxv2_profile_get(AppId Namespace MXV2_APPID_NAMESPACE)
+mxv2_profile_get(AppId Android MXV2_APPID_ANDROID)
+mxv2_profile_get(AppId Windows MXV2_APPID_WINDOWS)
+# VERSIONINFO 用の "a,b,c,d"。[Version] Text を "." で割り、先頭の 0 を落とし
+# （0820 → 820）、数字でなければ 0、4 つに満たなければ 0 で埋める。
+string(REPLACE "." ";" _mxv2_ver_parts "${MXV2_VERSION_TEXT}")
+set(_mxv2_ver_nums "")
+foreach(p IN LISTS _mxv2_ver_parts)
+	string(REGEX REPLACE "^0+([0-9])" "\\1" p "${p}")
+	if(NOT p MATCHES "^[0-9]+$")
+		set(p 0)
+	endif()
+	list(APPEND _mxv2_ver_nums "${p}")
+endforeach()
+list(LENGTH _mxv2_ver_nums _mxv2_ver_n)
+while(_mxv2_ver_n LESS 4)
+	list(APPEND _mxv2_ver_nums 0)
+	list(LENGTH _mxv2_ver_nums _mxv2_ver_n)
+endwhile()
+list(SUBLIST _mxv2_ver_nums 0 4 _mxv2_ver_nums)
+list(JOIN _mxv2_ver_nums "," MXV2_RC_VERSION_COMMA)
+message(STATUS "Profile.ini: ${MXV2_TITLE_TEXT} / ${MXV2_VERSION_TEXT} (${MXV2_RC_VERSION_COMMA}) / ${MXV2_COPYRIGHT_TEXT}")
+
+set(MXV2_GENERATED_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
+configure_file(src/appprofile.h.in "${MXV2_GENERATED_DIR}/appprofile.h" @ONLY)
+
+# 実行ファイルに埋めるアイコンと VERSIONINFO。SDL2 はウィンドウクラスの
+# アイコンとして「最初のアイコンリソース」を拾うので、これだけで
+# エクスプローラにもウィンドウにもタスクバーにも効く（res/mxv2.rc.in から
+# 生成する。アイコンの場所は絶対パスで埋める）。
 # Android のアイコンは android/app/src/main/res/mipmap-* 側。
 if(WIN32)
-	list(APPEND MXV2_SOURCES res/mxv2.rc)
+	set(MXV2_RES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/res")
+	configure_file(res/mxv2.rc.in "${MXV2_GENERATED_DIR}/mxv2.rc" @ONLY)
+	list(APPEND MXV2_SOURCES "${MXV2_GENERATED_DIR}/mxv2.rc")
 endif()
 
 # Android では実行ファイルではなく共有ライブラリを作る。SDLActivity が
@@ -239,7 +304,7 @@ else()
 	add_executable(mxv2 ${MXV2_SOURCES})
 endif()
 
-target_include_directories(mxv2 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
+target_include_directories(mxv2 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src" "${MXV2_GENERATED_DIR}")
 target_link_libraries(mxv2 PRIVATE portable_mdx sdl2 imgui)
 if(WIN32)
 	# OS の「フォルダを探す」ダイアログ (IFileOpenDialog)

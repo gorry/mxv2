@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-	<string name="app_name">mxv2</string>
+	<!-- app_name（ホーム画面の名前）は build.gradle が mxv2/Profile.ini の
+	     [Title] ShortText から resValue で作る。ここに書くと重複で止まる。 -->
 </resources>

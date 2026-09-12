@@ -20,6 +20,27 @@ def ndkDir = localProperties.getProperty('ndk.path') ?: System.getenv('ANDROID_N
 // mxv2 のルート（CMakeLists.txt と src/ がある場所）。
 def mxv2Dir = rootProject.file('..')
 
+// アプリの名前・版は mxv2/Profile.ini（著作者専用）から。CMake が main.cpp の
+// kApp* と Windows の VERSIONINFO を作るのと同じ元。ここでは
+// versionName / versionCode / app_name（ホーム画面の名前）に写す。
+// 形は "[Section]" と "Key=Value"、";" と "#" で始まる行はコメント。
+// （即時実行のクロージャで書くと、次の android { } がその呼び出しの引数に
+// 取られて "compileSdkVersion is not specified" になる。メソッドにしておく。）
+def readMxv2Profile(File f) {
+	def map = [:]
+	def section = ''
+	f.eachLine('UTF-8') { line ->
+		def t = line.trim()
+		if (t.isEmpty() || t.startsWith(';') || t.startsWith('#')) return
+		def m = t =~ /^\[(.+)\]$/
+		if (m) { section = m[0][1]; return }
+		def eq = t.indexOf('=')
+		if (eq > 0) map["${section}.${t.substring(0, eq).trim()}".toString()] = t.substring(eq + 1).trim()
+	}
+	return map
+}
+def mxv2Profile = readMxv2Profile(new File(mxv2Dir, 'Profile.ini'))
+
 // apk へ入れる素材の置き場所（下の prepareMxv2Assets / generateMxv2AssetIndex）。
 def mxv2AssetsDir = layout.buildDirectory.dir('generated/mxv2-assets')
 def mxv2AssetIndexDir = layout.buildDirectory.dir('generated/mxv2-assetindex')
@@ -46,7 +67,8 @@ if (hasKeystoreProperties) {
 def keystoreKeyPassword = keystoreProperties.getProperty('keyPassword') ?: keystoreProperties.getProperty('storePassword')
 
 android {
-	namespace 'net.gorry.mxv2'
+	// mxv2/Profile.ini の [AppId] Namespace。
+	namespace mxv2Profile['AppId.Namespace']
 	compileSdk 34
 	// 使う NDK の版。SDK の中 (sdk/ndk/<版>) にあれば AGP が自分で見つける。
 	// SDK の外に置いてあるときは local.properties の ndk.path で場所を渡す
@@ -60,13 +82,17 @@ android {
 	}
 
 	defaultConfig {
-		applicationId 'net.gorry.mxv2'
+		// mxv2/Profile.ini の [AppId] Android。
+		applicationId mxv2Profile['AppId.Android']
 		// NDK r28 は android-21 未満を切ったので 21 から。
 		minSdk 21
 		targetSdk 34
-		versionCode 1
-		// src/main.cpp の kAppVersion に合わせる。
-		versionName '2026.0820.1'
+		// mxv2/Profile.ini の [Version] Number / Text（上の mxv2Profile）。
+		versionCode(mxv2Profile['Version.Number'] as Integer)
+		versionName mxv2Profile['Version.Text']
+		// ホーム画面の名前。res/values/strings.xml には置かず、ここで作る
+		// （同じ名前が両方にあると重複で止まる）。
+		resValue 'string', 'app_name', mxv2Profile['Title.ShortText']
 		externalNativeBuild {
 			cmake {
 				arguments '-DANDROID_STL=c++_static'

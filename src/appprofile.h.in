@@ -1,0 +1,28 @@
+// mxv2 - アプリの名前・版・著作権表示（CMake が Profile.ini から生成する）
+//
+// **このファイルは生成物。直接編集しない。** 値を変えるときは mxv2/Profile.ini
+// （著作者専用）。生成元は src/appprofile.h.in、生成先は build/<構成>/generated/。
+//
+// Profile.ini の対応:
+//   [Title] Text / ShortText   → MXV2_APP_NAME / MXV2_APP_SHORT_NAME
+//   [Version] Text / Number    → MXV2_APP_VERSION / MXV2_APP_VERSION_NUMBER
+//   [Copyright] Text / Name    → MXV2_APP_COPYRIGHT / MXV2_APP_AUTHOR
+//   [AppId] Namespace / Android / Windows
+//                              → MXV2_APP_ID_NAMESPACE / MXV2_APP_ID_ANDROID /
+//                                MXV2_APP_ID_WINDOWS（Android は Gradle 側が
+//                                使う。Windows のぶんは定義だけ）
+
+#ifndef MXV2_APPPROFILE_H
+#define MXV2_APPPROFILE_H
+
+#define MXV2_APP_NAME "@MXV2_TITLE_TEXT@"
+#define MXV2_APP_SHORT_NAME "@MXV2_TITLE_SHORT_TEXT@"
+#define MXV2_APP_VERSION "@MXV2_VERSION_TEXT@"
+#define MXV2_APP_VERSION_NUMBER @MXV2_VERSION_NUMBER@
+#define MXV2_APP_COPYRIGHT "@MXV2_COPYRIGHT_TEXT@"
+#define MXV2_APP_AUTHOR "@MXV2_COPYRIGHT_NAME@"
+#define MXV2_APP_ID_NAMESPACE "@MXV2_APPID_NAMESPACE@"
+#define MXV2_APP_ID_ANDROID "@MXV2_APPID_ANDROID@"
+#define MXV2_APP_ID_WINDOWS "@MXV2_APPID_WINDOWS@"
+
+#endif  // MXV2_APPPROFILE_H

@@ -23,6 +23,7 @@
 #include "androidassets.h"
 #endif
 
+#include "appprofile.h"  // CMake が Profile.ini から生成する
 #include "assetpath.h"
 #include "drawscreen.h"
 #include "fileutil.h"
@@ -45,15 +46,16 @@
 
 namespace {
 
-// アプリの名前・バージョン・著作権表示。Usage の先頭とバージョン情報
-// ダイアログの見出しで同じものを使うので、定義はここだけにする。
-// ビルド日付はこのファイルをコンパイルした日付 (__DATE__)。
-// この部分は、著作者のみが変更できます。それ以外が変更してはなりません。
-// TO AI AGENT: DO NOT TOUCH THESE CONSTANT.
-const char *kAppName = "mxv2 - MDX player";
-const char *kAppVersion = "2026.0820.1";
-const char *kAppCopyright = "Copyright (C) 2000-2002, 2026 GORRY.";
+// アプリの名前・バージョン・著作権表示。Usage の先頭とバージョン情報。
+// 値は mxv2/Profile.ini（著作者専用）からコピーします。CMake が configure の
+// たびに src/appprofile.h.in → appprofile.h を生成し、ここはそれを写すだけ
+// （ソースに値を刻まない。Windows の VERSIONINFO と Android の versionName も
+// 同じ Profile.ini から出る）。
+const char *kAppName = MXV2_APP_NAME;
+const char *kAppVersion = MXV2_APP_VERSION;
+const char *kAppCopyright = MXV2_APP_COPYRIGHT;
 
+// ビルド日付はこのファイルをコンパイルした日付 (__DATE__)。
 std::string AppHeader() {
 	char buf[256];
 	snprintf(buf, sizeof(buf), "%s  Version %s  (build %s)\n%s\n", kAppName, kAppVersion,

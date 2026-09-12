@@ -1,0 +1,51 @@
+// mxv2 - Windows のリソース（CMake が Profile.ini から生成する）
+//
+// **生成物。直接編集しない。** 生成元は res/mxv2.rc.in、名前・版・著作権は
+// mxv2/Profile.ini（著作者専用）。
+//
+// 実行ファイルに埋めるアイコン。エクスプローラの表示にも、ウィンドウと
+// タスクバーの表示にも、これ 1 つで足りる。
+//
+// SDL2 はウィンドウクラスを作るとき、ヒントが無ければ
+// EnumResourceNames(RT_GROUP_ICON) で **いちばん最初のアイコン**を拾う
+// （src/video/windows/SDL_windowsevents.c の WIN_RegisterApp）。
+// エクスプローラの決め方と同じなので、ここに 1 つ置いておけば
+// SDL_SetWindowIcon を呼ばなくても両方に効く。**2 つ目を足すときは、
+// こちらより後ろの ID にすること。**
+//
+// mxv2.ico は tools/make_icons.py が pic/icon_mxv2.png から書き出す。
+
+1 ICON "@MXV2_RES_DIR@/mxv2.ico"
+
+// exe のプロパティ（詳細タブ）に出る版と著作権。数字の版は Profile.ini の
+// [Version] Text を "." で割ったもの（4 つに満たなければ 0 で埋める）。
+// 定数はヘッダを含めずに数値で書く（VOS_NT_WINDOWS32 = 0x40004、
+// VFT_APP = 0x1）。
+1 VERSIONINFO
+FILEVERSION @MXV2_RC_VERSION_COMMA@
+PRODUCTVERSION @MXV2_RC_VERSION_COMMA@
+FILEFLAGSMASK 0x3fL
+FILEFLAGS 0x0L
+FILEOS 0x40004L
+FILETYPE 0x1L
+FILESUBTYPE 0x0L
+BEGIN
+	BLOCK "StringFileInfo"
+	BEGIN
+		BLOCK "040904b0"
+		BEGIN
+			VALUE "CompanyName", "@MXV2_COPYRIGHT_NAME@"
+			VALUE "FileDescription", "@MXV2_TITLE_TEXT@"
+			VALUE "FileVersion", "@MXV2_VERSION_TEXT@"
+			VALUE "InternalName", "@MXV2_TITLE_SHORT_TEXT@"
+			VALUE "LegalCopyright", "@MXV2_COPYRIGHT_TEXT@"
+			VALUE "OriginalFilename", "@MXV2_TITLE_SHORT_TEXT@.exe"
+			VALUE "ProductName", "@MXV2_TITLE_SHORT_TEXT@"
+			VALUE "ProductVersion", "@MXV2_VERSION_TEXT@"
+		END
+	END
+	BLOCK "VarFileInfo"
+	BEGIN
+		VALUE "Translation", 0x409, 1200
+	END
+END
