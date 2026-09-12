@@ -46,6 +46,16 @@ SHELL := cmd.exe
 .SHELLFLAGS := /C
 endif
 
+# フォルダを作るコマンド。**cmd.exe には組み込みの mkdir があり、PATH の
+# GnuWin32 の mkdir.exe より優先される**。組み込みは `-p` を知らず、
+# `mkdir -p "x"` を「-p と x の 2 つを作れ」と解釈して **`-p` という名前の
+# フォルダを作ってしまう**（2026-09-13 に踏んだ。2 回目は「-p は既にある」で
+# 失敗する）。`mkdir.exe -p` と書いても cmd は組み込みに回す（内部コマンド名の
+# 直後の `.` を区切りとみなす）。cmake は必ずあるので、その `-E make_directory`
+# を使う（cmd でも sh でも同じ）。rm / cp は cmd の組み込みに無いので、
+# そのままで GnuWin32 のものが動く。
+MKDIR_P := cmake -E make_directory
+
 # 引数なしの `make` は build。
 #
 # **明示しないと build にならない。** GNU Make の既定のゴールは
@@ -180,23 +190,24 @@ test-windows: build-windows
 	$(TESTDATA_CMDS) cd .
 
 # install / uninstall は mxv2 独自の約束（CMakeLists.txt に install() は無い）。
-# 「実行ファイル + SDL2.dll + assets + NOTICE + LICENSE」という、そのまま
-# コピーして配れる移植版の姿を PREFIX の下に作るだけ。開発用のツール
+# 「実行ファイル + SDL2.dll + assets + NOTICE + LICENSE + README.md」という、
+# そのままコピーして配れる移植版の姿を PREFIX の下に作るだけ。開発用のツール
 # （mxv2_chunktest.exe など）や .pdb は対象に含めない。
 .PHONY: install-windows
 install-windows: build-windows
-	mkdir -p "$(PREFIX)"
+	$(MKDIR_P) "$(PREFIX)"
 	cp "$(EXE_MAIN)" "$(PREFIX)/mxv2.exe"
 	cp "$(WIN_OUT_DIR)/SDL2.dll" "$(PREFIX)/SDL2.dll"
 	rm -rf "$(PREFIX)/assets"
 	cp -r "$(WIN_OUT_DIR)/assets" "$(PREFIX)/assets"
 	cp NOTICE "$(PREFIX)/NOTICE"
 	cp LICENSE "$(PREFIX)/LICENSE"
+	cp README.md "$(PREFIX)/README.md"
 	@echo Installed to $(PREFIX)
 
 .PHONY: uninstall-windows
 uninstall-windows:
-	rm -rf "$(PREFIX)/mxv2.exe" "$(PREFIX)/SDL2.dll" "$(PREFIX)/assets" "$(PREFIX)/NOTICE" "$(PREFIX)/LICENSE"
+	rm -rf "$(PREFIX)/mxv2.exe" "$(PREFIX)/SDL2.dll" "$(PREFIX)/assets" "$(PREFIX)/NOTICE" "$(PREFIX)/LICENSE" "$(PREFIX)/README.md"
 	@echo Removed mxv2 files from $(PREFIX)
 
 # ---------------------------------------------------------------------------
@@ -283,9 +294,95 @@ test-android: build-android
 	"$(GRADLEW)" -p android test$(CONFIG)UnitTest
 
 # ---------------------------------------------------------------------------
+# リリース用のアーカイブ（make arc）
+# ---------------------------------------------------------------------------
+# Release/ の下に、配れる形のものを 1 つ作る。名前は
+#   <Profile.ini の [Title] ShortText>_<TARGET>_<Profile.ini の [Version] Text>
+# で、win32 / win64 なら .zip（実行ファイル + SDL2.dll + assets + NOTICE +
+# LICENSE + README.md を、同じ名前のフォルダに入れたもの）、android なら .apk。
+# **BUILD の値に関わらず release でビルドする。**
+# Windows 側の zip は PowerShell の Compress-Archive（標準で入っている）、
+# それ以外では zip コマンドを使う。
+#
+# Profile.ini の値は sed で引く（[Section] から次の [ までの範囲で Key= を
+# 探す）。sed は GnuWin32 にもある。値が取れなければ止める。
+PROFILE_INI := Profile.ini
+profile_get = $(strip $(shell sed -n "/^\[$(1)\]/,/^\[/{s/^$(2)=//p;}" $(PROFILE_INI)))
+# `=`（再帰展開）にしてあるので、arc を頼まれたときだけ sed が走る。
+PROFILE_SHORT = $(call profile_get,Title,ShortText)
+PROFILE_VERSION = $(call profile_get,Version,Text)
+
+ARC_DIR := Release
+ARC_NAME = $(PROFILE_SHORT)_$(TARGET)_$(PROFILE_VERSION)
+ARC_STAGE = $(ARC_DIR)/stage/$(ARC_NAME)
+WIN_REL_OUT := $(WIN_BUILD_DIR)/Release
+
+.PHONY: check-profile
+check-profile:
+	$(if $(PROFILE_SHORT),,$(error Profile.ini: [Title] ShortText could not be read))
+	$(if $(PROFILE_VERSION),,$(error Profile.ini: [Version] Text could not be read))
+	@echo mxv2: archive name = $(ARC_NAME)
+
+ifeq ($(OS),Windows_NT)
+ARC_ZIP_CMD = powershell -NoProfile -Command "Compress-Archive -Path '$(ARC_STAGE)' -DestinationPath '$(ARC_DIR)/$(ARC_NAME).zip' -Force"
+else
+ARC_ZIP_CMD = cd "$(ARC_DIR)/stage" && zip -r "../$(ARC_NAME).zip" "$(ARC_NAME)"
+endif
+
+# 素材は build/ 側のコピーではなく、CMakeLists.txt の POST_BUILD と同じ手順で
+# **ソースから組み立て直す**（ソースの assets/ + 空の assets/mdx/ + 同梱曲
+# third_party/GUSA-CDg/ArctanX があれば assets/mdx/ArctanX/）。build/ 側には
+# 名前を変える前のスキンなどの残骸が残ることがあるため。ユーザーが試験用に
+# 置く font.ttf（.gitignore 済み）は配布物に入れない。
+BUNDLED_MDX_DIR := third_party/GUSA-CDg/ArctanX
+ARC_BUNDLED_MDX_CMD = $(if $(wildcard $(BUNDLED_MDX_DIR)),cp -r "$(BUNDLED_MDX_DIR)" "$(ARC_STAGE)/assets/mdx/ArctanX",@echo mxv2: $(BUNDLED_MDX_DIR) not found - no bundled songs)
+
+.PHONY: arc-windows
+arc-windows: check-profile $(WIN_BUILD_DIR)/CMakeCache.txt
+	cmake --build $(WIN_BUILD_DIR) --config Release --parallel
+	rm -rf "$(ARC_STAGE)" "$(ARC_DIR)/$(ARC_NAME).zip"
+	$(MKDIR_P) "$(ARC_STAGE)"
+	cp "$(WIN_REL_OUT)/mxv2.exe" "$(ARC_STAGE)/mxv2.exe"
+	cp "$(WIN_REL_OUT)/SDL2.dll" "$(ARC_STAGE)/SDL2.dll"
+	cp -r assets "$(ARC_STAGE)/assets"
+	rm -f "$(ARC_STAGE)/assets/font.ttf" $(patsubst assets/%,"$(ARC_STAGE)/assets/%",$(wildcard assets/skin/*/font.ttf))
+	$(MKDIR_P) "$(ARC_STAGE)/assets/mdx"
+	$(ARC_BUNDLED_MDX_CMD)
+	cp NOTICE "$(ARC_STAGE)/NOTICE"
+	cp LICENSE "$(ARC_STAGE)/LICENSE"
+	cp README.md "$(ARC_STAGE)/README.md"
+	$(ARC_ZIP_CMD)
+	rm -rf "$(ARC_DIR)/stage"
+	@echo Created $(ARC_DIR)/$(ARC_NAME).zip
+
+# release apk。android/keystore.properties があれば署名済みの app-release.apk、
+# 無ければ app-release-unsigned.apk しかできないので、名前に -unsigned を
+# 付けて区別する（そのままでは端末に入らない。BUILD.md の署名の節）。
+ifneq ($(wildcard android/keystore.properties),)
+APK_REL_SRC := android/app/build/outputs/apk/release/app-release.apk
+APK_REL_SUFFIX :=
+else
+APK_REL_SRC := android/app/build/outputs/apk/release/app-release-unsigned.apk
+APK_REL_SUFFIX := -unsigned
+endif
+
+.PHONY: arc-android
+arc-android: check-profile
+	"$(GRADLEW)" -p android $(GRADLE_ABI_ARG) assembleRelease
+	$(MKDIR_P) "$(ARC_DIR)"
+	cp "$(APK_REL_SRC)" "$(ARC_DIR)/$(ARC_NAME)$(APK_REL_SUFFIX).apk"
+	@echo Created $(ARC_DIR)/$(ARC_NAME)$(APK_REL_SUFFIX).apk
+
+# win64 と android の両方をまとめて作る。
+.PHONY: arc-all
+arc-all:
+	$(MAKE) arc TARGET=win64
+	$(MAKE) arc TARGET=android
+
+# ---------------------------------------------------------------------------
 # 共通のターゲット（TARGET に応じて上のどちらかへ振り分けるだけ）
 # ---------------------------------------------------------------------------
-.PHONY: all configure build install uninstall clean run test help
+.PHONY: all configure build install uninstall clean run test arc help
 
 all: build
 
@@ -297,6 +394,7 @@ uninstall: uninstall-windows
 clean: clean-windows
 run: run-windows
 test: test-windows
+arc: arc-windows
 else
 configure: configure-android
 build: build-android
@@ -305,6 +403,7 @@ uninstall: uninstall-android
 clean: clean-android
 run: run-android
 test: test-android
+arc: arc-android
 endif
 
 help:
@@ -323,6 +422,11 @@ help:
 	@echo   run        run the built target, with OPTION appended
 	@echo   test       win32/win64: run mxv2_chunktest against testdata/
 	@echo              android: placeholder Gradle unit test (see notes)
+	@echo   arc        release build, then put a distributable into Release/:
+	@echo              win32/win64: ^<ShortText^>_^<TARGET^>_^<Version^>.zip
+	@echo              android:     ^<ShortText^>_^<TARGET^>_^<Version^>.apk
+	@echo              (ShortText / Version come from Profile.ini)
+	@echo   arc-all    arc for TARGET=win64 and TARGET=android
 	@echo   help       show this
 	@echo -----------------------------------------------------------------
 	@echo Switches (set as VAR=value on the command line):

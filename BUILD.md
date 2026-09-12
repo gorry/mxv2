@@ -188,6 +188,28 @@ mxv2 [options] [<mdxfile> | <dir>]
 | 画面の文字が `Menu.Open` のようなキー名になる | `assets/locale/` が無い。ログに `message not found:` が出る。ロケール名が違うだけなら英語で出る（`Locale ... was not found`） |
 | 設定を変えても次の起動で戻る | ユーザーフォルダに書けていない。起動ログの `userdir :` の行を見る |
 
+## 配布物を作る（make arc）
+
+```sh
+make arc                  # win64 の zip
+make arc TARGET=android   # android の apk
+make arc-all              # 両方
+```
+
+`Release/` の下に、`<ShortText>_<TARGET>_<Version>`（`Profile.ini` の
+[Title] ShortText と [Version] Text）の名前で作る。例:
+`mxv2_win64_2026.0820.1.zip` / `mxv2_android_2026.0820.1.apk`。
+BUILD の値に関わらず release でビルドする。
+
+- zip の中身は同じ名前のフォルダに `mxv2.exe` / `SDL2.dll` / `assets/` /
+  `NOTICE` / `LICENSE` / `README.md`。`assets/` はソース側から取り、試験用の `font.ttf`
+  （.gitignore 済み）は入れない。zip は Windows では PowerShell の
+  Compress-Archive、それ以外では `zip` コマンド。
+- apk は `android/keystore.properties` があれば署名済み。無ければ
+  `-unsigned` を付けた名前になり、そのままでは端末に入らない
+  （下の「Android のリリース署名」）。
+- `Release/` は .gitignore 済み。
+
 ## アプリの名前・版・著作権（Profile.ini）
 
 `mxv2/Profile.ini` が唯一の置き場（著作者専用）。ビルド時に写される:
@@ -322,7 +344,7 @@ third_party/portable_mdx が「常に真の比較」の警告を出すが、thir
 apk の `assets/` は **`fopen` で開けず、列挙もできない**。そこで
 
 1. Gradle の `prepareMxv2Assets` が「実行ファイルの隣」と同じ姿
-   （`assets/` と `NOTICE` / `LICENSE`）を組み立てて apk に入れる。
+   （`assets/` と `NOTICE` / `LICENSE` / `README.md`）を組み立てて apk に入れる。
    同梱 MDX（`third_party/GUSA-CDg/ArctanX`）があれば一緒に入る。
 2. `generateMxv2AssetIndex` が索引 `assetindex.txt`（crc32・サイズ・パス）を作る。
 3. 起動時に `src/androidassets.cpp` が索引を見て、**変わったものだけ**内部

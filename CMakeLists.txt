@@ -391,13 +391,16 @@ if(EXISTS "${BUNDLED_MDX_DIR}")
 	)
 endif()
 
-# LICENSE と NOTICE も実行ファイルの隣へ。NOTICE は「バージョン情報」が
-# 実行時に読んで表示するので、配布物にも必ず入れること。
+# LICENSE と NOTICE と README.md も実行ファイルの隣へ。NOTICE は「バージョン
+# 情報」が実行時に読んで表示するので、配布物にも必ず入れること。README.md は
+# 配布物の説明書（2026-09-13 に追加。バイナリパッケージでも同じ場所に置く）。
 add_custom_command(TARGET mxv2 POST_BUILD
 	COMMAND ${CMAKE_COMMAND} -E copy_if_different
 		"${CMAKE_CURRENT_SOURCE_DIR}/NOTICE" "$<TARGET_FILE_DIR:mxv2>/NOTICE"
 	COMMAND ${CMAKE_COMMAND} -E copy_if_different
 		"${CMAKE_CURRENT_SOURCE_DIR}/LICENSE" "$<TARGET_FILE_DIR:mxv2>/LICENSE"
+	COMMAND ${CMAKE_COMMAND} -E copy_if_different
+		"${CMAKE_CURRENT_SOURCE_DIR}/README.md" "$<TARGET_FILE_DIR:mxv2>/README.md"
 )
 
 endif()

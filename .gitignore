@@ -1,6 +1,8 @@
 build/
 out/
 dist/
+# make arc の出力（配布物）
+Release/
 *.user
 *.vcxproj.user
 *.bak

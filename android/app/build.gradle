@@ -160,8 +160,8 @@ android {
 // ---------------------------------------------------------------------------
 // 同梱素材を apk へ入れる。
 //
-// Windows は CMake が実行ファイルの隣へ assets/ と NOTICE / LICENSE を
-// コピーしている。Android も同じ姿を apk の assets に作り、起動時に
+// Windows は CMake が実行ファイルの隣へ assets/ と NOTICE / LICENSE /
+// README.md をコピーしている。Android も同じ姿を apk の assets に作り、起動時に
 // 内部ストレージへ展開する（src/androidassets.cpp）。
 //
 // **apk の中は列挙できない**ので、何を展開するかはビルド時に作る索引
@@ -173,7 +173,7 @@ def bundledMdxDir = new File(mxv2Dir, 'third_party/GUSA-CDg/ArctanX')
 
 def mxv2AssetSpec = { spec ->
 	spec.from(new File(mxv2Dir, 'assets')) { into 'assets' }
-	spec.from(mxv2Dir) { include 'NOTICE', 'LICENSE' }
+	spec.from(mxv2Dir) { include 'NOTICE', 'LICENSE', 'README.md' }
 	if (bundledMdxDir.isDirectory()) {
 		spec.from(bundledMdxDir) { into 'assets/mdx/ArctanX' }
 	}
