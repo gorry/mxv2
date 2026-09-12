@@ -1365,6 +1365,9 @@ int main(int argc, char **argv) {
 		}
 		draw.SetFileListFontSize(settings.fileListFontSize);
 		draw.SetFileListScroll(settings.fileListScroll);
+		// 曲を読むまでの曲名欄。原典 mxv の IDS_HELLO と同じ文言で、
+		// 最初の曲が載ったら置き換わる（スキンを替えても Reload が引き継ぐ）。
+		draw.PutMDXTitle(mxv2::Msg("Player.Hello"));
 	}
 
 	mxv2::Player player;
