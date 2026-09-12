@@ -9,18 +9,24 @@
 
 namespace mxv2 {
 
-// 既定のスキン。Android は縦長の画面なので Phone (480x720) を既定にする
-// （Windows は横長の Default 640x480）。どちらも設定で変えられる。
-#ifdef __ANDROID__
+// 既定のスキン（2026-09-12 に決めた組み合わせ）。どれも設定で変えられる。
+//   デスクトップ: Default (640x480)。縦横切り替え（デバッグ用）は
+//                 Default-Portrait / Default-Landscape。
+//   モバイル:     Phone (480x720) / Phone-Landscape (720x480)。切り替え OFF
+//                 （デバッグ用）のときは Phone。
+#if defined(__ANDROID__) || defined(__IPHONEOS__)
 const char kDefaultSkinName[] = "Phone";
+const char kDefaultSkinPortrait[] = "assets:Phone";
+const char kDefaultSkinLandscape[] = "assets:Phone-Landscape";
 #else
 const char kDefaultSkinName[] = "Default";
-#endif
-
-// 縦横切り替えが ON のときの既定のスキン。どちらも同梱ぶんで、今のところ
-// Phone / Phone-R への別名（layout.ini に Base しか書いていない）。
 const char kDefaultSkinPortrait[] = "assets:Default-Portrait";
 const char kDefaultSkinLandscape[] = "assets:Default-Landscape";
+#endif
+
+const char *Settings::DefaultSkinName() { return kDefaultSkinName; }
+const char *Settings::DefaultSkinPortrait() { return kDefaultSkinPortrait; }
+const char *Settings::DefaultSkinLandscape() { return kDefaultSkinLandscape; }
 
 // OrientationMode の並び。ini には名前で書く（手で編集する人に分かるように、
 // また layout.ini の [Screen] FilerSide と同じ流儀に揃えるため）。

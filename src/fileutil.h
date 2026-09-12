@@ -24,6 +24,9 @@ bool FileExists(const std::string &path);
 // ファイルを消す。もともと無ければ true。
 bool RemoveFile(const std::string &path);
 
+// 空のフォルダを消す。中身があれば（消せなければ）false。
+bool RemoveEmptyDirectory(const std::string &path);
+
 // パス末尾の区切りまで（区切りを含む）を返す。区切りが無ければ空文字列。
 std::string DirNameOf(const std::string &path);
 

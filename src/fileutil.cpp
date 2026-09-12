@@ -206,6 +206,16 @@ bool RemoveFile(const std::string &path) {
 #endif
 }
 
+bool RemoveEmptyDirectory(const std::string &path) {
+#ifdef _WIN32
+	std::wstring w = Utf8ToWide(path);
+	if (w.empty()) return false;
+	return RemoveDirectoryW(w.c_str()) != 0;
+#else
+	return rmdir(path.c_str()) == 0;
+#endif
+}
+
 std::string DirNameOf(const std::string &path) {
 	for (size_t i = path.size(); i > 0; i--) {
 		if (IsSeparator(path[i - 1])) return path.substr(0, i);

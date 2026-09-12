@@ -41,6 +41,13 @@ struct Settings {
 	//   skinPortrait / skinLandscape  … ON のとき、向きごとに使う
 	//   orientationMode               … ON のときの切り替えかた
 	// 機能の ON/OFF そのものは起動オプション (-orient) で決まり、保存しない。
+	//
+	// ini に書かれたスキンが無いときは、その系統の**既定のスキン**へ落とす
+	// （プラットフォームごとに違う。settings.cpp の kDefaultSkin*）。
+	// 落ちたことは ini に書き戻さない（2026-09-12、screen_orientation.md）。
+	static const char *DefaultSkinName();       // OFF のとき（フォルダ名。assets: 無し）
+	static const char *DefaultSkinPortrait();   // ON・縦（ref。assets: 付き）
+	static const char *DefaultSkinLandscape();  // ON・横（ref。assets: 付き）
 	std::string skinName;  // skin/<名前>（同梱ぶんとユーザーぶんの両方から探す）
 	std::string skinPortrait;
 	std::string skinLandscape;

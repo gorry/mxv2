@@ -172,6 +172,16 @@ void Warn(Warnings *box, const std::string &text) {
 	if (box != 0) box->push_back(text);
 }
 
+// ini に書かれたスキンが無い（読めない）ときの落とし先。その系統
+// （切り替え OFF / 縦 / 横）の**既定のスキン**で、プラットフォームごとに
+// 違う（settings.cpp の kDefaultSkin*）。落ちたことは **ini に書き戻さない**
+// （2026-09-12 の決定。スキンを置き直せば次の起動で元の名前へ戻る）。
+std::string DefaultSkinFor(bool orientEnabled, mxv2::Screen::Orientation orient) {
+	if (!orientEnabled) return mxv2::MakeBundledSkinRef(mxv2::Settings::DefaultSkinName());
+	return (orient == mxv2::Screen::kPortrait) ? mxv2::Settings::DefaultSkinPortrait()
+	                                            : mxv2::Settings::DefaultSkinLandscape();
+}
+
 // ユーザーフォルダの名前。Windows なら %APPDATA%\mxv2\ になる。
 // 設定 (mxv2.ini) と、ユーザーが足したスキンの置き場所。
 const char *kUserDirName = "mxv2";
@@ -1215,7 +1225,8 @@ int main(int argc, char **argv) {
 		           .c_str());
 	}
 
-	// うまくいかないときの逃げ場。同梱ぶんは必ずあるはずなので名指しする。
+	// 既定のスキン（DefaultSkinFor）も読めないときの最後の逃げ場。
+	// 同梱ぶんは必ずあるはずなので名指しする。
 	const std::string kFallbackSkin = mxv2::MakeBundledSkinRef("Default");
 
 	// **ウィンドウを開くのはスキンを読んだ後**（スキンが画面サイズを決める）
@@ -1249,25 +1260,28 @@ int main(int argc, char **argv) {
 	                                                            : settings.skinLandscape);
 
 	// スキンが画面サイズを決めるので、ウィンドウより先に読む。
-	// 指定のスキンが無ければ同梱の Default へ落ちる（ini に書かれたスキンの
-	// フォルダをユーザーが消しても起動できるように）。
-	// **落ちたことは ini に書き戻さない**（縦横切り替えのときは特に、
-	// スキンを置き直せば次の起動で元の名前へ戻ってほしいため）。
+	// 指定のスキンが無ければ、警告を出してその系統の既定のスキンへ落ちる
+	// （ini に書かれたスキンのフォルダをユーザーが消しても起動できるように）。
+	// **落ちたことは ini に書き戻さない**（DefaultSkinFor のコメント）。
+	// loadedSkin は実際に読めた ref。設定の値とは別に持つ。
 	mxv2::Skin skin;
+	std::string loadedSkin = wantSkin;
 	{
 		std::string err;
 		if (!skin.Load(paths, wantSkin, &err)) {
 			Warn(&warnings, err);
-			if (!orientEnabled) {
-				settings.skinName = kFallbackSkin;
-				dirtyFields |= mxv2::Settings::kFieldSkin;
+			loadedSkin = DefaultSkinFor(orientEnabled, orientNow);
+			if (loadedSkin == wantSkin || !skin.Load(paths, loadedSkin, &err)) {
+				if (loadedSkin != wantSkin) Warn(&warnings, err);
+				loadedSkin = kFallbackSkin;
+				if (!skin.Load(paths, kFallbackSkin, &err)) {
+					printf("ERROR: %s\n", err.c_str());
+					printf("       %s\n", mxv2::Msg("Error.HintAssets"));
+					SDL_Quit();
+					return EXIT_FAILURE;
+				}
 			}
-			if (!skin.Load(paths, kFallbackSkin, &err)) {
-				printf("ERROR: %s\n", err.c_str());
-				printf("       %s\n", mxv2::Msg("Error.HintAssets"));
-				SDL_Quit();
-				return EXIT_FAILURE;
-			}
+			Warn(&warnings, mxv2::MsgF("Log.SkinFallback", loadedSkin));
 		}
 	}
 
@@ -1323,20 +1337,25 @@ int main(int argc, char **argv) {
 		std::string err;
 		draw.SetTextLayer(&textLayer);
 		if (!draw.Init(&skin, &err)) {
-			// 素材の足りないスキンでも起動できなくならないよう、同梱の
-			// Default へ逃がす（layout.ini を書かずに theme.mxv だけ置いた
-			// ユーザースキンなど）。
-			Warn(&warnings, mxv2::MsgF("Log.SkinUnusable", settings.skinName, err));
-			const bool retry = (settings.skinName != kFallbackSkin) &&
-			                   skin.Load(paths, kFallbackSkin, &err);
-			if (retry) {
-				settings.skinName = kFallbackSkin;
-				dirtyFields |= mxv2::Settings::kFieldSkin;
+			// 素材の足りないスキンでも起動できなくならないよう、既定の
+			// スキンへ逃がす（layout.ini を書かずに theme.mxv だけ置いた
+			// ユーザースキンなど）。それも駄目なら同梱の Default。
+			// ini には書き戻さない（DefaultSkinFor のコメント）。
+			Warn(&warnings, mxv2::MsgF("Log.SkinUnusable", loadedSkin, err));
+			const std::string candidates[2] = {DefaultSkinFor(orientEnabled, orientNow),
+			                                   kFallbackSkin};
+			bool ok = false;
+			for (int i = 0; i < 2 && !ok; i++) {
+				if (candidates[i] == loadedSkin) continue;
+				if (!skin.Load(paths, candidates[i], &err)) continue;
+				loadedSkin = candidates[i];
 				screen.Resize(skin.screenW, skin.screenH, &err);
 				textLayer.SetFontDirs(mxv2::FontSearchDirs(skin, paths));
 				textLayer.Rebuild(&screen, &err);
+				ok = draw.Init(&skin, &err);
+				if (ok) Warn(&warnings, mxv2::MsgF("Log.SkinFallback", loadedSkin));
 			}
-			if (!retry || !draw.Init(&skin, &err)) {
+			if (!ok) {
 				printf("ERROR: %s\n", err.c_str());
 				printf("       %s\n", mxv2::Msg("Error.HintAssetsSkin"));
 				screen.Close();
@@ -1506,14 +1525,26 @@ int main(int argc, char **argv) {
 			const std::string name = pendingSkin;
 			pendingSkin.clear();
 
-			mxv2::Skin next;
-			std::string err;
-			if (!next.Load(paths, name, &err)) {
-				printf("warning  : %s\n",
-				       mxv2::MsgF("Log.SkinUnreadable", name, err).c_str());
-			} else {
-				const mxv2::Skin prev = skin;
+			// 読めない・描けないときは、その系統の既定のスキンへ落とす
+			// （起動時と同じ。ini には書き戻さない）。それも駄目なら元の
+			// スキンへ戻す。loaded は実際に使えた ref（空なら戻した）。
+			const std::string fallback = DefaultSkinFor(orientEnabled, orientNow);
+			const std::string candidates[2] = {name,
+			                                   (fallback != name) ? fallback : std::string()};
+			const mxv2::Skin prev = skin;
+			std::string loaded;
+			bool touched = false;  // 画面や DrawScreen を作り直したか
+			for (int i = 0; i < 2 && loaded.empty(); i++) {
+				if (candidates[i].empty()) continue;
+				mxv2::Skin next;
+				std::string err;
+				if (!next.Load(paths, candidates[i], &err)) {
+					printf("warning  : %s\n",
+					       mxv2::MsgF("Log.SkinUnreadable", candidates[i], err).c_str());
+					continue;
+				}
 				skin = next;
+				touched = true;
 
 				// 順番が大事: 画面 -> 文字レイヤー -> DrawScreen。
 				// DrawScreen::Init は最後に Reload() まで済ませて曲名を
@@ -1526,13 +1557,23 @@ int main(int argc, char **argv) {
 				}
 				if (!ok) {
 					printf("warning  : %s\n",
-					       mxv2::MsgF("Log.SkinSwitchFailed", name, err).c_str());
+					       mxv2::MsgF("Log.SkinSwitchFailed", candidates[i], err).c_str());
+					continue;
+				}
+				loaded = candidates[i];
+				if (i > 0) {
+					printf("warning  : %s\n", mxv2::MsgF("Log.SkinFallback", loaded).c_str());
+				}
+			}
+			if (touched) {
+				if (loaded.empty()) {
+					std::string err;
 					skin = prev;
 					screen.Resize(skin.screenW, skin.screenH, &err);
 					textLayer.SetFontDirs(mxv2::FontSearchDirs(skin, paths));
 					textLayer.Rebuild(&screen, &err);
 					draw.Init(&skin, &err);
-				} else if (!orientEnabled) {
+				} else if (!orientEnabled && loaded == name) {
 					settings.skinName = name;
 				}
 

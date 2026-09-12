@@ -739,7 +739,7 @@ void SettingsUi::ScanSkins() {
 		item.ref = refs[i];
 		// 縦横の分けは layout.ini の [Screen] Width/Height で決まるが、
 		// **Base から画面サイズを継承しているスキンがある**（同梱の
-		// Default-Portrait / Default-Landscape / Default-Midnight がそう）。
+		// Default-Midnight がそう）。
 		// 名前や layout.ini の直読みでは決められないので、本体と同じ
 		// 手順（Skin::Load）を通す。正方形は縦扱い（screen_orientation.md）。
 		Skin s;

@@ -4,7 +4,8 @@ namespace SkinEditor.Tests;
 
 public class DebugListTest
 {
-    // 同梱スキンは増える（2026-09-09 に横長の Phone-R が加わった）ので、
+    // 同梱スキンは増える（2026-09-09 に横長の Phone-Landscape（旧 Phone-R）が
+    // 加わった）ので、
     // 一覧そのものではなく「昔からある 3 つが、名前順のまま並んでいること」を
     // 見る。ここで確かめたいのは ListSkinNames が assets/skin/ を正しく
     // 拾えているかであって、同梱スキンの本数ではない。

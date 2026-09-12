@@ -136,11 +136,23 @@ bool ExtractBundledAssets(const std::string &destDir, std::vector<std::string> *
 		written++;
 	}
 
-	// 索引から消えたものは、展開先からも消す。
+	// 索引から消えたものは、展開先からも消す。**空になったフォルダも消す**
+	// （残すと、名前を変えたスキンの旧フォルダが空のまま「存在する」扱いに
+	// なり、読めないスキンとして見えてしまう。2026-09-12 の Phone-R）。
 	int removed = 0;
 	for (IndexMap::const_iterator it = have.begin(); it != have.end(); ++it) {
 		if (wanted.find(it->first) != wanted.end()) continue;
-		if (RemoveFile(JoinPath(destDir, it->first))) removed++;
+		if (!RemoveFile(JoinPath(destDir, it->first))) continue;
+		removed++;
+		// 消したファイルの親を destDir の手前まで辿り、空なら畳む。
+		std::string rel = it->first;
+		for (;;) {
+			std::string dir = DirNameOf(rel);
+			if (dir.empty()) break;
+			dir.erase(dir.size() - 1);  // 末尾の区切り
+			if (!RemoveEmptyDirectory(JoinPath(destDir, dir))) break;
+			rel = dir;
+		}
 	}
 
 	// 索引は最後に置く。途中で落ちたときは次の起動でやり直しになる。
