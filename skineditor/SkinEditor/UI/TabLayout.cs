@@ -45,11 +45,11 @@ public sealed record SubTabsNode(params (string Title, Node[] Nodes)[] Pages) : 
 {
     public int Height { get; init; }
 
-    // 選ばれているページが変わったときに呼ばれる（選ばれたページの題名。
-    // このサブタブを載せている親のタブ自体から離れたときは null）。
+    // 選ばれているページが変わったときに呼ばれる（選ばれたページの題名）。
     // プレビューの状態をページに連動させるのに使う（[ステータス] の
-    // 音色データ表示。2026-09-15、ユーザーの指示でトグルをやめて自動にした）。
-    public Action<PreviewCanvas, string?>? OnPageSelected { get; init; }
+    // 音色データ表示。2026-09-15、ユーザーの指示でトグルをやめて自動にした。
+    // 親のタブを離れても戻さない——サブタブの切り替えだけが表示の切り替え）。
+    public Action<PreviewCanvas, string>? OnPageSelected { get; init; }
 }
 
 // 「1 キーに複数個の値」を、短いラベル付きで数個ずつの行に分けたもの。
@@ -180,8 +180,9 @@ public static class TabLayout
                     new PcmChannelsNode(),
                 }),
                 // 音色データ表示（tonedata.md）。本体はステータス欄の長押しで
-                // 切り替えるが、プレビューは「音色」系のサブタブを選んでいる間だけ
-                // 音色データ表示になる（下の OnPageSelected）。項目が多いので
+                // 切り替えるが、プレビューは「音色」系のサブタブを選ぶと音色データ
+                // 表示になり、他のサブタブを選ぶと戻る（下の OnPageSelected）。
+                // 他のタブへ移っても表示はそのまま（ユーザーの指示）。項目が多いので
                 // 3 ページに分ける（1 ページの高さが他のサブタブを超えないように）。
                 ("音色", new Node[]
                 {
@@ -209,9 +210,8 @@ public static class TabLayout
                     "PosOPMNoise", "PosOPMClockB", "PosOPMLFOFreq",
                     "PosOPMLFOPMD", "PosOPMLFOAMD", "PosOPMLFOWAVE")))
             {
-                // 「音色」で始まるページを選んでいる間だけ音色データ表示。
-                // [ステータス] タブを離れたら（title が null）従来の表示に戻す。
-                OnPageSelected = (p, title) => p.StateToneMode = title != null && title.StartsWith("音色"),
+                // 「音色」で始まるページを選ぶと音色データ表示、それ以外のページで従来の表示。
+                OnPageSelected = (p, title) => p.StateToneMode = title.StartsWith("音色"),
             },
             Colors("ステータス (Status)"),
         }),

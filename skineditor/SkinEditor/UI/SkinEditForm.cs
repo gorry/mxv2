@@ -193,9 +193,6 @@ public sealed class SkinEditForm : Form
             page.Controls.Add(flow);
             tabs.TabPages.Add(page);
         }
-        // サブタブに連動するプレビューの状態（[ステータス] の音色データ表示）は、
-        // メインのタブを離れたら戻す。
-        tabs.SelectedIndexChanged += (_, _) => _builder.OnMainTabChanged(tabs.SelectedTab);
 
         // プレビューのクリック。その点で拾えるアイテムを優先順位の高い順に
         // 並べ、選択中のものが居ればその次へ、最後まで行ったら選択を外す
