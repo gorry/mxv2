@@ -95,10 +95,16 @@ public sealed class SkinListForm : Form
     // 再読み込み] は同じ Root で一覧を読み直すだけ。
     private readonly AssetRootDetection _detection;
 
-    private void Reload() => ApplyDetection(_detection);
+    // select は読み直したあとに選び直す名前。省略時は読み直す前に選んでいたもの
+    // （編集画面を閉じて戻ってきたとき、カーソルが先頭へ戻らないように。
+    // 2026-09-15、ユーザーの指摘）。
+    private void Reload(string? select = null) => ApplyDetection(_detection, select);
 
-    private void ApplyDetection(AssetRootDetection detection)
+    private void ApplyDetection(AssetRootDetection detection, string? select = null)
     {
+        // Items.Clear() より前に読むこと。消したあとでは SelectedItem は常に
+        // null で、選び直しが効かない（実際にそうなっていた）。
+        string? before = select ?? _list.SelectedItem as string;
         // TextBox は "\n" だけでは改行しない（"\r\n" が要る）。
         _rootLabel.Text = detection.Message.Replace("\r\n", "\n").Replace("\n", Environment.NewLine);
         // ウィンドウの初期サイズは「横幅 = 文面の（いちばん長い行の）幅の 1.2 倍、
@@ -140,8 +146,7 @@ public sealed class SkinListForm : Form
         }
 
         _root = detection.Root;
-        // 読み直す前に選んでいたものがあれば、それを選び直す。
-        string? before = _list.SelectedItem as string;
+        // 読み直す前に選んでいたもの（または指定された名前）を選び直す。
         foreach (var name in _root.ListSkinNames()) _list.Items.Add(name);
         // 必ずどれかを選択状態にしておく（先頭）。フォーカスの点線枠だけで
         // 未選択だと、[開く] を押しても何も起きない（ユーザーの指摘）。
@@ -183,7 +188,7 @@ public sealed class SkinListForm : Form
                 : SkinDocument.CreateNew(_root, dlg.SkinName, dlg.BaseSkinRef);
             using var form = new SkinEditForm(doc);
             form.ShowDialog(this);
-            Reload();
+            Reload(dlg.SkinName);  // 作ったスキンを選んだ状態で戻る
         }
         catch (Exception ex)
         {
