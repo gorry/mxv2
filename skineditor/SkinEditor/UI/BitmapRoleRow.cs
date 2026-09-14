@@ -9,6 +9,8 @@
 // 元の素材が消えないように）。
 // 「インポート…」はチェック状態によらず常に使え、実行すると自動的に
 // 自スキン扱い（チェック ON）になる。
+// TTF フォント (BitmapRole.TtfFont) も同じ規則（本体はフォルダに font.ttf が
+// あればそれを使う。layout.ini には書かない）。
 
 using SkinEditor.Model;
 
@@ -130,9 +132,11 @@ public sealed class BitmapRoleRow : Panel
         using var ofd = new OpenFileDialog
         {
             Title = $"{BitmapRoleInfo.DisplayName(_role)} をインポート",
-            Filter = BitmapRoleInfo.IsPaletteDependent(_role)
-                ? "8bpp インデックスカラー BMP (*.bmp)|*.bmp"
-                : "画像ファイル (*.bmp;*.png;*.jpg;*.jpeg)|*.bmp;*.png;*.jpg;*.jpeg",
+            Filter = BitmapRoleInfo.IsFont(_role)
+                ? "TrueType フォント (*.ttf)|*.ttf"
+                : BitmapRoleInfo.IsPaletteDependent(_role)
+                    ? "8bpp インデックスカラー BMP (*.bmp)|*.bmp"
+                    : "画像ファイル (*.bmp;*.png;*.jpg;*.jpeg)|*.bmp;*.png;*.jpg;*.jpeg",
         };
         if (ofd.ShowDialog() != DialogResult.OK) return;
 

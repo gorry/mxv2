@@ -13,6 +13,10 @@ public enum BitmapRole
     ProgressBar,
     VolumeBar,
     ScrollBar,
+    // 文字描画に使う TrueType フォント (font.ttf)。ビットマップではないが、
+    // 「スキンのフォルダに置く素材ファイル」としては同じ扱い（own / 継承、
+    // インポート、_nouse への退避）なので、この列挙に同居させる。
+    TtfFont,
 }
 
 public static class BitmapRoleInfo
@@ -32,6 +36,7 @@ public static class BitmapRoleInfo
         BitmapRole.ProgressBar => "progressbar.bmp",
         BitmapRole.VolumeBar => "volbar.bmp",
         BitmapRole.ScrollBar => "scrollbar.bmp",
+        BitmapRole.TtfFont => "font.ttf",
         _ => throw new ArgumentOutOfRangeException(nameof(role)),
     };
 
@@ -48,6 +53,7 @@ public static class BitmapRoleInfo
         BitmapRole.ProgressBar => "プログレスバー",
         BitmapRole.VolumeBar => "音量バー",
         BitmapRole.ScrollBar => "スクロールバー",
+        BitmapRole.TtfFont => "TTFフォント",
         _ => role.ToString(),
     };
 
@@ -57,4 +63,7 @@ public static class BitmapRoleInfo
     public static bool IsPaletteDependent(BitmapRole role) => role is
         BitmapRole.Kb0 or BitmapRole.Kb1 or BitmapRole.Kb2 or
         BitmapRole.PlayKey or BitmapRole.LevelMeter or BitmapRole.MiniFont;
+
+    // ビットマップではなくフォントファイル（インポートの検査と保存が別）。
+    public static bool IsFont(BitmapRole role) => role == BitmapRole.TtfFont;
 }

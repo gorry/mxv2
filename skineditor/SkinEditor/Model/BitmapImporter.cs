@@ -16,10 +16,42 @@ namespace SkinEditor.Model;
 
 public static class BitmapImporter
 {
+    // TrueType フォント (font.ttf)。GDI+ の PrivateFontCollection で読めるかだけ
+    // 検査して、そのままの中身で自スキンへ複製する（変換はしない。本体は
+    // stb_truetype で読むので TrueType のアウトラインを持つファイルが要る）。
+    private static Result ImportFont(SkinDocument doc, BitmapRole role, string sourcePath)
+    {
+        try
+        {
+            using var fonts = new System.Drawing.Text.PrivateFontCollection();
+            fonts.AddFontFile(sourcePath);
+            if (fonts.Families.Length == 0) return new Result(false, "フォントとして読み込めませんでした。", 0, 0);
+        }
+        catch (Exception ex)
+        {
+            return new Result(false, $"フォントとして読み込めませんでした: {ex.Message}", 0, 0);
+        }
+
+        try
+        {
+            Directory.CreateDirectory(doc.OwnDir);
+            var destPath = Path.Combine(doc.OwnDir, BitmapRoleInfo.DefaultFileName(role));
+            // 同名のファイルがあれば上書き（ビットマップの Save と同じ振る舞い）。
+            File.Copy(sourcePath, destPath, overwrite: true);
+        }
+        catch (Exception ex)
+        {
+            return new Result(false, $"コピーできませんでした: {ex.Message}", 0, 0);
+        }
+        return new Result(true, null, 0, 0);
+    }
+
     public sealed record Result(bool Success, string? Error, int Width, int Height);
 
     public static Result Import(SkinDocument doc, BitmapRole role, string sourcePath)
     {
+        if (BitmapRoleInfo.IsFont(role)) return ImportFont(doc, role, sourcePath);
+
         Bitmap source;
         try
         {

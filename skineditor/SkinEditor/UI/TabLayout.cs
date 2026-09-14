@@ -98,8 +98,11 @@ public static class TabLayout
             Colors("背景 (Back)"),
         }),
 
-        new TabDef("ミニフォント", new[]
+        // 「フォント」タブ（旧「ミニフォント」。2026-09-14 にユーザーの指示で改名）。
+        // 一番上は文字描画に使う TTF フォント (font.ttf)、その下がミニフォント。
+        new TabDef("フォント", new[]
         {
+            Bitmap(BitmapRole.TtfFont),
             Bitmap(BitmapRole.MiniFont),
             Field("MiniFont", "Width"),
             Field("MiniFont", "Height"),

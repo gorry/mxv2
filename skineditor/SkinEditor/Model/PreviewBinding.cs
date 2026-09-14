@@ -206,6 +206,7 @@ public static class PreviewBindings
         BitmapRole.Kb1 => new PreviewBinding(PreviewRegions.Ids.KeyboardOctave, 13),
         BitmapRole.Kb2 => new PreviewBinding(PreviewRegions.Ids.KeyboardOctave, 12),
         BitmapRole.MiniFont => None,
+        BitmapRole.TtfFont => None,  // 文字はどの部品にも属さない
         BitmapRole.LevelMeter => new PreviewBinding(PreviewRegions.Ids.LevelMeter),
         BitmapRole.Banner => new PreviewBinding(PreviewRegions.Ids.Banner),
         BitmapRole.PlayKey => new PreviewBinding(PreviewRegions.Ids.PlayKey),

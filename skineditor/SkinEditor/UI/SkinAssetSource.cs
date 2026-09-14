@@ -37,6 +37,9 @@ public sealed class SkinAssetSource : IAssetSource
     // 土台の font.ttf は自分の同梱フォントより優先される
     // （FindFirst(dirs, kUserFont) -> FindFirst(dirs, kBundledFont) の順）。
     // 探す場所はスキンのフォルダ（自分 -> 土台 …）-> assets/ のルート。
+    // スキンの font.ttf は素材ビットマップと同じく「フォルダにあれば使う」
+    // （layout.ini には書かない。2026-09-14 に一度「[Font] File で指名」へ
+    // 変えたが、素材ビットマップと同じ規則にしたいというユーザーの指示で戻した）。
     //
     // 同梱フォントのほうを見ていなかったので、**自分の font.ttf を持たない
     // スキン（Phone など）はプレビューの文字が出なかった**（2026-09-09 に修正）。

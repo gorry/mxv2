@@ -62,9 +62,9 @@ public class PreviewBindingTests
         foreach (BitmapRole role in Enum.GetValues<BitmapRole>())
         {
             var b = PreviewBindings.ForBitmap(role);
-            if (role == BitmapRole.MiniFont)
+            if (role == BitmapRole.MiniFont || role == BitmapRole.TtfFont)
             {
-                Assert.True(string.IsNullOrEmpty(b.Region), "ミニフォントの素材は対応アイテムなし");
+                Assert.True(string.IsNullOrEmpty(b.Region), "フォントの素材は対応アイテムなし");
                 continue;
             }
             Assert.True(regions.ContainsKey(b.Region), $"素材 {role} -> {b.Region}");
