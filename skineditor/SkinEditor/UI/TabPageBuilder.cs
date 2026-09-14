@@ -110,6 +110,15 @@ public sealed class TabPageBuilder
         };
         if (node.Height <= 0) _autoHeightTabs.Add(tabs);
         target.Controls.Add(tabs);
+        if (node.OnPageSelected != null)
+        {
+            _pageWatchers.Add((tabs, node));
+            tabs.SelectedIndexChanged += (_, _) =>
+            {
+                node.OnPageSelected(_preview, tabs.SelectedTab?.Text);
+                _preview.Invalidate();
+            };
+        }
 
         // サブタブの中の行は、入れ子の TabControl 自身の枠のぶんだけタブ直下の
         // 行より狭くしないと横スクロールが出る（実測して踏んだ。40px 引けば
@@ -259,6 +268,26 @@ public sealed class TabPageBuilder
     // （実際に「操作ボタン」で、ボタン別ページだと思い込んで「パレット」
     // ページを見落とし、縦スクロールバーを出した）ので、実物を測る。
     private readonly List<TabControl> _autoHeightTabs = new();
+
+    // OnPageSelected を持つサブタブ。メインのタブが切り替わったときに、
+    // その中に居るかどうかを知らせる（SkinEditForm から呼ぶ）。
+    private readonly List<(TabControl Tabs, SubTabsNode Node)> _pageWatchers = new();
+
+    // メインのタブが activePage に切り替わった。その中のサブタブには今の
+    // ページを、外のサブタブには null を知らせる。
+    public void OnMainTabChanged(Control? activePage)
+    {
+        foreach (var (tabs, node) in _pageWatchers)
+        {
+            bool inside = false;
+            for (Control? c = tabs; c != null; c = c.Parent)
+            {
+                if (ReferenceEquals(c, activePage)) { inside = true; break; }
+            }
+            node.OnPageSelected!(_preview, inside ? tabs.SelectedTab?.Text : null);
+        }
+        _preview.Invalidate();
+    }
 
     // フォームのハンドルができてレイアウトが確定してから呼ぶこと
     // （Font の継承が済んでいないと AutoSize の行が本来の高さを返さない）。

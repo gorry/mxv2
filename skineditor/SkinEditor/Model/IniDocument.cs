@@ -1,12 +1,23 @@
-// mxv2 スキンエディタ - 素朴な INI 読み書き
+// mxv2 スキンエディタ - コメントを保つ INI 読み書き
 //
-// mxv2 本体の src/ini.cpp と同じ書式・同じ挙動になるように 1:1 で移植する。
+// 読む側は mxv2 本体の src/ini.cpp と同じ書式・同じ挙動:
 //   - 行頭の ';' '#' はコメント（行全体）
 //   - セクション名・キー名は大文字小文字を区別する
-//   - 保存時、セクションは追加した順・キーは出現順に並ぶ
-//   - 値の無いセクションは保存時に出力しない（ini.cpp と同じ）
+//   - 同じキーが複数あれば後のものが勝つ
 //   - GetInt は C の atoi 相当（先頭の空白・符号・数字だけを見る。
 //     数字が無ければ 0）
+//
+// 書く側は **元のファイルの行をそのまま持ち続けて、キーの値だけを差し替える**
+// （2026-09-15、ユーザーの指示。それまではセクションとキーだけを書き出す作りで、
+// 開発フォルダモードで同梱スキンを保存すると layout.ini の説明コメントが全部
+// 消え、手で戻したときの写し間違いで Phone の [Screen] が壊れた）。
+//   - コメント行・空行・行の並びは読んだときのまま
+//   - 既存のキーは元の行の位置で値だけ書き換える（`Key=Value` に正規化）
+//   - 消したキーは行ごと消す（前後のコメントは残す）
+//   - 新しいキーはそのセクションの最後のキー行の直後に足す
+//     （セクション末尾の空行やコメントより前）
+//   - 新しいセクションはファイルの末尾に、空行を 1 つ挟んで足す
+//   - 文字コードは UTF-8（BOM なし）、改行は LF に揃える
 
 using System.Text;
 
@@ -14,87 +25,94 @@ namespace SkinEditor.Model;
 
 public sealed class IniDocument
 {
-    private sealed class SectionData
+    private enum Kind { Other, Section, Key }
+
+    // 1 行。Raw は書き出すときの行そのもの（改行は含まない）。
+    private sealed class Line
     {
-        public string Name = "";
-        public List<string> Order = new();
-        public Dictionary<string, string> Values = new(StringComparer.Ordinal);
+        public Kind Kind;
+        public string Raw = "";
+        public string Section = "";  // Section 行ならその名前。Key 行なら属するセクション
+        public string Key = "";
+        public string Value = "";
     }
 
-    private readonly List<SectionData> _sections = new();
+    private readonly List<Line> _lines = new();
 
     public bool Load(string path)
     {
         if (!File.Exists(path)) return false;
-        string text = ReadUtf8NoBom(path);
+        LoadText(ReadUtf8NoBom(path));
+        return true;
+    }
 
+    // 文字列から読む（テストと、ファイル以外の出どころ用）。
+    public void LoadText(string text)
+    {
+        _lines.Clear();
         string section = "";
         int pos = 0;
-        while (pos <= text.Length)
+        while (pos < text.Length)
         {
             int nl = text.IndexOf('\n', pos);
             string raw = nl < 0 ? text[pos..] : text[pos..nl];
-            pos = nl < 0 ? text.Length + 1 : nl + 1;
-            string line = Trim(raw);
-
-            if (line.Length == 0 || line[0] == ';' || line[0] == '#') continue;
-            if (line[0] == '[')
-            {
-                int close = line.IndexOf(']');
-                if (close >= 0)
-                {
-                    section = Trim(line[1..close]);
-                    FindOrAdd(section);
-                }
-                continue;
-            }
-            int eq = line.IndexOf('=');
-            if (eq < 0) continue;
-            SetString(section, Trim(line[..eq]), Trim(line[(eq + 1)..]));
+            pos = nl < 0 ? text.Length : nl + 1;
+            if (raw.EndsWith('\r')) raw = raw[..^1];
+            _lines.Add(Parse(raw, ref section));
         }
-        return true;
+    }
+
+    private static Line Parse(string raw, ref string section)
+    {
+        string line = Trim(raw);
+        if (line.Length == 0 || line[0] == ';' || line[0] == '#')
+            return new Line { Kind = Kind.Other, Raw = raw, Section = section };
+        if (line[0] == '[')
+        {
+            int close = line.IndexOf(']');
+            if (close >= 0)
+            {
+                section = Trim(line[1..close]);
+                return new Line { Kind = Kind.Section, Raw = raw, Section = section };
+            }
+            return new Line { Kind = Kind.Other, Raw = raw, Section = section };
+        }
+        int eq = line.IndexOf('=');
+        if (eq < 0) return new Line { Kind = Kind.Other, Raw = raw, Section = section };
+        return new Line
+        {
+            Kind = Kind.Key, Raw = raw, Section = section,
+            Key = Trim(line[..eq]), Value = Trim(line[(eq + 1)..]),
+        };
     }
 
     public bool Save(string path)
     {
-        var sb = new StringBuilder();
-        bool firstSection = true;
-        foreach (var s in _sections)
-        {
-            if (s.Values.Count == 0) continue;
-            if (!firstSection) sb.Append('\n');
-            firstSection = false;
-            if (s.Name.Length > 0) sb.Append('[').Append(s.Name).Append("]\n");
-            foreach (var key in s.Order)
-            {
-                if (!s.Values.TryGetValue(key, out var v)) continue;
-                sb.Append(key).Append('=').Append(v).Append('\n');
-            }
-        }
-
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
-        File.WriteAllText(path, sb.ToString(), new UTF8Encoding(false));
+        File.WriteAllText(path, ToText(), new UTF8Encoding(false));
         return true;
     }
 
-    public bool Has(string section, string key)
+    // 書き出す内容。末尾は必ず改行で終える。
+    public string ToText()
     {
-        var s = Find(section);
-        return s != null && s.Values.ContainsKey(key);
+        var sb = new StringBuilder();
+        foreach (var l in _lines) sb.Append(l.Raw).Append('\n');
+        return sb.ToString();
     }
+
+    public bool Has(string section, string key) => FindKey(section, key) >= 0;
 
     public int GetInt(string section, string key, int fallback)
     {
-        var s = Find(section);
-        if (s == null) return fallback;
-        return s.Values.TryGetValue(key, out var v) ? AtoI(v) : fallback;
+        int i = FindKey(section, key);
+        return i < 0 ? fallback : AtoI(_lines[i].Value);
     }
 
     public string GetString(string section, string key, string fallback)
     {
-        var s = Find(section);
-        if (s == null) return fallback;
-        return s.Values.TryGetValue(key, out var v) ? v : fallback;
+        int i = FindKey(section, key);
+        return i < 0 ? fallback : _lines[i].Value;
     }
 
     public void SetInt(string section, string key, int value) =>
@@ -102,51 +120,98 @@ public sealed class IniDocument
 
     public void SetString(string section, string key, string value)
     {
-        var s = FindOrAdd(section);
-        if (!s.Values.ContainsKey(key)) s.Order.Add(key);
-        s.Values[key] = value;
+        int i = FindKey(section, key);
+        if (i >= 0)
+        {
+            var l = _lines[i];
+            if (l.Value == value) return;
+            l.Value = value;
+            l.Raw = key + "=" + value;
+            return;
+        }
+
+        var add = new Line { Kind = Kind.Key, Raw = key + "=" + value, Section = section, Key = key, Value = value };
+
+        // セクションの最後のキー行の直後。キー行が無ければセクション見出しの直後。
+        int lastKey = -1, header = -1;
+        for (int k = 0; k < _lines.Count; k++)
+        {
+            var l = _lines[k];
+            if (l.Section != section) continue;
+            if (l.Kind == Kind.Section && header < 0) header = k;
+            if (l.Kind == Kind.Key) lastKey = k;
+        }
+        if (lastKey >= 0)
+        {
+            _lines.Insert(lastKey + 1, add);
+            return;
+        }
+        if (header >= 0)
+        {
+            _lines.Insert(header + 1, add);
+            return;
+        }
+        if (section.Length == 0)
+        {
+            // セクション無し（ファイル先頭）のキー。先頭に置く。
+            _lines.Insert(0, add);
+            return;
+        }
+        // 新しいセクション。末尾に空行を 1 つ挟んで足す。
+        if (_lines.Count > 0 && Trim(_lines[^1].Raw).Length > 0)
+            _lines.Add(new Line { Kind = Kind.Other, Raw = "", Section = _lines[^1].Section });
+        _lines.Add(new Line { Kind = Kind.Section, Raw = "[" + section + "]", Section = section });
+        _lines.Add(add);
     }
 
     public void Remove(string section, string key)
     {
-        var s = Find(section);
-        if (s == null) return;
-        if (!s.Values.Remove(key)) return;
-        s.Order.Remove(key);
+        _lines.RemoveAll(l => l.Kind == Kind.Key && l.Section == section && l.Key == key);
     }
 
-    public IReadOnlyList<string> Sections() => _sections.Select(s => s.Name).ToList();
+    // セクション名を出現順に。見出しの無い先頭部分にキーがあれば "" も含む。
+    public IReadOnlyList<string> Sections()
+    {
+        var list = new List<string>();
+        foreach (var l in _lines)
+        {
+            if (l.Kind == Kind.Section && !list.Contains(l.Section)) list.Add(l.Section);
+            else if (l.Kind == Kind.Key && l.Section.Length == 0 && !list.Contains("")) list.Add("");
+        }
+        return list;
+    }
 
+    // キー名を出現順に（重複は最初の位置で 1 回）。
     public IReadOnlyList<string> Keys(string section)
     {
-        var s = Find(section);
-        if (s == null) return Array.Empty<string>();
-        return s.Order.Where(k => s.Values.ContainsKey(k)).ToList();
+        var list = new List<string>();
+        foreach (var l in _lines)
+        {
+            if (l.Kind == Kind.Key && l.Section == section && !list.Contains(l.Key)) list.Add(l.Key);
+        }
+        return list;
     }
 
-    // 自分と同じ内容の深いコピーを作る（Base 切替や実効値コピーで使う）。
+    // 自分と同じ内容（コメントも含めて）の深いコピーを作る。
     public IniDocument Clone()
     {
         var c = new IniDocument();
-        foreach (var s in _sections)
+        foreach (var l in _lines)
         {
-            var ns = new SectionData { Name = s.Name };
-            ns.Order.AddRange(s.Order);
-            foreach (var kv in s.Values) ns.Values[kv.Key] = kv.Value;
-            c._sections.Add(ns);
+            c._lines.Add(new Line { Kind = l.Kind, Raw = l.Raw, Section = l.Section, Key = l.Key, Value = l.Value });
         }
         return c;
     }
 
-    private SectionData? Find(string name) => _sections.FirstOrDefault(s => s.Name == name);
-
-    private SectionData FindOrAdd(string name)
+    // 同じキーが複数あれば後のものが勝つ（本体の ini.cpp と同じ）。
+    private int FindKey(string section, string key)
     {
-        var s = Find(name);
-        if (s != null) return s;
-        var add = new SectionData { Name = name };
-        _sections.Add(add);
-        return add;
+        for (int i = _lines.Count - 1; i >= 0; i--)
+        {
+            var l = _lines[i];
+            if (l.Kind == Kind.Key && l.Section == section && l.Key == key) return i;
+        }
+        return -1;
     }
 
     private static string Trim(string s)

@@ -277,9 +277,12 @@ public sealed class SkinDocument
     public void SwitchBaseOff()
     {
         var snapshot = Effective;  // Base ありの状態での実効値
-        var newOwnIni = new IniDocument();
+        // 元の own の layout.ini（コメント込み）の上に実効値を全部書き、Base の
+        // 指定だけ消す（IniDocument はコメントと行の並びを保つ）。
+        var newOwnIni = OwnLayoutIni.Clone();
         SkinLayoutIo.WriteAll(snapshot, newOwnIni);
-        OwnLayoutIni = newOwnIni;  // [Skin]Base は書かれないので無参照になる
+        newOwnIni.Remove("Skin", "Base");  // 無参照になる
+        OwnLayoutIni = newOwnIni;
 
         CopyMissingAssetFiles(snapshot);
 
@@ -398,7 +401,9 @@ public sealed class SkinDocument
         var legacyPath = Path.Combine(OwnDir, "theme.mxv");
         if (HasOwnColors)
         {
+            // 既にある colors.ini のコメントと並びを保って値だけ差し替える。
             var ini = new IniDocument();
+            if (File.Exists(colorsPath)) ini.Load(colorsPath);
             ColorsIo.WriteAll(_colorsWorking, ini);
             ini.Save(colorsPath);
             if (File.Exists(legacyPath)) File.Delete(legacyPath);

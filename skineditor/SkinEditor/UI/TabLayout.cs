@@ -44,6 +44,12 @@ public sealed record ColorsNode(string SectionTitle) : Node;
 public sealed record SubTabsNode(params (string Title, Node[] Nodes)[] Pages) : Node
 {
     public int Height { get; init; }
+
+    // 選ばれているページが変わったときに呼ばれる（選ばれたページの題名。
+    // このサブタブを載せている親のタブ自体から離れたときは null）。
+    // プレビューの状態をページに連動させるのに使う（[ステータス] の
+    // 音色データ表示。2026-09-15、ユーザーの指示でトグルをやめて自動にした）。
+    public Action<PreviewCanvas, string?>? OnPageSelected { get; init; }
 }
 
 // 「1 キーに複数個の値」を、短いラベル付きで数個ずつの行に分けたもの。
@@ -174,12 +180,11 @@ public static class TabLayout
                     new PcmChannelsNode(),
                 }),
                 // 音色データ表示（tonedata.md）。本体はステータス欄の長押しで
-                // 切り替えるので、プレビューにはトグルを置く。項目が多いので
+                // 切り替えるが、プレビューは「音色」系のサブタブを選んでいる間だけ
+                // 音色データ表示になる（下の OnPageSelected）。項目が多いので
                 // 3 ページに分ける（1 ページの高さが他のサブタブを超えないように）。
                 ("音色", new Node[]
                 {
-                    new TogglesNode(8, new ToggleDef("音色データを表示", PreviewRegions.Ids.Status,
-                        p => p.StateToneMode, (p, v) => p.StateToneMode = v)),
                     // 並びは OPM のスロット順（M1, M2, C1, C2）。ラベルは MML の
                     // オペレータ番号（tonedata.md のコメントどおり）。
                     // 4 個を 1 行に並べると右端が切れる（実測）ので 2 行に分ける。
@@ -202,7 +207,12 @@ public static class TabLayout
                     "PosOPMMultiple", "PosOPMDetune1", "PosOPMDetune2", "PosOPMAMSEnable")),
                 ("音色 (PCM段)", Fields("Status",
                     "PosOPMNoise", "PosOPMClockB", "PosOPMLFOFreq",
-                    "PosOPMLFOPMD", "PosOPMLFOAMD", "PosOPMLFOWAVE"))),
+                    "PosOPMLFOPMD", "PosOPMLFOAMD", "PosOPMLFOWAVE")))
+            {
+                // 「音色」で始まるページを選んでいる間だけ音色データ表示。
+                // [ステータス] タブを離れたら（title が null）従来の表示に戻す。
+                OnPageSelected = (p, title) => p.StateToneMode = title != null && title.StartsWith("音色"),
+            },
             Colors("ステータス (Status)"),
         }),
 
