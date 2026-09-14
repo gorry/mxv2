@@ -9,20 +9,41 @@ public sealed class SkinListForm : Form
 {
     private DevAssetRoot? _root;
     private readonly ListBox _list;
-    private readonly Label _rootLabel;
+    // 認識したフォルダの説明。Label ではなく読み取り専用の TextBox。
+    // ユーザーフォルダモードでは長いパス（空白が無い）を出すので、Label の
+    // 単語単位の折り返しでは右で切れて残りが見えない（実測で踏んだ）。
+    // TextBox の WordWrap は長い語も文字単位で折り返す。
+    private readonly TextBox _rootLabel;
+    // 初期サイズを文面から決めたか（ApplyDetection の最初の 1 回だけ）。
+    private bool _sized;
     private readonly Button _openButton;
     private readonly Button _newButton;
 
-    public SkinListForm()
+    // detection は Program.Main が起動フォルダから決めたもの（NotFound は
+    // ここへ来る前に Program.Main が知らせて終了する）。
+    public SkinListForm(AssetRootDetection detection)
     {
+        _detection = detection;
         Text = "mxv2 スキンエディタ";
         // SkinEditForm と同じ理由で Dpi.S() を使う（AutoScaleMode はこの環境
         // では効かなかった）。
+        // 大きさは ApplyDetection が文面の幅から決め直す（下）。ここは仮の値。
         Width = Dpi.S(this, 640);
         Height = Dpi.S(this, 480);
         StartPosition = FormStartPosition.CenterScreen;
 
-        _rootLabel = new Label { Dock = DockStyle.Top, Height = Dpi.S(this, 40), Text = "" };
+        _rootLabel = new TextBox
+        {
+            Dock = DockStyle.Top,
+            Height = Dpi.S(this, 64),
+            Text = "",
+            ReadOnly = true,
+            Multiline = true,
+            WordWrap = true,
+            BorderStyle = BorderStyle.None,
+            TabStop = false,
+            BackColor = SystemColors.Control,
+        };
         _list = new ListBox { Dock = DockStyle.Fill };
         _list.DoubleClick += (_, _) => OpenSelected();
 
@@ -39,20 +60,19 @@ public sealed class SkinListForm : Form
         };
         _openButton = new Button { Text = "開く", AutoSize = true, MinimumSize = new Size(Dpi.S(this, 80), 0) };
         _newButton = new Button { Text = "新規作成…", AutoSize = true, MinimumSize = new Size(Dpi.S(this, 90), 0) };
-        var rescan = new Button { Text = "再読込", AutoSize = true, MinimumSize = new Size(Dpi.S(this, 80), 0) };
-        var chooseFolder = new Button { Text = "フォルダを選ぶ…", AutoSize = true, MinimumSize = new Size(Dpi.S(this, 100), 0) };
+        // モード（開発フォルダ / ユーザーフォルダ）は起動したフォルダで一律に
+        // 決まる（Program.Main）。[フォルダを選ぶ…] は廃止した（ユーザーの指示）。
+        var rescan = new Button { Text = "スキン一覧の再読み込み", AutoSize = true, MinimumSize = new Size(Dpi.S(this, 80), 0) };
         var exit = new Button { Text = "終了", AutoSize = true, MinimumSize = new Size(Dpi.S(this, 80), 0) };
         _openButton.Click += (_, _) => OpenSelected();
         // Enter で [開く]（ユーザーの指示）。一覧で選んで Enter だけで入れる。
         AcceptButton = _openButton;
         _newButton.Click += (_, _) => CreateNew();
         rescan.Click += (_, _) => Reload();
-        chooseFolder.Click += (_, _) => ChooseFolder();
         exit.Click += (_, _) => Close();
         buttons.Controls.Add(_openButton);
         buttons.Controls.Add(_newButton);
         buttons.Controls.Add(rescan);
-        buttons.Controls.Add(chooseFolder);
         buttons.Controls.Add(exit);
 
         // Fill (_list) を最初に追加する（= Z 順序の最背面に自然に置かれる）。
@@ -66,18 +86,47 @@ public sealed class SkinListForm : Form
         Reload();
     }
 
-    private void Reload()
-    {
-        var detection = DevAssetRoot.DetectDefault();
-        ApplyDetection(detection);
-    }
+    // 起動時の判定結果。モードは起動後に変わらないので、[スキン一覧の
+    // 再読み込み] は同じ Root で一覧を読み直すだけ。
+    private readonly AssetRootDetection _detection;
+
+    private void Reload() => ApplyDetection(_detection);
 
     private void ApplyDetection(AssetRootDetection detection)
     {
-        _rootLabel.Text = detection.Message;
+        // TextBox は "\n" だけでは改行しない（"\r\n" が要る）。
+        _rootLabel.Text = detection.Message.Replace("\r\n", "\n").Replace("\n", Environment.NewLine);
+        // ウィンドウの初期サイズは「横幅 = 文面の（いちばん長い行の）幅の 1.2 倍、
+        // 縦幅 = 横幅の 9/16」（ユーザーの指示）。起動時の 1 回だけで、
+        // [スキン一覧の再読み込み] では変えない（ユーザーが変えた大きさを
+        // 勝手に戻さない）。
+        if (!_sized)
+        {
+            _sized = true;
+            int widest = 0;
+            foreach (var line in detection.Message.Split('\n'))
+            {
+                var w = TextRenderer.MeasureText(line.TrimEnd('\r'), _rootLabel.Font).Width;
+                if (w > widest) widest = w;
+            }
+            int width = Math.Max(Dpi.S(this, 400), (int)(widest * 1.2));
+            Width = width;
+            Height = width * 9 / 16;
+        }
+        // 文面の行数はモードとパスの長さで変わる（ユーザーフォルダモードは
+        // 編集先のフォルダも出す）。決め打ちの高さだと 3 行目以降が隠れる
+        // （実測で踏んだ）ので、折り返した最後の文字の位置から高さを決める。
+        if (_rootLabel.Text.Length > 0)
+        {
+            var last = _rootLabel.GetPositionFromCharIndex(_rootLabel.Text.Length - 1);
+            _rootLabel.Height = last.Y + _rootLabel.Font.Height + Dpi.S(this, 12);
+        }
         _list.Items.Clear();
 
-        if (detection.Kind != AssetRootKind.DevFolder || detection.Root == null)
+        // 開発フォルダモードでも mxv2.exe の隣（ユーザーフォルダモード）でも
+        // 同じ一覧画面。違いは Root が「編集できるスキンの置き場所」を
+        // どこにするか（DevAssetRoot）だけ。
+        if (detection.Kind == AssetRootKind.NotFound || detection.Root == null)
         {
             _root = null;
             _openButton.Enabled = false;
@@ -98,13 +147,6 @@ public sealed class SkinListForm : Form
         }
         _openButton.Enabled = _list.Items.Count > 0;
         _newButton.Enabled = true;
-    }
-
-    private void ChooseFolder()
-    {
-        using var dlg = new FolderBrowserDialog { Description = "mxv2 本体の CMakeLists.txt があるフォルダを選んでください" };
-        if (dlg.ShowDialog() != DialogResult.OK) return;
-        ApplyDetection(DevAssetRoot.Detect(new[] { dlg.SelectedPath }));
     }
 
     private void OpenSelected()
@@ -131,9 +173,9 @@ public sealed class SkinListForm : Form
 
         try
         {
-            var doc = dlg.CopyFromBase && dlg.BaseSkinName != null
-                ? SkinDocument.CreateNewAsCopy(_root, dlg.SkinName, dlg.BaseSkinName)
-                : SkinDocument.CreateNew(_root, dlg.SkinName, dlg.BaseSkinName);
+            var doc = dlg.CopyFromBase && dlg.BaseSkinRef != null
+                ? SkinDocument.CreateNewAsCopy(_root, dlg.SkinName, dlg.BaseSkinRef)
+                : SkinDocument.CreateNew(_root, dlg.SkinName, dlg.BaseSkinRef);
             using var form = new SkinEditForm(doc);
             form.ShowDialog(this);
             Reload();

@@ -1,4 +1,4 @@
-// テスト用: このテストアセンブリの場所から mxv2 の開発用フォルダ
+// テスト用: このテストアセンブリの場所から mxv2 の開発フォルダ
 // （CMakeLists.txt と assets/ があるフォルダ）を遡って見つける。
 
 using SkinEditor.Model;
@@ -20,7 +20,7 @@ public static class TestPaths
             }
             dir = dir.Parent;
         }
-        throw new DirectoryNotFoundException("mxv2 の開発用フォルダ（CMakeLists.txt + assets/）が見つかりませんでした。");
+        throw new DirectoryNotFoundException("mxv2 の開発フォルダ（CMakeLists.txt + assets/）が見つかりませんでした。");
     }
 
     // 比較用の参照画像（mxv2 本体のスクリーンショット）の置き場所。

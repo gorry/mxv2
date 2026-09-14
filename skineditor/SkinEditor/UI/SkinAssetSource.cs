@@ -43,10 +43,14 @@ public sealed class SkinAssetSource : IAssetSource
     private const string UserFontName = "font.ttf";
     private const string BundledFontName = "MPLUS1p-Regular.ttf";
 
-    public string? FindFontFile(string assetsDir)
+    public string? FindFontFile(string assetsDir) => FindFontFile(new[] { assetsDir });
+
+    // rootDirs は本体の AssetPaths::Roots() に当たるもの（ユーザーフォルダ →
+    // 同梱 assets/。DevAssetRoot.FontRootDirs()）。
+    public string? FindFontFile(IEnumerable<string> rootDirs)
     {
         var dirs = new List<string>(_doc.AllDirsNearToFar());
-        if (!string.IsNullOrEmpty(assetsDir)) dirs.Add(assetsDir);
+        foreach (var d in rootDirs) if (!string.IsNullOrEmpty(d)) dirs.Add(d);
         foreach (var name in new[] { UserFontName, BundledFontName })
         {
             foreach (var dir in dirs)

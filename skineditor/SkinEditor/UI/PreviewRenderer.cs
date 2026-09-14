@@ -103,7 +103,7 @@ public sealed class PreviewRenderer : IDisposable
         _port = null;
     }
 
-    public string? FindFontFile() => _assets.FindFontFile(_doc.Root.AssetsDir);
+    public string? FindFontFile() => _assets.FindFontFile(_doc.Root.FontRootDirs());
 
     // 当たり判定の矩形を作るのに素材の大きさが要る（鍵盤の下地など）。
     public RenderBitmap? FindAsset(string fileName) => _assets.Find(fileName);

@@ -55,7 +55,9 @@ public sealed class SkinDocument
         return doc;
     }
 
-    public static SkinDocument CreateNew(DevAssetRoot root, string name, string? baseSkinName)
+    // baseRef は ref（"assets:<名前>" / "<名前>"）でも素の名前でもよい
+    // （Root.CanonicalRefOf が本体と同じ規則で正規化する）。
+    public static SkinDocument CreateNew(DevAssetRoot root, string name, string? baseRef)
     {
         var doc = new SkinDocument(root)
         {
@@ -63,8 +65,8 @@ public sealed class SkinDocument
             OwnDir = root.SkinFolderPathFor(name),
             IsNew = true,
         };
-        if (!string.IsNullOrEmpty(baseSkinName))
-            doc.OwnLayoutIni.SetString("Skin", "Base", DevAssetRoot.CanonicalRef(baseSkinName));
+        if (!string.IsNullOrEmpty(baseRef))
+            doc.OwnLayoutIni.SetString("Skin", "Base", root.CanonicalRefOf(baseRef));
         doc.HasOwnColors = false;
         doc.ResolveBaseChain();
         doc.Recompute();
@@ -77,9 +79,9 @@ public sealed class SkinDocument
     // あるため、SwitchBaseOff() をそのまま使う。SwitchBaseOff() は
     // skineditor.md の指示どおりその場で保存するので、参照作成（CreateNew）
     // と違いこちらは作成した瞬間にディスクへ書かれる。
-    public static SkinDocument CreateNewAsCopy(DevAssetRoot root, string name, string baseSkinName)
+    public static SkinDocument CreateNewAsCopy(DevAssetRoot root, string name, string baseRef)
     {
-        var doc = CreateNew(root, name, baseSkinName);
+        var doc = CreateNew(root, name, baseRef);
         doc.SwitchBaseOff();
         return doc;
     }
@@ -91,17 +93,21 @@ public sealed class SkinDocument
         _baseLayoutInis.Clear();
         BaseCycleDetected = false;
 
-        var visited = new List<string> { DevAssetRoot.CanonicalRef(Name) };
+        // 循環の検出は正規化した ref で行う。ユーザーフォルダモードでは
+        // 同じ名前でもユーザーのスキンと同梱のスキンは別物なので、
+        // 名前ではなく ref（"assets:" の有無込み）で見比べる。
+        var visited = new List<string> { Root.CanonicalRef(Name) };
         string? current = SkinLayoutIo.ReadBaseRef(OwnLayoutIni);
 
         for (int depth = 0; depth < 8 && !string.IsNullOrEmpty(current); depth++)
         {
-            var baseName = SkinRef.NameOf(current);
-            var dir = Root.SkinDir(baseName);
+            // 本体の AssetPaths::SkinDir と同じ解決（"assets:" なら同梱、
+            // 接頭辞なしならユーザーのスキン → 同梱の順）。
+            var dir = Root.ResolveRefDir(current);
             if (dir == null) break;  // 土台が無い（壊れた参照）
             if (_baseDirs.Contains(dir)) break;  // 同じフォルダへ戻ってきた
 
-            var canon = DevAssetRoot.CanonicalRef(baseName);
+            var canon = Root.CanonicalRefOf(current);
             if (visited.Any(v => string.Equals(v, canon, StringComparison.OrdinalIgnoreCase)))
             {
                 BaseCycleDetected = true;
@@ -218,13 +224,21 @@ public sealed class SkinDocument
     private static ColorsValues CloneColors(ColorsValues src) => src.Clone();
 
     // ---- Base の切替（skineditor.md「Baseによる参照」） -----------------------
-    public IReadOnlyList<string> ListBaseCandidates() =>
-        Root.ListSkinNames().Where(n => !string.Equals(n, Name, StringComparison.OrdinalIgnoreCase)).ToList();
-
-    // 無参照 -> 参照。実行後、その場で保存する。
-    public void SwitchBaseOn(string baseSkinName)
+    // [Skin].Base に選べる ref の一覧（自分自身を除く）。開発フォルダモードでは
+    // "assets:<名前>"、ユーザーフォルダモードではユーザーのスキン "<名前>" と
+    // 同梱の "assets:<名前>" の両方。
+    public IReadOnlyList<string> ListBaseCandidates()
     {
-        OwnLayoutIni.SetString("Skin", "Base", DevAssetRoot.CanonicalRef(baseSkinName));
+        var self = Root.CanonicalRef(Name);
+        return Root.ListBaseRefs()
+            .Where(r => !string.Equals(r, self, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
+    // 無参照 -> 参照。baseRef は ref でも素の名前でもよい。実行後、その場で保存する。
+    public void SwitchBaseOn(string baseRef)
+    {
+        OwnLayoutIni.SetString("Skin", "Base", Root.CanonicalRefOf(baseRef));
         ResolveBaseChain();
 
         // Base 鎖だけで出る値と同じになった自スキンのキーは間引く。

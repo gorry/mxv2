@@ -17,9 +17,13 @@ public sealed class NewSkinDialog : Form
 
     public string SkinName => _name.Text.Trim();
 
-    // 既存スキンが 1 つも無いときだけ null（この場合は既定値から作る
-    // 以外に選びようが無いので、コンボ・ラジオごと無効化してある）。
-    public string? BaseSkinName => _baseCombo.Items.Count == 0 ? null : (string)_baseCombo.SelectedItem!;
+    // コンボの項目（表示名）と同じ並びの ref。
+    private readonly List<string> _baseRefs = new();
+
+    // 元にするスキンの ref（"assets:<名前>" / ユーザーフォルダモードでは
+    // "<名前>" も）。既存スキンが 1 つも無いときだけ null（この場合は
+    // 既定値から作る以外に選びようが無いので、コンボ・ラジオごと無効化してある）。
+    public string? BaseSkinRef => _baseCombo.SelectedIndex < 0 ? null : _baseRefs[_baseCombo.SelectedIndex];
     public bool CopyFromBase => _copyRadio.Checked;
 
     public NewSkinDialog(DevAssetRoot root)
@@ -60,7 +64,13 @@ public sealed class NewSkinDialog : Form
             Left = margin + labelWidth, Top = rowHeight + Dpi.S(this, 5), Width = fieldWidth,
             DropDownStyle = ComboBoxStyle.DropDownList,
         };
-        foreach (var n in root.ListSkinNames()) _baseCombo.Items.Add(n);
+        // 元にできるのは Base に指定できるもの全部（ユーザーフォルダモードなら
+        // ユーザーのスキンと同梱のスキンの両方）。表示は BaseRefDropdown と同じ。
+        foreach (var r in root.ListBaseRefs())
+        {
+            _baseCombo.Items.Add(root.DisplayRef(r));
+            _baseRefs.Add(r);
+        }
         if (_baseCombo.Items.Count > 0) _baseCombo.SelectedIndex = 0;
 
         // 参照する/コピーするの選択は、既存スキンが選べているときだけ意味を
