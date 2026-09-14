@@ -202,7 +202,10 @@ make arc-all              # 両方
 BUILD の値に関わらず release でビルドする。
 
 - zip の中身は同じ名前のフォルダに `mxv2.exe` / `SDL2.dll` / `assets/` /
-  `NOTICE` / `LICENSE` / `README.md`。`assets/` はソース側から取り、試験用の `font.ttf`
+  `NOTICE` / `LICENSE` / `README.md`。**win64 だけ**、スキンエディタの実行ファイル
+  一式（`SkinEditor.exe` / `.dll` / `.deps.json` / `.runtimeconfig.json`。Release で
+  ビルドし直す）と `README_SkinEditor.md` も同じフォルダに入る（動かすには .NET 8 の
+  Windows Desktop Runtime が要る。win32 には入れない）。`assets/` はソース側から取り、試験用の `font.ttf`
   （.gitignore 済み）は入れない。zip は Info-ZIP の `zip`（GnuWin32 の zip
   パッケージなど。PATH に要る）で、`-D` でフォルダのエントリを入れずに作る。
   PowerShell の Compress-Archive や CMake 内蔵の tar は、古い 7-Zip
@@ -213,6 +216,30 @@ BUILD の値に関わらず release でビルドする。
   （下の「Android のリリース署名」）。
 - `Release/` は .gitignore 済み。
 
+## スキンエディタ（make *-skineditor）
+
+`skineditor/` のスキンエディタ（C# / .NET 8 WinForms、Windows 専用）は
+mxv2 本体とは別のアプリなので、`-skineditor` を後置したターゲットで扱う。
+dotnet SDK 8 以降が PATH に要る。TARGET は見ない（BUILD と PREFIX / OPTION は
+本体と共通）。
+
+```sh
+make build-skineditor                 # dotnet build（BUILD=debug / release）
+make test-skineditor                  # skineditor/SkinEditor.Tests の xUnit
+make run-skineditor OPTION=...        # ここをカレントにして起動（開発フォルダモード）
+make install-skineditor PREFIX=...    # mxv2.exe の隣へ置く（ユーザーフォルダモード）
+make uninstall-skineditor PREFIX=...
+make clean-skineditor                 # bin/ obj/ と、ここへコピーされた実行ファイルを消す
+```
+
+- ビルドのたびに csproj がこのフォルダ（CMakeLists.txt の隣）へ実行ファイル
+  一式をコピーする（exe を直接起動したときに開発フォルダモードになるため。
+  .gitignore 済み）。
+- install は `SkinEditor.exe` / `.dll` / `.deps.json` / `.runtimeconfig.json` と
+  `README_SkinEditor.md` を PREFIX へ置く。フレームワーク依存なので、動かす
+  機械には .NET 8 の Windows Desktop Runtime が要る。
+- 配布物（make arc）には TARGET=win64 のときだけ同梱される（上の「配布物を作る」）。
+
 ## アプリの名前・版・著作権（Profile.ini）
 
 `mxv2/Profile.ini` が唯一の置き場（著作者専用）。ビルド時に写される:
@@ -221,6 +248,11 @@ BUILD の値に関わらず release でビルドする。
   （`main.cpp` の `kAppName` / `kAppVersion` / `kAppCopyright`）と、Windows では
   `res/mxv2.rc.in` → `generated/mxv2.rc`（アイコンと VERSIONINFO。exe の
   プロパティに出る）。Profile.ini を変えると configure が自動で走る。
+- スキンエディタ: `skineditor/SkinEditor/SkinEditor.csproj` が同じファイルを
+  読み、`[Title] Text-SkinEditor` / `[Version] Text` / `[Copyright] Text-SkinEditor`
+  をアセンブリ属性（AssemblyTitle / Version / Copyright）に写す。ビルドした日も
+  `AssemblyMetadata("BuildDate")` として入る。実行時は `Model/AppProfile.cs` が
+  属性を読み、スキン一覧の [バージョン情報…] に出す。
 - Gradle: `android/app/build.gradle` が同じファイルを読み、`namespace`
   （[AppId] Namespace）・`applicationId`（[AppId] Android）・`versionName`
   （[Version] Text）・`versionCode`（[Version] Number）・`app_name`

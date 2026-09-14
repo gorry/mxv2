@@ -300,6 +300,9 @@ test-android: build-android
 #   <Profile.ini の [Title] ShortText>_<TARGET>_<Profile.ini の [Version] Text>
 # で、win32 / win64 なら .zip（実行ファイル + SDL2.dll + assets + NOTICE +
 # LICENSE + README.md を、同じ名前のフォルダに入れたもの）、android なら .apk。
+# **win64 だけ、スキンエディタの実行ファイル一式と README_SkinEditor.md も
+# 同じフォルダに入れる**（ユーザーの指示。スキンエディタは Windows 専用で、
+# dotnet が作る apphost は x64 なので win32 には入れない）。
 # **BUILD の値に関わらず release でビルドする。**
 # zip 化は CMake 内蔵の tar（下の ARC_ZIP_CMD）。
 #
@@ -353,6 +356,8 @@ arc-windows: check-profile $(WIN_BUILD_DIR)/CMakeCache.txt
 	cp NOTICE "$(ARC_STAGE)/NOTICE"
 	cp LICENSE "$(ARC_STAGE)/LICENSE"
 	cp README.md "$(ARC_STAGE)/README.md"
+	$(ARC_SKINEDITOR_BUILD_CMD)
+	$(ARC_SKINEDITOR_COPY_CMDS)
 	$(ARC_ZIP_CMD)
 	rm -rf "$(ARC_DIR)/stage"
 	@echo Created $(ARC_DIR)/$(ARC_NAME).zip
@@ -380,6 +385,81 @@ arc-android: check-profile
 arc-all:
 	$(MAKE) arc TARGET=win64
 	$(MAKE) arc TARGET=android
+
+# ---------------------------------------------------------------------------
+# スキンエディタ（skineditor/ の C# / .NET 8 WinForms アプリ。Windows 専用）
+# ---------------------------------------------------------------------------
+# mxv2 本体とは別のアプリなので、共通ターゲットには混ぜず、`-skineditor` を
+# 後置した名前で呼ぶ（`make build-skineditor` など）。TARGET は見ない
+# （dotnet が作る実行ファイルはビルドした機械の .NET に合わせた
+# AnyCPU + apphost）。BUILD（debug / release）と PREFIX / OPTION は本体と
+# 共通。dotnet SDK 8 以降が PATH にあること。
+#
+# - build   : dotnet build。csproj の CopySkinEditorToMxv2Root が、ビルドの
+#             たびに実行ファイル一式をこのフォルダ（CMakeLists.txt の隣）へも
+#             コピーする（開発フォルダモードで exe を直接起動できるように）。
+# - install : mxv2 本体と同じ PREFIX へ、実行に要るファイルと
+#             README_SkinEditor.md を置く。mxv2.exe の隣に置けば
+#             ユーザーフォルダモードで動く。フレームワーク依存なので、実行する
+#             機械には .NET 8 の Windows Desktop Runtime が要る（.pdb は入れない）。
+# - run     : 開発フォルダ（ここ）をカレントにして起動するので、開発フォルダ
+#             モードになる。OPTION で -userdir や起動フォルダを渡せる。
+# - test    : skineditor/SkinEditor.Tests の xUnit を dotnet test で走らせる。
+# - clean   : 両プロジェクトの bin/ obj/ と、上でこのフォルダへコピーした
+#             実行ファイル一式を消す。
+SKINEDITOR_DIR := skineditor/SkinEditor
+SKINEDITOR_TESTS_DIR := skineditor/SkinEditor.Tests
+SKINEDITOR_PROJ := $(SKINEDITOR_DIR)/SkinEditor.csproj
+SKINEDITOR_TESTS_PROJ := $(SKINEDITOR_TESTS_DIR)/SkinEditor.Tests.csproj
+SKINEDITOR_OUT := $(SKINEDITOR_DIR)/bin/$(CONFIG)/net8.0-windows
+SKINEDITOR_EXE := $(SKINEDITOR_OUT)/SkinEditor.exe
+# 配布に要るファイル（.pdb は開発用なので含めない）。csproj がこのフォルダへ
+# コピーするものも同じ並び（+ .pdb）で、.gitignore に載せてある。
+SKINEDITOR_FILES := SkinEditor.exe SkinEditor.dll SkinEditor.deps.json SkinEditor.runtimeconfig.json
+SKINEDITOR_ROOT_COPIES := $(SKINEDITOR_FILES) SkinEditor.pdb
+
+.PHONY: build-skineditor
+build-skineditor:
+	dotnet build "$(SKINEDITOR_PROJ)" -c $(CONFIG) -nologo
+
+.PHONY: clean-skineditor
+clean-skineditor:
+	rm -rf "$(SKINEDITOR_DIR)/bin" "$(SKINEDITOR_DIR)/obj" "$(SKINEDITOR_TESTS_DIR)/bin" "$(SKINEDITOR_TESTS_DIR)/obj"
+	rm -f $(SKINEDITOR_ROOT_COPIES)
+
+.PHONY: test-skineditor
+test-skineditor:
+	dotnet test "$(SKINEDITOR_TESTS_PROJ)" -c $(CONFIG) -nologo
+
+.PHONY: run-skineditor
+run-skineditor: build-skineditor
+	"$(SKINEDITOR_EXE)" $(OPTION)
+
+# make arc（win64 のときだけ）で配布物に入れるぶん。arc は release 固定なので
+# BUILD に関わらず Release でビルドし、その出力を ARC_STAGE へ写す。
+# ARC_STAGE は再帰展開（`=`）なので、こちらも `=` にしておく。
+SKINEDITOR_REL_OUT := $(SKINEDITOR_DIR)/bin/Release/net8.0-windows
+ifeq ($(TARGET),win64)
+ARC_SKINEDITOR_BUILD_CMD = dotnet build "$(SKINEDITOR_PROJ)" -c Release -nologo
+ARC_SKINEDITOR_COPY_CMDS = $(foreach f,$(SKINEDITOR_FILES),cp "$(SKINEDITOR_REL_OUT)/$(f)" "$(ARC_STAGE)/$(f)" &&) cp README_SkinEditor.md "$(ARC_STAGE)/README_SkinEditor.md"
+else
+ARC_SKINEDITOR_BUILD_CMD = @echo mxv2: skin editor is bundled only for TARGET=win64 - skipped
+ARC_SKINEDITOR_COPY_CMDS = cd .
+endif
+
+SKINEDITOR_INSTALL_CMDS := $(foreach f,$(SKINEDITOR_FILES),cp "$(SKINEDITOR_OUT)/$(f)" "$(PREFIX)/$(f)" &&)
+SKINEDITOR_INSTALLED := $(foreach f,$(SKINEDITOR_FILES) README_SkinEditor.md,"$(PREFIX)/$(f)")
+
+.PHONY: install-skineditor
+install-skineditor: build-skineditor
+	$(MKDIR_P) "$(PREFIX)"
+	$(SKINEDITOR_INSTALL_CMDS) cp README_SkinEditor.md "$(PREFIX)/README_SkinEditor.md"
+	@echo Installed SkinEditor to $(PREFIX)
+
+.PHONY: uninstall-skineditor
+uninstall-skineditor:
+	rm -f $(SKINEDITOR_INSTALLED)
+	@echo Removed SkinEditor files from $(PREFIX)
 
 # ---------------------------------------------------------------------------
 # 共通のターゲット（TARGET に応じて上のどちらかへ振り分けるだけ）
@@ -427,9 +507,19 @@ help:
 	@echo   arc        release build, then put a distributable into Release/:
 	@echo              win32/win64: ^<ShortText^>_^<TARGET^>_^<Version^>.zip
 	@echo              android:     ^<ShortText^>_^<TARGET^>_^<Version^>.apk
-	@echo              (ShortText / Version come from Profile.ini)
+	@echo              (ShortText / Version come from Profile.ini;
+	@echo              win64 also bundles the skin editor + README_SkinEditor.md)
 	@echo   arc-all    arc for TARGET=win64 and TARGET=android
 	@echo   help       show this
+	@echo Skin editor (skineditor/, C# .NET 8, Windows only; TARGET is ignored):
+	@echo   build-skineditor      dotnet build (BUILD selects Debug/Release)
+	@echo   clean-skineditor      remove bin/ obj/ and the copies in this folder
+	@echo   test-skineditor       dotnet test (skineditor/SkinEditor.Tests)
+	@echo   run-skineditor        start SkinEditor.exe here (dev-folder mode),
+	@echo                         with OPTION appended
+	@echo   install-skineditor    copy SkinEditor + README_SkinEditor.md into
+	@echo                         PREFIX (next to mxv2.exe = user-folder mode)
+	@echo   uninstall-skineditor  remove what install-skineditor put there
 	@echo -----------------------------------------------------------------
 	@echo Switches (set as VAR=value on the command line):
 	@echo   TARGET   win32 / win64 / android / android-arm32 / android-arm64
@@ -450,6 +540,8 @@ help:
 	@echo   make install TARGET=win64 BUILD=release PREFIX=C:/mxv2
 	@echo   make build TARGET=android-arm64
 	@echo   make run TARGET=android
+	@echo   make test-skineditor
+	@echo   make install-skineditor BUILD=release PREFIX=C:/mxv2
 	@echo -----------------------------------------------------------------
 	@echo Current selection: TARGET=$(TARGET) BUILD=$(BUILD)
 	@echo Notes:
@@ -459,6 +551,9 @@ help:
 	@echo   - Android targets shell out to android/gradlew. Requires the
 	@echo     Android SDK/NDK and android/local.properties to be set up
 	@echo     first (see BUILD.md); adb must be on PATH for install/run.
+	@echo   - The skin editor targets need the dotnet SDK (8 or later) on
+	@echo     PATH; running the installed SkinEditor.exe needs the .NET 8
+	@echo     Windows Desktop Runtime.
 	@echo   - Android BUILD=release installs/runs only if android/keystore.
 	@echo     properties is set up (see BUILD.md, "Android release signing").
 	@echo     Without it, assembleRelease still builds an unsigned apk, but

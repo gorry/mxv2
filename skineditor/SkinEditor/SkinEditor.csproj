@@ -18,6 +18,48 @@
     <Compile Remove="nouse\**\*.cs" />
   </ItemGroup>
 
+  <!-- アプリの名前・版・著作権は mxv2/Profile.ini だけにある（著作者専用。本体の
+       CMake / Gradle と同じ出どころ）。ここで読んでアセンブリ属性に写し、実行時は
+       Model/AppProfile.cs がその属性を読む。値は
+         [Title] Text-SkinEditor      -> AssemblyTitle / Product
+         [Version] Text               -> Version（AssemblyInformationalVersion、
+                                         AssemblyVersion / FileVersion もここから）
+         [Copyright] Text-SkinEditor  -> Copyright
+       セクションの中の最初の「Key=」行を正規表現で引く（コメント行は ';' 始まりなので
+       "\nKey=" には掛からない）。取れないときはビルドを止める（下の Target）。
+       ビルド日付は AssemblyMetadata "BuildDate"（yyyy-MM-dd）。日付が変わるたびに
+       生成される AssemblyInfo が変わって再コンパイルになるが、小さいので許容する。 -->
+  <PropertyGroup>
+    <Mxv2ProfilePath>$(MSBuildProjectDirectory)\..\..\Profile.ini</Mxv2ProfilePath>
+    <Mxv2ProfileText>$([System.IO.File]::ReadAllText('$(Mxv2ProfilePath)'))</Mxv2ProfileText>
+    <Mxv2SeTitle>$([System.Text.RegularExpressions.Regex]::Replace('$(Mxv2ProfileText)', '(?s)^.*\[Title\].*?\nText-SkinEditor=([^\r\n]*).*$', '$1'))</Mxv2SeTitle>
+    <Mxv2SeVersion>$([System.Text.RegularExpressions.Regex]::Replace('$(Mxv2ProfileText)', '(?s)^.*\[Version\].*?\nText=([^\r\n]*).*$', '$1'))</Mxv2SeVersion>
+    <Mxv2SeCopyright>$([System.Text.RegularExpressions.Regex]::Replace('$(Mxv2ProfileText)', '(?s)^.*\[Copyright\].*?\nText-SkinEditor=([^\r\n]*).*$', '$1'))</Mxv2SeCopyright>
+    <Mxv2BuildDate>$([System.DateTime]::Now.ToString('yyyy-MM-dd'))</Mxv2BuildDate>
+
+    <AssemblyTitle>$(Mxv2SeTitle)</AssemblyTitle>
+    <Product>$(Mxv2SeTitle)</Product>
+    <Version>$(Mxv2SeVersion)</Version>
+    <Copyright>$(Mxv2SeCopyright)</Copyright>
+    <!-- 既定では InformationalVersion に git のコミット ID が "+<sha>" として付く
+         （SourceLink）。バージョン情報には Profile.ini の値だけを出したいので止める。 -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <!-- csproj の Version と RuntimeIdentifier が無いぶんの警告（NETSDK1057 など）は
+         別の話。ここでは属性の生成だけ。 -->
+  </PropertyGroup>
+  <ItemGroup>
+    <AssemblyMetadata Include="BuildDate" Value="$(Mxv2BuildDate)" />
+  </ItemGroup>
+  <!-- 正規表現が掛からないと Replace は元の全文をそのまま返す。'[' が混じる
+       （= セクション見出しごと全文のまま）ならキーが無いということなので、そこで止める。 -->
+  <Target Name="CheckMxv2Profile" BeforeTargets="GenerateAssemblyInfo">
+    <Error Condition="!Exists('$(Mxv2ProfilePath)')" Text="Profile.ini が見つかりません: $(Mxv2ProfilePath)" />
+    <Error Condition="$(Mxv2SeTitle.Contains('['))" Text="Profile.ini: [Title] Text-SkinEditor がありません" />
+    <Error Condition="$(Mxv2SeVersion.Contains('['))" Text="Profile.ini: [Version] Text がありません" />
+    <Error Condition="$(Mxv2SeCopyright.Contains('['))" Text="Profile.ini: [Copyright] Text-SkinEditor がありません" />
+    <Message Importance="high" Text="Profile.ini: $(Mxv2SeTitle) / $(Mxv2SeVersion) / $(Mxv2SeCopyright) / build $(Mxv2BuildDate)" />
+  </Target>
+
   <!-- ビルドのたびに、実際に使う場所（mxv2 本体の CMakeLists.txt がある
        フォルダ）へ実行ファイル一式をコピーする。ここに置いておけば、
        exe を直接起動したときに assets/ の隣として認識される

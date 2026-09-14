@@ -63,16 +63,21 @@ public sealed class SkinListForm : Form
         // モード（開発フォルダ / ユーザーフォルダ）は起動したフォルダで一律に
         // 決まる（Program.Main）。[フォルダを選ぶ…] は廃止した（ユーザーの指示）。
         var rescan = new Button { Text = "スキン一覧の再読み込み", AutoSize = true, MinimumSize = new Size(Dpi.S(this, 80), 0) };
+        // 名前・版・ビルド日付・著作権（Profile.ini 由来。Model/AppProfile.cs）。
+        var about = new Button { Text = "バージョン情報…", AutoSize = true, MinimumSize = new Size(Dpi.S(this, 80), 0) };
         var exit = new Button { Text = "終了", AutoSize = true, MinimumSize = new Size(Dpi.S(this, 80), 0) };
         _openButton.Click += (_, _) => OpenSelected();
         // Enter で [開く]（ユーザーの指示）。一覧で選んで Enter だけで入れる。
         AcceptButton = _openButton;
         _newButton.Click += (_, _) => CreateNew();
         rescan.Click += (_, _) => Reload();
+        about.Click += (_, _) => MessageBox.Show(this, AppProfile.AboutText, "バージョン情報",
+            MessageBoxButtons.OK, MessageBoxIcon.Information);
         exit.Click += (_, _) => Close();
         buttons.Controls.Add(_openButton);
         buttons.Controls.Add(_newButton);
         buttons.Controls.Add(rescan);
+        buttons.Controls.Add(about);
         buttons.Controls.Add(exit);
 
         // Fill (_list) を最初に追加する（= Z 順序の最背面に自然に置かれる）。
