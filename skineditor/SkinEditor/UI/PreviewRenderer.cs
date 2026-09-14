@@ -36,6 +36,9 @@ public sealed class PreviewState
     // 2 つ組はどちらが効いているか見ないと分からないので、切り替えられるように
     // してある。
     public bool FileListBigFont;
+    // ステータス欄の表示モード（[ステータス] の [音色] サブタブの
+    // 「音色データを表示」トグル。本体はステータス欄の長押しで切り替える）。
+    public bool ToneMode;
     public int Volume;             // -100..100
     public double Progress = 0.4;  // 0..1
 
@@ -123,11 +126,13 @@ public sealed class PreviewRenderer : IDisposable
             ReferenceEquals(_port.Colors, _doc.EffectiveColors))
         {
             port = _port;
+            port.ToneMode = state.ToneMode;
             port.Redraw(DummyTitle);
         }
         else
         {
             port = new DrawScreenPort(skin, _doc.EffectiveColors, _assets);
+            port.ToneMode = state.ToneMode;
             port.Reload(DummyTitle);
             _port = port;
         }

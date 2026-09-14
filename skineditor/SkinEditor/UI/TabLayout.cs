@@ -172,7 +172,37 @@ public static class TabLayout
                     Field("Status", "PosPcmVolume"),
                     Field("Status", "PosPcmPtr"),
                     new PcmChannelsNode(),
-                })),
+                }),
+                // 音色データ表示（tonedata.md）。本体はステータス欄の長押しで
+                // 切り替えるので、プレビューにはトグルを置く。項目が多いので
+                // 3 ページに分ける（1 ページの高さが他のサブタブを超えないように）。
+                ("音色", new Node[]
+                {
+                    new TogglesNode(8, new ToggleDef("音色データを表示", PreviewRegions.Ids.Status,
+                        p => p.StateToneMode, (p, v) => p.StateToneMode = v)),
+                    // 並びは OPM のスロット順（M1, M2, C1, C2）。ラベルは MML の
+                    // オペレータ番号（tonedata.md のコメントどおり）。
+                    // 4 個を 1 行に並べると右端が切れる（実測）ので 2 行に分ける。
+                    new MultiValueNode("オペレータの段のY", "Status", "OPMOperatorY", e => e.opmOperatorY,
+                        new[]
+                        {
+                            new[] { "オペレータ1", "オペレータ3" },
+                            new[] { "オペレータ2", "オペレータ4" },
+                        },
+                        PreviewRegions.Ids.Status),
+                    Field("Status", "PosOPMAlgorythm"),
+                    Field("Status", "PosOPMFeedback"),
+                    Field("Status", "PosOPMAttackRate"),
+                    Field("Status", "PosOPMDecayRate"),
+                    Field("Status", "PosOPMSustainRate"),
+                    Field("Status", "PosOPMReleaseRate"),
+                }),
+                ("音色 2", Fields("Status",
+                    "PosOPMSustainLevel", "PosOPMTotalLevel", "PosOPMKeyScaling",
+                    "PosOPMMultiple", "PosOPMDetune1", "PosOPMDetune2", "PosOPMAMSEnable")),
+                ("音色 (PCM段)", Fields("Status",
+                    "PosOPMNoise", "PosOPMClockB", "PosOPMLFOFreq",
+                    "PosOPMLFOPMD", "PosOPMLFOAMD", "PosOPMLFOWAVE"))),
             Colors("ステータス (Status)"),
         }),
 

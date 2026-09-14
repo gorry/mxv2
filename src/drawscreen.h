@@ -22,6 +22,7 @@
 #include "screen.h"
 #include "skin.h"
 #include "colors.h"
+#include "dispqueue.h"
 #include "textlayer.h"
 
 namespace mxv2 {
@@ -91,6 +92,33 @@ public:
 	// ---- ステータス (PCM 8..15) -------------------------------------
 	void PutPCMVolume(int volume, int row);
 	void PutPCMPtr(int ptr, int row);
+
+	// ---- ステータス欄の表示モード（tonedata.md） ----------------------
+	// ステータス欄の長押しで「チャンネルステータス」と「音色データ」を
+	// 切り替える。ini には保存しない（常にチャンネルステータスで始まる）。
+	// 上の Put*（チャンネルステータス）と下の PutOPM*（音色データ）は、
+	// それぞれ自分のモードのときだけ描く。生成側は両方を積んでくるので、
+	// 消費側 (Visualizer) はモードを気にしなくてよい。
+	enum StatusMode {
+		kStatusModeChannel = 0,
+		kStatusModeTone,
+	};
+	int statusMode() const { return statusMode_; }
+	// 切り替える。欄を下地で消して、新しいモードの 0 表示を敷く。呼んだ側は
+	// Player::RequestStatusRefresh で値を積み直させること。
+	void SetStatusMode(int mode);
+	void ToggleStatusMode() {
+		SetStatusMode(statusMode_ == kStatusModeChannel ? kStatusModeTone : kStatusModeChannel);
+	}
+
+	// ---- 音色データ (FM 0..7 / OPM 全体) ------------------------------
+	// reg20 は OPM $20+ch の値（bit0-2 アルゴリズム、bit3-5 フィードバック）。
+	void PutOPMChannel(int reg20, int row);
+	// slot は OPM のスロット (0=M1 1=M2 2=C1 3=C2)、group は OpmOpGroup、
+	// value はそのレジスタ（TL は音色データ）のバイト。
+	void PutOPMOperator(int row, int slot, int group, int value);
+	// kind は OpmGlobalKind。valid が false なら "--"。
+	void PutOPMGlobal(int kind, int value, bool valid);
 
 	// マスクしているチャンネルの鍵盤に半透明のグレーを乗せる。
 	// bit0..7 = FM ch.1-8（その段の鍵盤全体）、bit8..15 = PCM ch.P-W
@@ -249,7 +277,15 @@ private:
 	void StatusItemPos(StatusItem item, int row, int *x, int *y) const;
 
 	// ステータス欄の共通処理: 項目の位置に文字を合成する。
+	// チャンネルステータスのモードでないときは何もしない。
 	void PutStatusText(StatusItem item, int row, const char *text);
+
+	// 音色データの項目。row は FM の段 (0..7) か PCM の段 (8)、slot は
+	// オペレータごとの項目のときの OPM スロット（それ以外は 0）。
+	// 音色データのモードでないときは何もしない。
+	void PutToneText(StatusItem item, int row, int slot, const char *text);
+	// ステータス欄を下地で消す（モードの切り替え）。
+	void ClearStatusArea();
 
 	// スクロールバーの一部分を画面へ合成する（ファイラーと重なる列を
 	// 避けて描くために分割して呼ぶ）。
@@ -292,6 +328,7 @@ private:
 
 	TextLayer *textLayer_;
 	int fileListFontSize_;
+	int statusMode_;  // StatusMode
 
 	// マスクしているチャンネル（SetChannelMask）。BlitTo で灰色を乗せる。
 	uint16_t channelMask_;

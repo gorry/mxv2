@@ -40,6 +40,13 @@ const char *const kStatusItemKeys[kNumStatusItems] = {
 	"PosLFOPitch1",  "PosLFOPitch2",  "PosLFOPitch3", "PosLFOPitch4",
 	"PosLFOVolume",  "PosLFOVolume1", "PosLFOVolume2", "PosLFOVolume3",
 	"PosPcmVolume",  "PosPcmPtr",
+	// 音色データ表示（tonedata.md の綴りのまま。Algorythm は仕様書どおり）。
+	"PosOPMAlgorythm",   "PosOPMFeedback",     "PosOPMAttackRate",  "PosOPMDecayRate",
+	"PosOPMSustainRate", "PosOPMReleaseRate",  "PosOPMSustainLevel", "PosOPMTotalLevel",
+	"PosOPMKeyScaling",  "PosOPMMultiple",     "PosOPMDetune1",     "PosOPMDetune2",
+	"PosOPMAMSEnable",
+	"PosOPMNoise",       "PosOPMClockB",       "PosOPMLFOFreq",     "PosOPMLFOPMD",
+	"PosOPMLFOAMD",      "PosOPMLFOWAVE",
 };
 
 namespace {
@@ -176,11 +183,33 @@ Skin::Skin() {
 			{ 72, 27 },  // LFOVolume3
 			{ 2, 0 },    // PcmVolume（PcmX/PcmY からの相対）
 			{ 24, 0 },   // PcmPtr
+			// 音色データ表示（tonedata.md の既定値）。
+			{ 0, 0 },    // OPMAlgorithm
+			{ 0, 9 },    // OPMFeedback
+			{ 14, 0 },   // OPMAttackRate（以下 AMSEnable まで OPMOperatorY を加算）
+			{ 28, 0 },   // OPMDecayRate
+			{ 42, 0 },   // OPMSustainRate
+			{ 56, 0 },   // OPMReleaseRate
+			{ 64, 0 },   // OPMSustainLevel
+			{ 72, 0 },   // OPMTotalLevel
+			{ 86, 0 },   // OPMKeyScaling
+			{ 94, 0 },   // OPMMultiple
+			{ 102, 0 },  // OPMDetune1
+			{ 110, 0 },  // OPMDetune2
+			{ 118, 0 },  // OPMAMSEnable
+			{ 0, 0 },    // OPMNoise（PCM の段の左上からの相対）
+			{ 0, 9 },    // OPMClockB
+			{ 68, 0 },   // OPMLFOFreq
+			{ 68, 9 },   // OPMLFOPMD
+			{ 68, 18 },  // OPMLFOAMD
+			{ 68, 27 },  // OPMLFOWave
 		};
 		for (int i = 0; i < kNumStatusItems; i++) {
 			statusPos[i][0] = kPos[i][0];
 			statusPos[i][1] = kPos[i][1];
 		}
+		static const int kOpY[4] = { 0, 18, 9, 27 };
+		for (int i = 0; i < 4; i++) opmOperatorY[i] = kOpY[i];
 	}
 
 	levelMeterPalOfs = 32;
@@ -431,6 +460,7 @@ void Skin::ApplyLayout(const std::string &skinDir) {
 	for (int i = 0; i < kNumStatusItems; i++) {
 		GetIntList(ini, "Status", kStatusItemKeys[i], statusPos[i], 2);
 	}
+	GetIntList(ini, "Status", "OPMOperatorY", opmOperatorY, 4);
 
 	levelMeterPalOfs = ini.GetInt("LevelMeter", "PaletteOffset", levelMeterPalOfs);
 	levelMeterWidthCells = ini.GetInt("LevelMeter", "Cells", levelMeterWidthCells);

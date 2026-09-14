@@ -233,6 +233,14 @@ bool Player::Open(const Config &config, std::string *err) {
 		*slot = &Player::OpmIntTrampoline;
 	}
 
+	// OPM レジスタ書き込みの通知。gorry/portable_mdx の拡張で、本家には無い
+	// （音色データ表示の PMD / AMD の書き分けに要る。無くても MXDRV 自身の
+	// レジスタの写し MXDRV_WORK_OPM で残りは出せる。statuswatch.h）。
+#ifdef MXDRV_SUPPORT_OPMWRITE_CALLBACK
+	MXDRV_SetOpmWriteCallback(&context_, &Player::OpmWriteTrampoline);
+	watch_.SetOpmWriteCallbackActive(true);
+#endif
+
 	opened_ = true;
 	return true;
 }
@@ -770,6 +778,14 @@ void Player::OpmIntTrampoline(MxdrvContext *context) {
 	Player *self = s_instance;
 	if (self == 0 || &self->context_ != context) return;
 	self->watch_.OnOpmInt();
+}
+
+// OpmIntTrampoline と同じ制約（デコードスレッド、クリティカルセクション
+// 保持中、再入禁止）。写しを 1 バイト更新するだけ。
+void Player::OpmWriteTrampoline(MxdrvContext *context, uint8_t reg, uint8_t data) {
+	Player *self = s_instance;
+	if (self == 0 || &self->context_ != context) return;
+	self->watch_.OnOpmWrite(reg, data);
 }
 
 }  // namespace mxv2

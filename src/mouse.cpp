@@ -230,6 +230,11 @@ MouseRequest MouseInput::OnButtonDown(int x, int y, int clicks) {
 		if (row >= 0) {
 			captured_ = kCapturedStatus;
 			capturedHit_ = (row < 8) ? 0 : 1;
+			// 長押し（音色データ表示の切り替え）。動かさずに押し続けたときだけ。
+			dragOriginX_ = x;
+			dragOriginY_ = y;
+			pressStartMs_ = SDL_GetTicks();
+			longPressDone_ = false;
 			return kMouseRequestNone;
 		}
 	}
@@ -238,6 +243,11 @@ MouseRequest MouseInput::OnButtonDown(int x, int y, int clicks) {
 }
 
 void MouseInput::OnMotion(int x, int y) {
+	// ステータス欄の長押しは「動かしていない」ことが条件。Poll で見る。
+	if (captured_ == kCapturedStatus) {
+		lastX_ = x;
+		lastY_ = y;
+	}
 	switch (captured_) {
 		case kCapturedScrollBar:
 			if (capturedHit_ == DrawScreen::kHitScrollBarThumb) {
@@ -398,7 +408,9 @@ MouseRequest MouseInput::OnButtonUp(int x, int y) {
 	}
 
 	// ステータス欄は FM / PCM の一括切り替え。同じ側の段で離したときだけ。
+	// 長押し（表示モードの切り替え）が成立した押下では切り替えない。
 	if (captured == kCapturedStatus) {
+		if (longPressed) return kMouseRequestNone;
 		const int row = draw_->HitCheckStatus(x, y);
 		if (row >= 0 && ((row < 8) ? 0 : 1) == hit) {
 			player_->ToggleChannelGroup(hit == 0 ? Player::kChannelMaskFm
@@ -545,6 +557,15 @@ MouseRequest MouseInput::Poll(uint32_t nowMs) {
 	UpdateFling(nowMs);
 
 	// 長押し。押してから kLongPressMs 経ち、まだ成立していなければ見る。
+	if (!longPressDone_ && captured_ == kCapturedStatus && nowMs - pressStartMs_ >= kLongPressMs) {
+		// ステータス欄。掴んだ場所から動かしていなければ表示モードの切り替え。
+		longPressDone_ = true;
+		const int dx = lastX_ - dragOriginX_;
+		const int dy = lastY_ - dragOriginY_;
+		const bool still = (dx > -kDragSlopPx && dx < kDragSlopPx) &&
+		                   (dy > -kDragSlopPx && dy < kDragSlopPx);
+		return still ? kMouseRequestToggleStatusMode : kMouseRequestNone;
+	}
 	if (!longPressDone_ && (captured_ == kCapturedPlayKey || captured_ == kCapturedFileList) &&
 	    nowMs - pressStartMs_ >= kLongPressMs) {
 		// STOP を押したままならフェードアウト（F キー）。押下表示は戻して

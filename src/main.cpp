@@ -2101,10 +2101,21 @@ int main(int argc, char **argv) {
 			continue;
 		}
 
-		// 長押し（STOP でフェードアウト、ファイラーで文字サイズ）は
-		// イベントではなく時間で決まるので、ここで拾う。
-		if (mouse.Poll(SDL_GetTicks()) == mxv2::kMouseRequestToggleFontSize) {
-			ToggleFileListFontSize(&draw, &filer, &fileListRefresh);
+		// 長押し（STOP でフェードアウト、ファイラーで文字サイズ、ステータス欄で
+		// 音色データ表示）はイベントではなく時間で決まるので、ここで拾う。
+		switch (mouse.Poll(SDL_GetTicks())) {
+			case mxv2::kMouseRequestToggleFontSize:
+				ToggleFileListFontSize(&draw, &filer, &fileListRefresh);
+				break;
+			case mxv2::kMouseRequestToggleStatusMode:
+				// 欄を消して新しいモードの 0 表示を敷き、値は積み直してもらう
+				// （どちらのモードのイベントも StatusWatch が変化時にしか積まない
+				// ので、切り替えた直後は全部を頼む）。
+				draw.ToggleStatusMode();
+				player.RequestStatusRefresh();
+				break;
+			default:
+				break;
 		}
 
 		// フォルダの中身も MDX のタイトルも曲そのものも別スレッドで

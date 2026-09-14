@@ -34,6 +34,7 @@ enum MouseRequest {
 	kMouseRequestContextMenu,  // バナーを押した (右クリックの代わり)
 	kMouseRequestGoParent,     // ファイラーで左へはじいた (BACKSPACE と同じ)
 	kMouseRequestToggleFontSize,  // ファイラーを長押しした (TAB と同じ)
+	kMouseRequestToggleStatusMode,  // ステータス欄を長押しした（音色データ表示の切り替え）
 };
 
 class MouseInput {
@@ -71,9 +72,10 @@ public:
 	// 長押し。指（マウス）を動かさずにこれだけ押し続けたら成立する。
 	// 500ms（ユーザーの指定）。Android の「押し続ける時間」の設定で選べる
 	// **最短**が 400ms なので、それより短くはしない。
-	// キーボードの無い端末のための導線で、今あるのは 2 つ:
+	// キーボードの無い端末のための導線で、今あるのは 3 つ:
 	//   STOP      … フェードアウト（F キー）
 	//   ファイラー … 文字サイズの切り替え（TAB キー）
+	//   ステータス … チャンネルステータス / 音色データの切り替え（tonedata.md）
 	// 成立した押下は、離しても何もしない（停止も選択も慣性も起こさない）。
 	static const uint32_t kLongPressMs = 500;
 

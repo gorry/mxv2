@@ -82,8 +82,39 @@ enum StatusItem {
 	kStatusLFOVolume3,
 	kStatusPcmVolume,
 	kStatusPcmPtr,
+	// ---- 音色データ表示（ステータス欄の長押しで切り替える。tonedata.md） ----
+	// FM の 13 項目は 1 段（1 チャンネル）の中の位置。オペレータごとの項目
+	// （AR〜AMSEnable）は、さらに [Status] OPMOperatorY のスロットぶんが足される。
+	kStatusOPMAlgorithm,
+	kStatusOPMFeedback,
+	kStatusOPMAttackRate,
+	kStatusOPMDecayRate,
+	kStatusOPMSustainRate,
+	kStatusOPMReleaseRate,
+	kStatusOPMSustainLevel,
+	kStatusOPMTotalLevel,
+	kStatusOPMKeyScaling,
+	kStatusOPMMultiple,
+	kStatusOPMDetune1,
+	kStatusOPMDetune2,
+	kStatusOPMAMSEnable,
+	// PCM の段に出す OPM 全体の値（Rect の左上 + [Keyboard] ChannelY[8] からの相対）。
+	kStatusOPMNoise,
+	kStatusOPMClockB,
+	kStatusOPMLFOFreq,
+	kStatusOPMLFOPMD,
+	kStatusOPMLFOAMD,
+	kStatusOPMLFOWave,
 	kNumStatusItems
 };
+
+// 音色データ表示の項目の分類。
+inline bool IsStatusOpmOperatorItem(StatusItem item) {
+	return item >= kStatusOPMAttackRate && item <= kStatusOPMAMSEnable;
+}
+inline bool IsStatusOpmGlobalItem(StatusItem item) {
+	return item >= kStatusOPMNoise && item <= kStatusOPMLFOWave;
+}
 
 // layout.ini でのキー名（"PosVolume" など）。並びは StatusItem と同じ。
 extern const char *const kStatusItemKeys[kNumStatusItems];
@@ -131,6 +162,10 @@ struct Skin {
 	// 項目ごとの位置。StatusItem の並びで [x, y]。旧 mxv は draw.cpp の
 	// 関数ごとに #define CX_D / CY_D で埋め込んでいたもの。
 	int statusPos[kNumStatusItems][2];
+	// 音色データ表示で、オペレータごとの項目を置く段の y（[Status]
+	// OPMOperatorY）。並びは OPM のスロット順（M1, M2, C1, C2）。既定の
+	// 0,18,9,27 で上から M1 / C1 / M2 / C2（MML の OP1〜OP4 の順）に並ぶ。
+	int opmOperatorY[4];
 
 	// ---- レベルメータ -------------------------------------------------
 	int levelMeterPalOfs;      // levelmeter.bmp のパレット開始番号

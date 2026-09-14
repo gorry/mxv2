@@ -113,6 +113,11 @@ public sealed class DrawScreenPort
         set => _fileListFontSize = value & 1;
     }
 
+    // ステータス欄の表示モード（本体 DrawScreen::StatusMode。tonedata.md）。
+    // false = チャンネルステータス / true = 音色データ。チャンネルステータスの
+    // Put* と音色データの PutOPM* は、それぞれ自分のモードのときだけ描く。
+    public bool ToneMode { get; set; }
+
     public int FileListRows => _skin.fileListRows[_fileListFontSize & 1];
     public int FileListItemH => _skin.fileListItemH[_fileListFontSize & 1];
     public int TotalVolBarMovement => _skin.VolBarMovement();
@@ -371,8 +376,93 @@ public sealed class DrawScreenPort
 
     private void PutStatusText(StatusItem item, int row, string text)
     {
+        if (ToneMode) return;
         StatusItemPos(item, row, out int x, out int y);
         PrintMiniCompose(x, y, text, _colors.status.color, _colors.status.colorBright);
+    }
+
+    // ---- 音色データ表示（本体 DrawScreen::PutToneText / PutOPM*） ----------
+    // row は FM の段 (0..7) か PCM の段 (8)、slot はオペレータごとの項目の
+    // OPM スロット（それ以外は 0）。
+    private void PutToneText(StatusItem item, int row, int slot, string text)
+    {
+        if (!ToneMode) return;
+        if (row < 0 || row >= 9) return;
+        var pos = _skin.statusPos[(int)item];
+        int x = _skin.statusX + pos[0];
+        int y = _skin.statusY + _skin.chYOffset[row] + pos[1];
+        if (StatusItems.IsOpmOperatorItem(item)) y += _skin.opmOperatorY[slot & 3];
+        PrintMiniCompose(x, y, text, _colors.status.color, _colors.status.colorBright);
+    }
+
+    public void PutOPMChannel(int reg20, int row)
+    {
+        if (row < 0 || row >= 8) return;
+        PutToneText(StatusItem.OPMAlgorithm, row, 0, $"A{reg20 & 7:X}");
+        PutToneText(StatusItem.OPMFeedback, row, 0, $"F{(reg20 >> 3) & 7:X}");
+    }
+
+    // 本体 DrawScreen::PutOPMOperator と同じ並び。値は 1 スロットぶんの
+    // 6 レジスタ（DT1/MUL, KS/AR, AME/D1R, DT2/D2R, D1L/RR, TL）のバイト。
+    public void PutOPMOperator(int row, int slot, int dt1mul, int ksar, int amed1r, int dt2d2r, int d1lrr, int tl)
+    {
+        if (row < 0 || row >= 8) return;
+        PutToneText(StatusItem.OPMMultiple, row, slot, $"{dt1mul & 0x0f:X}");
+        PutToneText(StatusItem.OPMDetune1, row, slot, $"{(dt1mul >> 4) & 0x07:X}");
+        PutToneText(StatusItem.OPMAttackRate, row, slot, $"{ksar & 0x1f:X2}");
+        PutToneText(StatusItem.OPMKeyScaling, row, slot, $"{(ksar >> 6) & 0x03:X}");
+        PutToneText(StatusItem.OPMDecayRate, row, slot, $"{amed1r & 0x1f:X2}");
+        PutToneText(StatusItem.OPMAMSEnable, row, slot, $"{(amed1r >> 7) & 0x01:X}");
+        PutToneText(StatusItem.OPMSustainRate, row, slot, $"{dt2d2r & 0x1f:X2}");
+        PutToneText(StatusItem.OPMDetune2, row, slot, $"{(dt2d2r >> 6) & 0x03:X}");
+        PutToneText(StatusItem.OPMReleaseRate, row, slot, $"{d1lrr & 0x0f:X}");
+        PutToneText(StatusItem.OPMSustainLevel, row, slot, $"{(d1lrr >> 4) & 0x0f:X}");
+        PutToneText(StatusItem.OPMTotalLevel, row, slot, $"{tl & 0x7f:X2}");
+    }
+
+    // OPM 全体の値（PCM の段）。value が null なら "--"。
+    public void PutOPMGlobal(StatusItem item, int? value)
+    {
+        string label = item switch
+        {
+            StatusItem.OPMNoise => "NOISE:",
+            StatusItem.OPMClockB => "CLKB :",
+            StatusItem.OPMLFOFreq => "LFRQ :",
+            StatusItem.OPMLFOPMD => "PMD  :",
+            StatusItem.OPMLFOAMD => "AMD  :",
+            StatusItem.OPMLFOWave => "WAVE :",
+            _ => "",
+        };
+        if (label.Length == 0) return;
+        string text = item == StatusItem.OPMLFOWave
+            ? $"{label}{(value ?? 0) & 3:X}"
+            : value == null ? $"{label}--" : $"{label}{value.Value & 0xff:X2}";
+        PutToneText(item, 8, 0, text);
+    }
+
+    // 音色データ表示のダミー（プレビュー用。本体には無い）。全段に同じ
+    // 「それらしい」音色を出して、位置の調整ができるようにする。
+    public void PutOPMDummy()
+    {
+        // アルゴリズム 4 / フィードバック 7、4 スロットの値は適当な典型値。
+        var dt1mul = new[] { 0x31, 0x02, 0x11, 0x01 };
+        var ksar = new[] { 0x5f, 0x1f, 0x5c, 0x1a };
+        var amed1r = new[] { 0x0a, 0x85, 0x08, 0x83 };
+        var dt2d2r = new[] { 0x40, 0x03, 0x02, 0x44 };
+        var d1lrr = new[] { 0x27, 0xf8, 0x36, 0xf9 };
+        var tl = new[] { 0x1e, 0x00, 0x28, 0x02 };
+        for (int row = 0; row < 8; row++)
+        {
+            PutOPMChannel(0x3c, row);
+            for (int s = 0; s < 4; s++)
+                PutOPMOperator(row, s, dt1mul[s], ksar[s], amed1r[s], dt2d2r[s], d1lrr[s], tl[s]);
+        }
+        PutOPMGlobal(StatusItem.OPMNoise, null);
+        PutOPMGlobal(StatusItem.OPMClockB, 0xc8);
+        PutOPMGlobal(StatusItem.OPMLFOFreq, 0x2a);
+        PutOPMGlobal(StatusItem.OPMLFOPMD, 0x10);
+        PutOPMGlobal(StatusItem.OPMLFOAMD, null);
+        PutOPMGlobal(StatusItem.OPMLFOWave, 2);
     }
 
     public void PutVolume(int volume, int row)
@@ -487,6 +577,7 @@ public sealed class DrawScreenPort
             if (src >= 0 && src < _palLevelMeter.Length) _levelMeter.Palette[pal] = _palLevelMeter[src];
         }
 
+        if (ToneMode) return;
         // 素材は 1 段ぶんの幅で作ってあり、音量表示と重なる左端 (SrcX) を切って描く。
         int skip = _skin.levelMeterSrcX;
         int w = _levelMeter.Width - skip;
@@ -539,6 +630,9 @@ public sealed class DrawScreenPort
             PutPCMVolume(0, 8 + i);
             PutPCMPtr(0, 8 + i);
         }
+        // 音色データ表示のモードのときは、こちらが描かれる（本体の PutStatusZero
+        // は全部 0 を敷くが、プレビューでは位置合わせのためにダミーの値を出す）。
+        PutOPMDummy();
     }
 
     // ---- 鍵盤 --------------------------------------------------------------

@@ -72,7 +72,10 @@
     <ItemGroup>
       <SkinEditorBinaries Include="$(TargetDir)*.*" />
     </ItemGroup>
-    <Copy SourceFiles="@(SkinEditorBinaries)" DestinationFolder="$(Mxv2RootDir)" SkipUnchangedFiles="true" />
+    <!-- 開発フォルダ直下の SkinEditor.exe を起動したまま（ユーザーが使用中）ビルド
+         すると、コピー先がロックされている。それでビルド全体（とテスト）を
+         落とさないよう、コピーの失敗は警告に留める（2026-09-15 に踏んだ）。 -->
+    <Copy SourceFiles="@(SkinEditorBinaries)" DestinationFolder="$(Mxv2RootDir)" SkipUnchangedFiles="true" ContinueOnError="WarnAndContinue" />
   </Target>
 
 </Project>

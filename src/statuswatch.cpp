@@ -37,7 +37,9 @@ inline int Clamp(int v, int lo, int hi) {
 }  // namespace
 
 StatusWatch::StatusWatch()
-    : context_(0), fm_(0), pcm_(0), g_(0), nowTimeMs_(0) {
+    : context_(0), fm_(0), pcm_(0), g_(0), opmWork_(0), nowTimeMs_(0),
+      opmCallbackActive_(false), opmPmd_(-1), opmAmd_(-1) {
+	memset(opmReg_, 0, sizeof(opmReg_));
 	Reset();
 }
 
@@ -46,10 +48,38 @@ void StatusWatch::Bind(MxdrvContext *context) {
 	fm_ = (const MXWORK_CH *)MXDRV_GetWork(context, MXDRV_WORK_FM);
 	pcm_ = (const MXWORK_CH *)MXDRV_GetWork(context, MXDRV_WORK_PCM);
 	g_ = (const MXWORK_GLOBAL *)MXDRV_GetWork(context, MXDRV_WORK_GLOBAL);
+	opmWork_ = (const volatile int8_t *)MXDRV_GetWork(context, MXDRV_WORK_OPM);
+}
+
+void StatusWatch::OnOpmWrite(uint8_t reg, uint8_t data) {
+	opmReg_[reg] = data;
+	// $19 は bit7 で PMD (1) / AMD (0) を書き分ける。両方を別に覚える。
+	if (reg == 0x19) {
+		if (data & 0x80) {
+			opmPmd_ = data & 0x7f;
+		} else {
+			opmAmd_ = data & 0x7f;
+		}
+	}
+}
+
+uint8_t StatusWatch::OpmReg(int no) const {
+	if (opmCallbackActive_) return opmReg_[no & 0xff];
+	if (opmWork_ == 0) return 0;
+	return (uint8_t)opmWork_[no & 0xff];
 }
 
 void StatusWatch::Reset() {
 	nowTimeMs_ = 0;
+	// レジスタの写しは曲の切り替えで消さない（MXDRV は Play2 で書き直すし、
+	// 書かれなかったレジスタは前の値のまま OPM に残っている）。前回値だけ捨てる。
+	for (int ch = 0; ch < 8; ch++) {
+		tone_[ch].chReg = -1;
+		for (int s = 0; s < 4; s++) {
+			for (int g = 0; g < 6; g++) tone_[ch].op[s][g] = -1;
+		}
+	}
+	for (int i = 0; i < 6; i++) toneGlobal_[i] = -1;
 	for (int ch = 0; ch < 16; ch++) {
 		ChannelState *l = &ch_[ch];
 		memset(l, 0, sizeof(*l));
@@ -77,6 +107,13 @@ void StatusWatch::Reset() {
 }
 
 void StatusWatch::ForgetLastValues() {
+	for (int ch = 0; ch < 8; ch++) {
+		tone_[ch].chReg = -1;
+		for (int s = 0; s < 4; s++) {
+			for (int g = 0; g < 6; g++) tone_[ch].op[s][g] = -1;
+		}
+	}
+	for (int i = 0; i < 6; i++) toneGlobal_[i] = -1;
 	const uint32_t now = nowTimeMs_;
 	Reset();
 	nowTimeMs_ = now;
@@ -365,6 +402,68 @@ void StatusWatch::Poll(uint64_t frame, DispQueue *q) {
 				l->ptr = (uint32_t)sts;
 			}
 		}
+	}
+
+	PollTone(frame, q);
+}
+
+// ---- 音色データ表示（tonedata.md） -----------------------------------------
+// 描画側が今どちらのモードかに関わらず、変化した値を積む。切り替えたときは
+// Player::RequestStatusRefresh → ForgetLastValues で全部積み直される。
+void StatusWatch::PollTone(uint64_t frame, DispQueue *q) {
+	// FM 8ch: $20+ch と、スロットごとの 5 レジスタ + 音色データの TL。
+	for (int ch = 0; ch < 8; ch++) {
+		const MXWORK_CH *p = &fm_[ch];
+		ToneState *t = &tone_[ch];
+
+		const int chReg = OpmReg(0x20 + ch) & 0x3f;
+		if (t->chReg != chReg) {
+			q->Push(frame, DISP_OPMCH, (uint8_t)ch, (uint8_t)chReg, 0);
+			t->chReg = chReg;
+		}
+
+		// 音色データ（S0004 は音色番号の次のバイトを指す。+6〜+9 が TL）。
+		const uint8_t *voice = MxdrvOfsToPtr(context_, p->S0004);
+		for (int s = 0; s < 4; s++) {
+			const int slot = ch + s * 8;
+			int v[kNumOpmOpGroups];
+			v[kOpmOpDT1MUL] = OpmReg(0x40 + slot);
+			v[kOpmOpKSAR] = OpmReg(0x80 + slot);
+			v[kOpmOpAMED1R] = OpmReg(0xa0 + slot);
+			v[kOpmOpDT2D2R] = OpmReg(0xc0 + slot);
+			v[kOpmOpD1LRR] = OpmReg(0xe0 + slot);
+			v[kOpmOpTL] = (voice == 0) ? 0 : (voice[6 + s] & 0x7f);
+			for (int g = 0; g < kNumOpmOpGroups; g++) {
+				if (t->op[s][g] == v[g]) continue;
+				q->Push(frame, DISP_OPMOP, (uint8_t)(ch | (s << 4)), (uint8_t)g, (uint8_t)v[g]);
+				t->op[s][g] = v[g];
+			}
+		}
+	}
+
+	// OPM 全体の値（PCM の段に出す）。値 | (有効 << 8) で前回値と比べる。
+	int gv[kNumOpmGlobalKinds];
+	{
+		const int noise = OpmReg(0x0f);
+		gv[kOpmGlobalNoise] = (noise & 0x80) ? ((noise & 0x1f) | 0x100) : 0;
+		gv[kOpmGlobalClockB] = OpmReg(0x12) | 0x100;
+		gv[kOpmGlobalLFOFreq] = OpmReg(0x18) | 0x100;
+		int pmd = opmPmd_, amd = opmAmd_;
+		if (!opmCallbackActive_) {
+			// 通知が無いときは $19 の最後の書き込みしか分からない。
+			const int r = OpmReg(0x19);
+			pmd = (r & 0x80) ? (r & 0x7f) : -1;
+			amd = (r & 0x80) ? -1 : (r & 0x7f);
+		}
+		gv[kOpmGlobalLFOPMD] = (pmd < 0) ? 0 : (pmd | 0x100);
+		gv[kOpmGlobalLFOAMD] = (amd < 0) ? 0 : (amd | 0x100);
+		gv[kOpmGlobalLFOWave] = (OpmReg(0x1b) & 0x03) | 0x100;
+	}
+	for (int k = 0; k < kNumOpmGlobalKinds; k++) {
+		if (toneGlobal_[k] == gv[k]) continue;
+		q->Push(frame, DISP_OPMGLOBAL, (uint8_t)k, (uint8_t)(gv[k] & 0xff),
+		        (uint8_t)((gv[k] & 0x100) ? 1 : 0));
+		toneGlobal_[k] = gv[k];
 	}
 }
 

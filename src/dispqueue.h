@@ -47,6 +47,43 @@ enum DispCmd {
 	DISP_LEVELMETER,
 	DISP_PCMVOLUME,
 	DISP_PCMPTR,
+
+	// ---- 音色データ表示（tonedata.md） ----------------------------------
+	// 描く側 (DrawScreen) が「今どちらのモードか」を見て、出さないほうの
+	// イベントは捨てる。生成側は常に両方を積む（変化したときだけなので安い）。
+	// DISP_OPMCH    : param1 = FM ch (0..7), param2 = OPM $20+ch の値
+	//                 （bit0-2 アルゴリズム、bit3-5 フィードバック）
+	// DISP_OPMOP    : param1 = FM ch | (スロット << 4)（スロットは OPM 順
+	//                 0=M1 1=M2 2=C1 3=C2）, param2 = OpmOpGroup, param3 = 値
+	// DISP_OPMGLOBAL: param1 = OpmGlobalKind, param2 = 値, param3 = 1 なら有効
+	//                 （0 は「値が無い」= "--" 表示。ノイズの NE=0、PMD/AMD の
+	//                 未設定）
+	DISP_OPMCH,
+	DISP_OPMOP,
+	DISP_OPMGLOBAL,
+};
+
+// DISP_OPMOP の param2。値はそのレジスタのバイトそのもの（TL だけは音色
+// データの値。レジスタの TL には音量が乗るため。tonedata.md）。
+enum OpmOpGroup {
+	kOpmOpDT1MUL = 0,  // $40+  bit4-6 DT1, bit0-3 MUL
+	kOpmOpKSAR,        // $80+  bit6-7 KS,  bit0-4 AR
+	kOpmOpAMED1R,      // $A0+  bit7 AME,   bit0-4 D1R
+	kOpmOpDT2D2R,      // $C0+  bit6-7 DT2, bit0-4 D2R
+	kOpmOpD1LRR,       // $E0+  bit4-7 D1L, bit0-3 RR
+	kOpmOpTL,          // 音色データ $06+op の bit0-6
+	kNumOpmOpGroups
+};
+
+// DISP_OPMGLOBAL の param1。
+enum OpmGlobalKind {
+	kOpmGlobalNoise = 0,  // $0F bit0-4（NE=0 なら無効）
+	kOpmGlobalClockB,     // $12
+	kOpmGlobalLFOFreq,    // $18
+	kOpmGlobalLFOPMD,     // $19 の bit7=1 の書き込みの bit0-6
+	kOpmGlobalLFOAMD,     // $19 の bit7=0 の書き込みの bit0-6
+	kOpmGlobalLFOWave,    // $1B bit0-1
+	kNumOpmGlobalKinds
 };
 
 struct DispWork {

@@ -114,6 +114,17 @@ void Visualizer::Consume(DispQueue *queue, uint64_t visualFrame) {
 				draw_->PutLFOVolume3((int16_t)v16, w.param1);
 				break;
 
+			// 音色データ表示。描くかどうかは DrawScreen がモードで決める。
+			case DISP_OPMCH:
+				draw_->PutOPMChannel(w.param2, w.param1);
+				break;
+			case DISP_OPMOP:
+				draw_->PutOPMOperator(w.param1 & 0x0f, (w.param1 >> 4) & 0x03, w.param2, w.param3);
+				break;
+			case DISP_OPMGLOBAL:
+				draw_->PutOPMGlobal(w.param1, w.param2, w.param3 != 0);
+				break;
+
 			case DISP_LEVELMETER: {
 				// param3 までを点灯、param2 (ピーク) を 1 セルだけ点灯。
 				const int ch = w.param1 & 0x0f;

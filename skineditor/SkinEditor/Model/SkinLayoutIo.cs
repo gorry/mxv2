@@ -43,6 +43,7 @@ public static class SkinLayoutIo
         GetIntList(ini, "Status", "PcmY", t.pcmYOffset, 8);
         for (int i = 0; i < StatusItems.Count; i++)
             GetIntList(ini, "Status", StatusItems.Keys[i], t.statusPos[i], 2);
+        GetIntList(ini, "Status", "OPMOperatorY", t.opmOperatorY, 4);
 
         t.levelMeterPalOfs = ini.GetInt("LevelMeter", "PaletteOffset", t.levelMeterPalOfs);
         t.levelMeterWidthCells = ini.GetInt("LevelMeter", "Cells", t.levelMeterWidthCells);
@@ -154,6 +155,7 @@ public static class SkinLayoutIo
         ini.SetString("Status", "PcmY", Join(t.pcmYOffset));
         for (int i = 0; i < StatusItems.Count; i++)
             ini.SetString("Status", StatusItems.Keys[i], Join(t.statusPos[i]));
+        ini.SetString("Status", "OPMOperatorY", Join(t.opmOperatorY));
 
         ini.SetInt("LevelMeter", "PaletteOffset", t.levelMeterPalOfs);
         ini.SetInt("LevelMeter", "Cells", t.levelMeterWidthCells);

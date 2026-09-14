@@ -103,6 +103,8 @@ public static class PreviewBindings
                 // 対象外にしてある（「位置」「配置」「矩形」の 2 値キーではない）。
                 if (key is "PcmX" or "PcmY")
                     return new PreviewBinding(PreviewRegions.Ids.Indexed(PreviewRegions.Ids.PcmSlot, Math.Clamp(index, 0, 7)));
+                // 音色データ表示のオペレータの段。どのスロットも FM1 の段全体。
+                if (key == "OPMOperatorY") return new PreviewBinding(PreviewRegions.Ids.Status);
                 // Pos<名前>（[配置] 系のサブタブと、レベルメータの「位置」）。
                 for (int i = 0; i < StatusItems.Count; i++)
                 {
@@ -111,12 +113,17 @@ public static class PreviewBindings
                     // 相対値の原点は、FM は段の左上 (Status)、PCM は 1ch の
                     // スロットの基準点。PcmSlot（音量とポインタを囲む矩形）の
                     // 左上は基準点とは限らないので、そちらを使ってはいけない。
+                    // 音色データ表示の NOISE〜WAVE は PCM の段の左上、オペレータ
+                    // ごとの項目は M1 の段（OPMOperatorY[0] を足した位置）が原点。
+                    string parent = pcm ? PreviewRegions.Ids.Indexed(PreviewRegions.Ids.PcmOrigin, 0)
+                        : StatusItems.IsOpmGlobalItem((StatusItem)i) ? PreviewRegions.Ids.StatusPcmRow
+                        : StatusItems.IsOpmOperatorItem((StatusItem)i) ? PreviewRegions.Ids.StatusOperatorOrigin
+                        : PreviewRegions.Ids.Status;
                     return new PreviewBinding(
                         i == (int)StatusItem.LevelMeter
                             ? PreviewRegions.Ids.LevelMeter
                             : PreviewRegions.Ids.Indexed(PreviewRegions.Ids.StatusItem, i),
-                        0, PreviewDrag.Xy,
-                        pcm ? PreviewRegions.Ids.Indexed(PreviewRegions.Ids.PcmOrigin, 0) : PreviewRegions.Ids.Status);
+                        0, PreviewDrag.Xy, parent);
                 }
                 break;
 

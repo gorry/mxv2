@@ -33,6 +33,10 @@ public static class PreviewRegions
         // ドラッグで相対値を出すためだけに使う。PcmSlot のほうは「音量」と
         // 「ポインタ」を囲む矩形なので、左上は基準点とは限らない。
         public const string PcmOrigin = "pcm.origin";    // + PCM ch (0..7)
+        // PCM の段のステータス欄（音色データ表示の NOISE〜WAVE の原点）。
+        public const string StatusPcmRow = "status.pcmrow";
+        // 音色データ表示のオペレータごとの項目の原点（FM1 の段の左上 + OPMOperatorY[0]）。
+        public const string StatusOperatorOrigin = "status.oporigin";
         public const string Banner = "banner";
         public const string Title = "title";
         public const string FilerSide = "filerside";  // ファイラー側の矩形（2 分割の片方）
@@ -60,6 +64,10 @@ public static class PreviewRegions
     private static readonly int[] StatusItemDigits =
     {
         4, 0, 1, 6, 4, 4, 6, 6, 1, 4, 5, 4, 6, 1, 4, 5, 4, 6,
+        // 音色データ表示: "A0" "F0" / AR DR SR 2 桁 / RR SL 1 桁 / TL 2 桁 /
+        // KS MUL DT1 DT2 AME 1 桁 / "NOISE:00" 〜 "AMD  :00" 8 桁 / "WAVE :0" 7 桁
+        2, 2, 2, 2, 2, 1, 1, 2, 1, 1, 1, 1, 1,
+        8, 8, 8, 8, 8, 7,
     };
 
     // プログレスバーの時刻表示（"PLAY TIME: 00:00 / 00:00"）と
@@ -136,20 +144,32 @@ public static class PreviewRegions
         int glyphW = mini != null ? mini.Value.Width / 16 : e.miniFontW;
         int glyphH = mini != null ? mini.Value.Height / 5 : e.miniFontH;
 
+        // 音色データ表示の NOISE〜WAVE は PCM の段の左上からの相対。
+        r[Ids.StatusPcmRow] = new Rectangle(e.statusX, e.statusY + e.chYOffset[8], e.statusW, e.statusH);
+        r[Ids.StatusOperatorOrigin] = new Rectangle(e.statusX, e.statusY + e.chYOffset[0] + e.opmOperatorY[0], 1, 1);
+
         for (int i = 0; i < StatusItems.Count; i++)
         {
             int[] pos = e.statusPos[i];
             int x, y;
+            var item = (StatusItem)i;
             if (i == (int)StatusItem.PcmVolume || i == (int)StatusItem.PcmPtr)
             {
                 // PCM の 2 項目は PCM 段の 1ch のスロットからの相対。
                 x = e.statusX + e.pcmXOffset[0] + pos[0];
                 y = e.statusY + e.chYOffset[8] + e.pcmYOffset[0] + pos[1];
             }
+            else if (StatusItems.IsOpmGlobalItem(item))
+            {
+                x = e.statusX + pos[0];
+                y = e.statusY + e.chYOffset[8] + pos[1];
+            }
             else
             {
                 x = e.statusX + pos[0];
                 y = e.statusY + e.chYOffset[0] + pos[1];
+                // オペレータごとの項目は M1（スロット 0）の段に枠を出す。
+                if (StatusItems.IsOpmOperatorItem(item)) y += e.opmOperatorY[0];
             }
             r[Ids.Indexed(Ids.StatusItem, i)] = new Rectangle(x, y, TextWidth(StatusItemDigits[i], e.miniFontW, glyphW), glyphH);
         }

@@ -82,6 +82,12 @@ git clone --depth 1 --branch v1.92.4 https://github.com/ocornut/imgui.git third_
 
 ### portable_mdx
 
+`third_party/portable_mdx` は本家ではなく gorry/portable_mdx（96kHz 出力と、
+OPM レジスタ書き込みの通知 `MXDRV_SetOpmWriteCallback` を足した fork）を
+前提にしている。どちらも能力マクロ（`X68SOUND_SUPPORT_96KHZ` /
+`MXDRV_SUPPORT_OPMWRITE_CALLBACK`）を `#ifdef` で見ているので本家でもビルドは
+通るが、音色データ表示の PMD / AMD は通知が無いと最後に書かれたほうしか出ない。
+
 MDX の演奏モジュール（MXDRV + X68Sound の移植）。
 <https://github.com/yosshin4004/portable_mdx> を `third_party/portable_mdx/` へ。
 

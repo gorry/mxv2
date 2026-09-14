@@ -131,6 +131,13 @@ public sealed class PreviewCanvas : Panel
         set { _state.FileListBigFont = value; _dirty = true; }
     }
 
+    // [ステータス]タブの「音色データを表示」トグル（本体はステータス欄の長押し）。
+    public bool StateToneMode
+    {
+        get => _state.ToneMode;
+        set { _state.ToneMode = value; _dirty = true; }
+    }
+
     // [鍵盤]タブの「押す」トグル。ON にした瞬間だけ乱数を選び直す
     // （OFF にしても選んだ鍵は捨てず、次に ON にしたときにまた選び直す）。
     public bool StateKeysPressed

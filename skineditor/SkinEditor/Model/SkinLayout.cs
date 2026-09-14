@@ -61,6 +61,9 @@ public sealed class SkinLayout
     public int[] pcmYOffset = { 0, 9, 18, 27, 0, 9, 18, 27 };
     // 項目ごとの位置（StatusItem の並びで [x, y]）。
     public int[][] statusPos = StatusItems.DefaultPos();
+    // 音色データ表示で、オペレータごとの項目を置く段の y（[Status] OPMOperatorY。
+    // 並びは OPM のスロット順 M1, M2, C1, C2。本体 skin.h の opmOperatorY）。
+    public int[] opmOperatorY = StatusItems.DefaultOperatorY();
 
     // ---- レベルメータ ---------------------------------------------------
     public int levelMeterPalOfs = 32;
@@ -267,6 +270,7 @@ public sealed class SkinLayout
         c.pcmXOffset = (int[])pcmXOffset.Clone();
         c.pcmYOffset = (int[])pcmYOffset.Clone();
         c.statusPos = statusPos.Select(p => (int[])p.Clone()).ToArray();
+        c.opmOperatorY = (int[])opmOperatorY.Clone();
         c.fileListMargin = (int[])fileListMargin.Clone();
         c.fileListRows = (int[])fileListRows.Clone();
         c.fileListItemH = (int[])fileListItemH.Clone();

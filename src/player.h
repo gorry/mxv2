@@ -196,6 +196,8 @@ private:
 	static void SDLCALL AudioCallbackTrampoline(void *userdata, uint8_t *stream, int len);
 	static int DecodeThreadTrampoline(void *arg);
 	static void OpmIntTrampoline(MxdrvContext *context);
+	// OPM レジスタ書き込みの通知（portable_mdx の拡張。無ければ登録しない）。
+	static void OpmWriteTrampoline(MxdrvContext *context, uint8_t reg, uint8_t data);
 
 	void AudioCallback(uint8_t *stream, int len);
 

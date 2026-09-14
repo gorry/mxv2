@@ -131,6 +131,7 @@ DrawScreen::DrawScreen()
       backImageH_(0),
       textLayer_(0),
       fileListFontSize_(0),
+      statusMode_(kStatusModeChannel),
       channelMask_(0),
       scrollBarFlags_(0),
       scrollBarThumb_(0),
@@ -549,9 +550,111 @@ void DrawScreen::StatusItemPos(StatusItem item, int row, int *x, int *y) const {
 }
 
 void DrawScreen::PutStatusText(StatusItem item, int row, const char *text) {
+	if (statusMode_ != kStatusModeChannel) return;
 	int x = 0, y = 0;
 	StatusItemPos(item, row, &x, &y);
 	PrintMiniCompose(x, y, text, colors_.status.color, colors_.status.colorBright);
+}
+
+// ---------------------------------------------------------------------------
+// 音色データ表示 (tonedata.md)
+// ---------------------------------------------------------------------------
+
+void DrawScreen::PutToneText(StatusItem item, int row, int slot, const char *text) {
+	if (statusMode_ != kStatusModeTone) return;
+	if (row < 0 || row >= 9) return;
+	const int *pos = layout_.statusPos[item];
+	int x = layout_.statusX + pos[0];
+	int y = layout_.statusY + layout_.chYOffset[row] + pos[1];
+	if (IsStatusOpmOperatorItem(item)) y += layout_.opmOperatorY[slot & 3];
+	PrintMiniCompose(x, y, text, colors_.status.color, colors_.status.colorBright);
+}
+
+void DrawScreen::ClearStatusArea() {
+	for (int row = 0; row < 9; row++) {
+		int x = 0, y = 0, w = 0, h = 0;
+		if (!StatusRect(row, &x, &y, &w, &h)) continue;
+		BmpCopy(&screen_, x, y, w, h, &back_, x, y, 100);
+	}
+}
+
+void DrawScreen::SetStatusMode(int mode) {
+	if (mode == statusMode_) return;
+	statusMode_ = mode;
+	ClearStatusArea();
+	PutStatusZero();
+}
+
+void DrawScreen::PutOPMChannel(int reg20, int row) {
+	if (row < 0 || row >= 8) return;
+	char s[8];
+	snprintf(s, sizeof(s), "A%X", reg20 & 7);
+	PutToneText(kStatusOPMAlgorithm, row, 0, s);
+	snprintf(s, sizeof(s), "F%X", (reg20 >> 3) & 7);
+	PutToneText(kStatusOPMFeedback, row, 0, s);
+}
+
+void DrawScreen::PutOPMOperator(int row, int slot, int group, int value) {
+	if (row < 0 || row >= 8) return;
+	char s[8];
+	switch (group) {
+		case kOpmOpDT1MUL:
+			snprintf(s, sizeof(s), "%X", value & 0x0f);
+			PutToneText(kStatusOPMMultiple, row, slot, s);
+			snprintf(s, sizeof(s), "%X", (value >> 4) & 0x07);
+			PutToneText(kStatusOPMDetune1, row, slot, s);
+			break;
+		case kOpmOpKSAR:
+			snprintf(s, sizeof(s), "%02X", value & 0x1f);
+			PutToneText(kStatusOPMAttackRate, row, slot, s);
+			snprintf(s, sizeof(s), "%X", (value >> 6) & 0x03);
+			PutToneText(kStatusOPMKeyScaling, row, slot, s);
+			break;
+		case kOpmOpAMED1R:
+			snprintf(s, sizeof(s), "%02X", value & 0x1f);
+			PutToneText(kStatusOPMDecayRate, row, slot, s);
+			snprintf(s, sizeof(s), "%X", (value >> 7) & 0x01);
+			PutToneText(kStatusOPMAMSEnable, row, slot, s);
+			break;
+		case kOpmOpDT2D2R:
+			snprintf(s, sizeof(s), "%02X", value & 0x1f);
+			PutToneText(kStatusOPMSustainRate, row, slot, s);
+			snprintf(s, sizeof(s), "%X", (value >> 6) & 0x03);
+			PutToneText(kStatusOPMDetune2, row, slot, s);
+			break;
+		case kOpmOpD1LRR:
+			snprintf(s, sizeof(s), "%X", value & 0x0f);
+			PutToneText(kStatusOPMReleaseRate, row, slot, s);
+			snprintf(s, sizeof(s), "%X", (value >> 4) & 0x0f);
+			PutToneText(kStatusOPMSustainLevel, row, slot, s);
+			break;
+		case kOpmOpTL:
+			snprintf(s, sizeof(s), "%02X", value & 0x7f);
+			PutToneText(kStatusOPMTotalLevel, row, slot, s);
+			break;
+		default:
+			break;
+	}
+}
+
+void DrawScreen::PutOPMGlobal(int kind, int value, bool valid) {
+	char s[16];
+	static const char *const kLabels[kNumOpmGlobalKinds] = {
+		"NOISE:", "CLKB :", "LFRQ :", "PMD  :", "AMD  :", "WAVE :",
+	};
+	static const StatusItem kItems[kNumOpmGlobalKinds] = {
+		kStatusOPMNoise,  kStatusOPMClockB, kStatusOPMLFOFreq,
+		kStatusOPMLFOPMD, kStatusOPMLFOAMD, kStatusOPMLFOWave,
+	};
+	if (kind < 0 || kind >= kNumOpmGlobalKinds) return;
+	if (kind == kOpmGlobalLFOWave) {
+		snprintf(s, sizeof(s), "%s%X", kLabels[kind], value & 3);
+	} else if (!valid) {
+		snprintf(s, sizeof(s), "%s--", kLabels[kind]);
+	} else {
+		snprintf(s, sizeof(s), "%s%02X", kLabels[kind], value & 0xff);
+	}
+	PutToneText(kItems[kind], 8, 0, s);
 }
 
 // ---------------------------------------------------------------------------
@@ -710,6 +813,7 @@ void DrawScreen::PutLFOVolume3(int v, int row) {
 
 void DrawScreen::PutLevelMeter(const char *levelMeterInfo, int row) {
 	if (row < 0 || row >= 9 || !levelMeter_.valid()) return;
+	if (statusMode_ != kStatusModeChannel) return;
 
 	// 点灯しているセルだけ明るいパレットに差し替える。
 	for (int i = 0; i < layout_.levelMeterWidthCells; i++) {
@@ -782,6 +886,17 @@ void DrawScreen::PutStatusZero() {
 	for (int i = 0; i < 8; i++) {
 		PutPCMVolume(0, 8 + i);
 		PutPCMPtr(0, 8 + i);
+	}
+
+	// 音色データ表示のぶん（そのモードのときだけ実際に描かれる）。
+	for (int row = 0; row < 8; row++) {
+		PutOPMChannel(0, row);
+		for (int slot = 0; slot < 4; slot++) {
+			for (int g = 0; g < kNumOpmOpGroups; g++) PutOPMOperator(row, slot, g, 0);
+		}
+	}
+	for (int k = 0; k < kNumOpmGlobalKinds; k++) {
+		PutOPMGlobal(k, 0, k == kOpmGlobalClockB || k == kOpmGlobalLFOFreq || k == kOpmGlobalLFOWave);
 	}
 }
 
