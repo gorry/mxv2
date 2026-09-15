@@ -2458,15 +2458,16 @@ void SettingsUi::BuildStartupWindow() {
 }
 
 // [操作方法] の中身をカタログから作る。-h の出力と同じ一覧
-// （[HelpKeys] [HelpMouse]）を、見出しを挟んで並べたもの。
+// （[HelpKeys] [HelpMouse] [HelpPad]）を、見出しを挟んで並べたもの。
 void SettingsUi::LoadHelpRows() {
-	static const char *kParts[2][2] = {
+	static const char *kParts[3][2] = {
 		{ "Help.Keys", "HelpKeys" },
 		{ "Help.Mouse", "HelpMouse" },
+		{ "Help.Pad", "HelpPad" },
 	};
 
 	helpRows_.clear();
-	for (int i = 0; i < 2; i++) {
+	for (int i = 0; i < 3; i++) {
 		HelpRow head;
 		head.header = true;
 		head.key = Msg(kParts[i][0]);

@@ -162,6 +162,7 @@ set(MXV2_SOURCES
 	src/drawscreen.cpp
 	src/filer.cpp
 	src/fileutil.cpp
+	src/gamepad.cpp
 	src/ini.cpp
 	src/kinsoku.cpp
 	src/mdxsong.cpp
@@ -193,6 +194,7 @@ set(MXV2_SOURCES
 	src/drawscreen.h
 	src/filer.h
 	src/fileutil.h
+	src/gamepad.h
 	src/ini.h
 	src/kinsoku.h
 	src/mdxsong.h

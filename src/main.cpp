@@ -30,6 +30,7 @@
 #include "filer.h"
 #include "mdxsong.h"
 #include "message.h"
+#include "gamepad.h"
 #include "mouse.h"
 #include "nowplaying.h"
 #include "orientlock.h"
@@ -243,7 +244,7 @@ void PrintRow(const std::string &name, const std::string &desc, int width) {
 	printf("  %s%s %s\n", name.c_str(), pad.c_str(), desc.c_str());
 }
 
-// 一覧（[UsageOptions] [HelpKeys] [HelpMouse]）を 2 段組で出す。
+// 一覧（[UsageOptions] [HelpKeys] [HelpMouse] [HelpPad]）を 2 段組で出す。
 // 名前の桁は一番広いものに合わせる。
 void PrintRows(const char *section, int width, const std::string &a0 = std::string(),
                const std::string &a1 = std::string()) {
@@ -271,16 +272,20 @@ void PrintUsage(const char *argv0) {
 	          mxv2::Player::kSupports96kHz ? " / 96000" : "",
 	          mxv2::MsgNum("%d", mxv2::Player::kDefaultSampleRate));
 
-	// キー・マウスの一覧。ダイアログ ([操作方法]) と同じものを出す。
-	// 桁は両方まとめて揃える（std::max は windows.h の max マクロと
+	// キー・マウス・ゲームパッドの一覧。ダイアログ ([操作方法]) と同じものを
+	// 出す。桁は 3 つまとめて揃える（std::max は windows.h の max マクロと
 	// ぶつかるので使わない）。
 	int width = RowsWidth("HelpKeys");
 	const int mouseWidth = RowsWidth("HelpMouse");
+	const int padWidth = RowsWidth("HelpPad");
 	if (mouseWidth > width) width = mouseWidth;
+	if (padWidth > width) width = padWidth;
 	printf("%s\n", mxv2::Msg("Help.Keys"));
 	PrintRows("HelpKeys", width);
 	printf("%s\n", mxv2::Msg("Help.Mouse"));
 	PrintRows("HelpMouse", width);
+	printf("%s\n", mxv2::Msg("Help.Pad"));
+	PrintRows("HelpPad", width);
 }
 
 // 素材と設定の置き場所を決めるオプションだけ先に見る。mxv2.ini はここで
@@ -1427,6 +1432,13 @@ int main(int argc, char **argv) {
 
 	mxv2::Visualizer visualizer(&draw);
 	mxv2::MouseInput mouse(&draw, &filer, &player);
+	// ゲームパッド（gamepad.h）。入力はキーに写して同じ経路へ流す。
+	// 開けなくてもゲームパッドが使えないだけなので、警告だけ出して続ける。
+	mxv2::Gamepad gamepad;
+	{
+		std::string err;
+		if (!gamepad.Init(&err)) Warn(&warnings, mxv2::MsgF("Log.GamepadInit", err));
+	}
 	bool chromeRefresh = true;
 	bool fileListRefresh = true;
 
@@ -1631,6 +1643,9 @@ int main(int argc, char **argv) {
 		SDL_Event ev;
 		while (SDL_PollEvent(&ev)) {
 			ui.ProcessEvent(ev);
+			// コントローラのイベントはキーに写して積み直す。積んだキーは
+			// このループの続きで普通のキーとして届く。
+			gamepad.Handle(ev);
 
 			if (ev.type == SDL_QUIT) {
 				quit = true;
@@ -2112,6 +2127,7 @@ int main(int argc, char **argv) {
 		// 長押し（STOP でフェードアウト、ファイラーで文字サイズ、ステータス欄で
 		// 音色データ表示、鍵盤で OPM レジスタ一覧）はイベントではなく時間で
 		// 決まるので、ここで拾う。
+		gamepad.Poll(SDL_GetTicks());  // 上下の押し続け（キーリピート相当）
 		switch (mouse.Poll(SDL_GetTicks())) {
 			case mxv2::kMouseRequestToggleFontSize:
 				ToggleFileListFontSize(&draw, &filer, &fileListRefresh);
