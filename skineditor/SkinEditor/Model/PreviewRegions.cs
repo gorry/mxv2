@@ -39,6 +39,10 @@ public static class PreviewRegions
         public const string StatusOperatorOrigin = "status.oporigin";
         public const string Banner = "banner";
         public const string Title = "title";
+        // OPM レジスタ一覧のオーバーレイ（regmap.md）。矩形と、文字の描き始め
+        // （Pos の原点は矩形の左上）。
+        public const string RegMap = "regmap";
+        public const string RegMapText = "regmap.text";
         public const string FilerSide = "filerside";  // ファイラー側の矩形（2 分割の片方）
         public const string FileList = "filelist";
         public const string ScrollBar = "scrollbar";
@@ -88,6 +92,7 @@ public static class PreviewRegions
 
         r[Ids.Banner] = new Rectangle(e.bannerX, e.bannerY, e.bannerW, e.bannerH);
         r[Ids.Title] = new Rectangle(e.titleX, e.titleY, e.titleW, e.titleH);
+        AddRegMap(r, e, sizeOf);
         r[Ids.FilerSide] = FilerSideRect(e);
         r[Ids.FileList] = new Rectangle(e.fileListX, e.fileListY, e.fileListW, e.fileListH);
 
@@ -204,6 +209,20 @@ public static class PreviewRegions
         // 「PCM の位置」のチェックボックス（8 行まとめて継承を切り替える行）は
         // どれか 1 ch を指せないので、8 ch ぶんの外接矩形を指す。
         r[Ids.PcmAll] = pcmAll ?? r[Ids.Status];
+    }
+
+    // OPM レジスタ一覧（regmap.md）。文字は 56 桁 x 25 行の固定の雛形
+    // （DrawScreenPort.RegMapRows）なので、その大きさの矩形を出す。
+    private static void AddRegMap(Dictionary<string, Rectangle> r, SkinLayout e, Func<string, Size?> sizeOf)
+    {
+        r[Ids.RegMap] = new Rectangle(e.regMapX, e.regMapY, e.regMapW, e.regMapH);
+        var mini = sizeOf(e.miniFontBitmap);
+        int glyphW = mini != null ? mini.Value.Width / 16 : e.miniFontW;
+        int glyphH = mini != null ? mini.Value.Height / 5 : e.miniFontH;
+        int w = TextWidth(Render.DrawScreenPort.RegMapCols, e.miniFontW, glyphW);
+        int h = (Render.DrawScreenPort.RegMapRowCount - 1) * (e.miniFontH + Render.DrawScreenPort.RegMapRowGap) + glyphH;
+        r[Ids.RegMapText] = new Rectangle(e.regMapX + e.regMapPosX, e.regMapY + e.regMapPosY,
+            Math.Max(1, w), Math.Max(1, h));
     }
 
     // ファイラー側の矩形（画面を 2 つに分けた片方）。SkinLayout.PlacedFor と

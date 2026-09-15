@@ -185,6 +185,40 @@ public class RenderTests
         GC.KeepAlive(doc);
     }
 
+    // OPM レジスタ一覧（regmap.md）のオーバーレイ。[RegMap] Rect の中だけが
+    // 変わり、外は 1 画素も変わらない（本体は BlitTo で乗せるものなので、
+    // 下の絵を壊してはいけない）。中には文字色（既定は白）の画素が出る。
+    [Fact]
+    public void OverlayRegMap_ChangesOnlyInsideItsRect()
+    {
+        var port = Render("Default", out var doc);
+        var skin = doc.Placed;
+        var before = (byte[])port.Screen.Bits.Clone();
+        port.OverlayRegMap();
+
+        int inside = 0, outside = 0, white = 0;
+        for (int y = 0; y < port.Height; y++)
+        {
+            for (int x = 0; x < port.Width; x++)
+            {
+                int o = port.Screen.RowFromTop(y) + x * 3;
+                bool same = before[o] == port.Screen.Bits[o] && before[o + 1] == port.Screen.Bits[o + 1] &&
+                            before[o + 2] == port.Screen.Bits[o + 2];
+                bool inRect = x >= skin.regMapX && x < skin.regMapX + skin.regMapW &&
+                              y >= skin.regMapY && y < skin.regMapY + skin.regMapH;
+                if (inRect)
+                {
+                    if (!same) inside++;
+                    if (PixelAt(port.Screen, x, y) == (255, 255, 255)) white++;
+                }
+                else if (!same) outside++;
+            }
+        }
+        Assert.Equal(0, outside);
+        Assert.True(inside > 1000, $"矩形の中で変わった画素が少なすぎる ({inside})");
+        Assert.True(white > 100, $"文字色の画素が少なすぎる ({white})");
+    }
+
     [Fact]
     public void Render_Phone_UsesItsOwnScreenSize()
     {

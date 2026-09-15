@@ -80,6 +80,7 @@ void StatusWatch::Reset() {
 		}
 	}
 	for (int i = 0; i < 6; i++) toneGlobal_[i] = -1;
+	for (int i = 0; i < 256; i++) regMapLast_[i] = -1;
 	for (int ch = 0; ch < 16; ch++) {
 		ChannelState *l = &ch_[ch];
 		memset(l, 0, sizeof(*l));
@@ -114,6 +115,7 @@ void StatusWatch::ForgetLastValues() {
 		}
 	}
 	for (int i = 0; i < 6; i++) toneGlobal_[i] = -1;
+	for (int i = 0; i < 256; i++) regMapLast_[i] = -1;
 	const uint32_t now = nowTimeMs_;
 	Reset();
 	nowTimeMs_ = now;
@@ -464,6 +466,15 @@ void StatusWatch::PollTone(uint64_t frame, DispQueue *q) {
 		q->Push(frame, DISP_OPMGLOBAL, (uint8_t)k, (uint8_t)(gv[k] & 0xff),
 		        (uint8_t)((gv[k] & 0x100) ? 1 : 0));
 		toneGlobal_[k] = gv[k];
+	}
+
+	// OPM レジスタ一覧（regmap.md）。256 本のうち変わったものだけ。$19 は
+	// PMD / AMD のどちらであれ最後に書かれた値（bit7 で見分けられる）。
+	for (int i = 0; i < 256; i++) {
+		const int v = OpmReg(i);
+		if (regMapLast_[i] == v) continue;
+		q->Push(frame, DISP_OPMREG, (uint8_t)i, (uint8_t)v, 0);
+		regMapLast_[i] = v;
 	}
 }
 

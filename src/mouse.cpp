@@ -218,6 +218,11 @@ MouseRequest MouseInput::OnButtonDown(int x, int y, int clicks) {
 		if (ch >= 0) {
 			captured_ = kCapturedKeyboard;
 			capturedHit_ = ch;
+			// 長押し（OPM レジスタ一覧の表示切り替え）。動かさずに押し続けたときだけ。
+			dragOriginX_ = x;
+			dragOriginY_ = y;
+			pressStartMs_ = SDL_GetTicks();
+			longPressDone_ = false;
 			return kMouseRequestNone;
 		}
 	}
@@ -401,8 +406,10 @@ MouseRequest MouseInput::OnButtonUp(int x, int y) {
 	}
 
 	// 鍵盤も、押したチャンネルの上で離したときだけ切り替える
-	// （操作ボタンと同じ作法）。
+	// （操作ボタンと同じ作法）。長押し（レジスタ一覧の切り替え）が成立した
+	// 押下ではマスクを変えない。
 	if (captured == kCapturedKeyboard) {
+		if (longPressed) return kMouseRequestNone;
 		if (draw_->HitCheckKeyboard(x, y) == hit) player_->ToggleChannel(hit);
 		return kMouseRequestNone;
 	}
@@ -557,14 +564,18 @@ MouseRequest MouseInput::Poll(uint32_t nowMs) {
 	UpdateFling(nowMs);
 
 	// 長押し。押してから kLongPressMs 経ち、まだ成立していなければ見る。
-	if (!longPressDone_ && captured_ == kCapturedStatus && nowMs - pressStartMs_ >= kLongPressMs) {
-		// ステータス欄。掴んだ場所から動かしていなければ表示モードの切り替え。
+	if (!longPressDone_ && (captured_ == kCapturedStatus || captured_ == kCapturedKeyboard) &&
+	    nowMs - pressStartMs_ >= kLongPressMs) {
+		// ステータス欄は表示モードの切り替え、鍵盤は OPM レジスタ一覧の
+		// 表示切り替え。どちらも掴んだ場所から動かしていないときだけ。
 		longPressDone_ = true;
 		const int dx = lastX_ - dragOriginX_;
 		const int dy = lastY_ - dragOriginY_;
 		const bool still = (dx > -kDragSlopPx && dx < kDragSlopPx) &&
 		                   (dy > -kDragSlopPx && dy < kDragSlopPx);
-		return still ? kMouseRequestToggleStatusMode : kMouseRequestNone;
+		if (!still) return kMouseRequestNone;
+		return (captured_ == kCapturedStatus) ? kMouseRequestToggleStatusMode
+		                                      : kMouseRequestToggleRegMap;
 	}
 	if (!longPressDone_ && (captured_ == kCapturedPlayKey || captured_ == kCapturedFileList) &&
 	    nowMs - pressStartMs_ >= kLongPressMs) {

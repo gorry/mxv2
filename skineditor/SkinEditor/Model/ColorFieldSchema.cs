@@ -58,6 +58,13 @@ public static class ColorFieldSchema
             ColorFieldDef.Color("背景色", c => c.mdxTitle.backColor, (c, v) => c.mdxTitle.backColor = v),
             ColorFieldDef.Int("背景色の濃さ", c => c.mdxTitle.backColorBright, (c, v) => c.mdxTitle.backColorBright = v),
         }),
+        new("OPM レジスタ一覧 (RegMap)", new List<ColorFieldDef>
+        {
+            ColorFieldDef.Color("文字色", c => c.regMap.color, (c, v) => c.regMap.color = v),
+            ColorFieldDef.Int("文字色の濃さ", c => c.regMap.colorBright, (c, v) => c.regMap.colorBright = v),
+            ColorFieldDef.Color("背景色", c => c.regMap.backColor, (c, v) => c.regMap.backColor = v),
+            ColorFieldDef.Int("背景色の濃さ", c => c.regMap.backColorBright, (c, v) => c.regMap.backColorBright = v),
+        }),
         new("ファイラー (Filer)", new List<ColorFieldDef>
         {
             ColorFieldDef.Color("カーソル (背景へのゲイン)", c => c.filer.cursorColor, (c, v) => c.filer.cursorColor = v),

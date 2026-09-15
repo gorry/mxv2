@@ -32,6 +32,14 @@ public sealed class ColorsValues
         public RgbColor backColor;
         public int backColorBright;
     }
+    // OPM レジスタ一覧のオーバーレイ（regmap.md。本体 colors.h の regMap）。
+    public struct RegMapT
+    {
+        public RgbColor color;
+        public int colorBright;
+        public RgbColor backColor;
+        public int backColorBright;
+    }
     public struct FilerT
     {
         public RgbColor cursorColor;
@@ -55,6 +63,7 @@ public sealed class ColorsValues
     public KbT kb;
     public StatusT status;
     public MdxTitleT mdxTitle;
+    public RegMapT regMap;
     public FilerT filer;
     public PlayKeyT playKey;
 
@@ -78,6 +87,11 @@ public sealed class ColorsValues
         mdxTitle.colorBright = 100;
         mdxTitle.backColor = new RgbColor(0, 0, 0);
         mdxTitle.backColorBright = 50;
+
+        regMap.color = new RgbColor(255, 255, 255);
+        regMap.colorBright = 100;
+        regMap.backColor = new RgbColor(0, 0, 0);
+        regMap.backColorBright = 50;
 
         filer.cursorColor = new RgbColor(50, 50, 200);
         filer.cursorColorBright = 100;

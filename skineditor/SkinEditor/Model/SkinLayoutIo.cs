@@ -45,6 +45,13 @@ public static class SkinLayoutIo
             GetIntList(ini, "Status", StatusItems.Keys[i], t.statusPos[i], 2);
         GetIntList(ini, "Status", "OPMOperatorY", t.opmOperatorY, 4);
 
+        {
+            var r = new Xywh(t.regMapX, t.regMapY, t.regMapW, t.regMapH);
+            GetXywh(ini, "RegMap", "Rect", ref r);
+            t.regMapX = r.X; t.regMapY = r.Y; t.regMapW = r.W; t.regMapH = r.H;
+        }
+        GetXy(ini, "RegMap", "Pos", ref t.regMapPosX, ref t.regMapPosY);
+
         t.levelMeterPalOfs = ini.GetInt("LevelMeter", "PaletteOffset", t.levelMeterPalOfs);
         t.levelMeterWidthCells = ini.GetInt("LevelMeter", "Cells", t.levelMeterWidthCells);
         t.levelMeterSrcX = ini.GetInt("LevelMeter", "SrcX", t.levelMeterSrcX);
@@ -156,6 +163,9 @@ public static class SkinLayoutIo
         for (int i = 0; i < StatusItems.Count; i++)
             ini.SetString("Status", StatusItems.Keys[i], Join(t.statusPos[i]));
         ini.SetString("Status", "OPMOperatorY", Join(t.opmOperatorY));
+
+        ini.SetString("RegMap", "Rect", $"{t.regMapX},{t.regMapY},{t.regMapW},{t.regMapH}");
+        ini.SetString("RegMap", "Pos", $"{t.regMapPosX},{t.regMapPosY}");
 
         ini.SetInt("LevelMeter", "PaletteOffset", t.levelMeterPalOfs);
         ini.SetInt("LevelMeter", "Cells", t.levelMeterWidthCells);

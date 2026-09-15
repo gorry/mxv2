@@ -126,6 +126,8 @@ private:
 	int opmPmd_, opmAmd_;   // $19 を bit7 で振り分けたもの。-1 は未設定
 	ToneState tone_[8];
 	int toneGlobal_[6];     // [OpmGlobalKind]。値 | (有効 << 8)。-1 は未積み
+	// OPM レジスタ一覧（regmap.md）の「前回値」。-1 は「まだ積んでいない」。
+	int regMapLast_[256];
 };
 
 }  // namespace mxv2

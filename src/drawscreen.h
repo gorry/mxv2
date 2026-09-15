@@ -120,6 +120,17 @@ public:
 	// kind は OpmGlobalKind。valid が false なら "--"。
 	void PutOPMGlobal(int kind, int value, bool valid);
 
+	// ---- OPM レジスタ一覧（regmap.md） ---------------------------------
+	// 鍵盤の長押しで、今の画面の上に OPM の全レジスタの値を重ねて出す。
+	// 写し (SetOpmReg) は表示 OFF でも受け取り続けるので、ON にした瞬間に
+	// 全部の値が出る（積み直しは要らない）。ini には保存しない（常に OFF で
+	// 始まる）。実際に乗せるのは BlitTo のとき——キャンバスに焼くと OFF に
+	// したとき下の絵が戻らない（差分更新なので描き直されない）。
+	void SetOpmReg(int no, int value);
+	bool regMapVisible() const { return regMapVisible_; }
+	void SetRegMapVisible(bool visible);
+	void ToggleRegMap() { SetRegMapVisible(!regMapVisible_); }
+
 	// マスクしているチャンネルの鍵盤に半透明のグレーを乗せる。
 	// bit0..7 = FM ch.1-8（その段の鍵盤全体）、bit8..15 = PCM ch.P-W
 	// （PCM は鍵盤 1 段を共有するので、横に 8 等分して左から順に割り当てる）。
@@ -272,6 +283,8 @@ private:
 	// ミニフォント（素材のビットマップ文字）での文字列描画。
 	void PrintMini(int x, int y, const char *msg, const Rgb &color, int alpha);
 	void PrintMiniCompose(int x, int y, const char *msg, const Rgb &color, int alpha);
+	// 8bpp のステンシルへ、パレット番号をそのまま置く（色は乗せない）。
+	void PrintMiniStencil(Bitmap *dst, int x, int y, const char *msg) const;
 
 	// ステータス欄の項目 1 つの左上（row 段目）。位置はスキン持ち。
 	void StatusItemPos(StatusItem item, int row, int *x, int *y) const;
@@ -333,6 +346,16 @@ private:
 	// マスクしているチャンネル（SetChannelMask）。BlitTo で灰色を乗せる。
 	uint16_t channelMask_;
 	void OverlayChannelMask(Screen *out) const;
+
+	// OPM レジスタ一覧（regmap.md）。文字は Rect の大きさの 8bpp ステンシルに
+	// 描いておき（値が変わったときだけ描き直す）、BlitTo で背景色と文字色を
+	// 乗せる。ステンシルは BlitTo (const) の中で遅延して作るので mutable。
+	bool regMapVisible_;
+	mutable bool regMapDirty_;
+	uint8_t opmRegs_[256];
+	mutable Bitmap regMapText_;
+	void RenderRegMapText() const;
+	void OverlayRegMap(Screen *out) const;
 
 	int scrollBarFlags_;
 	int scrollBarThumb_;  // 溝の中のつまみ位置 0..kScrollBarMovement

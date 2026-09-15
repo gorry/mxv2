@@ -65,6 +65,12 @@ public sealed class SkinLayout
     // 並びは OPM のスロット順 M1, M2, C1, C2。本体 skin.h の opmOperatorY）。
     public int[] opmOperatorY = StatusItems.DefaultOperatorY();
 
+    // ---- OPM レジスタ一覧（regmap.md。本体 skin.h の regMap*） -------------
+    // 鍵盤の長押しで出すオーバーレイ。Rect は矩形、Pos は矩形の左上からの
+    // 文字の描き始め。
+    public int regMapX = 0, regMapY = 0, regMapW = 340, regMapH = 229;
+    public int regMapPosX = 1, regMapPosY = 1;
+
     // ---- レベルメータ ---------------------------------------------------
     public int levelMeterPalOfs = 32;
     public int levelMeterWidthCells = 64;

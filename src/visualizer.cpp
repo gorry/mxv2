@@ -124,6 +124,10 @@ void Visualizer::Consume(DispQueue *queue, uint64_t visualFrame) {
 			case DISP_OPMGLOBAL:
 				draw_->PutOPMGlobal(w.param1, w.param2, w.param3 != 0);
 				break;
+			// OPM レジスタ一覧。写しは常に更新し、描くかは DrawScreen が決める。
+			case DISP_OPMREG:
+				draw_->SetOpmReg(w.param1, w.param2);
+				break;
 
 			case DISP_LEVELMETER: {
 				// param3 までを点灯、param2 (ピーク) を 1 セルだけ点灯。

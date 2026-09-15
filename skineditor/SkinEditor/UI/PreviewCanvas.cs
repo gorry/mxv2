@@ -138,6 +138,14 @@ public sealed class PreviewCanvas : Panel
         set { _state.ToneMode = value; _dirty = true; }
     }
 
+    // [レジスタ一覧]タブを選んでいる間の OPM レジスタ一覧のオーバーレイ
+    // （本体は鍵盤の長押し。regmap.md）。
+    public bool StateRegMapMode
+    {
+        get => _state.RegMapMode;
+        set { _state.RegMapMode = value; _dirty = true; }
+    }
+
     // [鍵盤]タブの「押す」トグル。ON にした瞬間だけ乱数を選び直す
     // （OFF にしても選んだ鍵は捨てず、次に ON にしたときにまた選び直す）。
     public bool StateKeysPressed

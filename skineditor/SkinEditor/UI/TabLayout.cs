@@ -74,7 +74,13 @@ public sealed record ToggleDef(
     string Text, string Region, Func<PreviewCanvas, bool> Get, Action<PreviewCanvas, bool> Set);
 public sealed record TogglesNode(int TopMargin, params ToggleDef[] Toggles) : Node;
 
-public sealed record TabDef(string Title, Node[] Nodes);
+public sealed record TabDef(string Title, Node[] Nodes)
+{
+    // このタブが選ばれた (true) / 外れた (false) ときに呼ばれる。プレビューの
+    // 状態をタブに連動させるのに使う（[レジスタ一覧] のオーバーレイ。鍵盤と
+    // ステータスを覆うので、他のタブへ移ったら消す）。
+    public Action<PreviewCanvas, bool>? OnSelected { get; init; }
+}
 
 public static class TabLayout
 {
@@ -215,6 +221,19 @@ public static class TabLayout
             },
             Colors("ステータス (Status)"),
         }),
+
+        // OPM レジスタ一覧（regmap.md）。本体は鍵盤の長押しで出すオーバーレイ。
+        // プレビューはこのタブを選んでいる間だけ出す（鍵盤とステータスを覆うので、
+        // 他のタブへ移ったら消す。[音色] サブタブの「移っても戻さない」とは逆）。
+        new TabDef("レジスタ一覧", new Node[]
+        {
+            Field("RegMap", "Rect"),
+            Field("RegMap", "Pos"),
+            Colors("OPM レジスタ一覧 (RegMap)"),
+        })
+        {
+            OnSelected = (p, selected) => p.StateRegMapMode = selected,
+        },
 
         new TabDef("バナー", new[]
         {

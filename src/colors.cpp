@@ -40,6 +40,11 @@ Colors::Colors() {
 	mdxTitle.backColor = MakeRgb(0, 0, 0);
 	mdxTitle.backColorBright = 50;
 
+	regMap.color = MakeRgb(255, 255, 255);
+	regMap.colorBright = 100;
+	regMap.backColor = MakeRgb(0, 0, 0);
+	regMap.backColorBright = 50;
+
 	filer.cursorColor = MakeRgb(50, 50, 200);
 	filer.cursorColorBright = 100;
 	filer.color = MakeRgb(255, 255, 255);
@@ -80,6 +85,11 @@ bool Colors::Load(const std::string &path) {
 	    FromColorRef(ini.GetInt("MDXTitle", "BackColor", ToColorRef(mdxTitle.backColor)));
 	mdxTitle.backColorBright =
 	    ini.GetInt("MDXTitle", "BackColorBright", mdxTitle.backColorBright);
+
+	regMap.color = FromColorRef(ini.GetInt("RegMap", "Color", ToColorRef(regMap.color)));
+	regMap.colorBright = ini.GetInt("RegMap", "ColorBright", regMap.colorBright);
+	regMap.backColor = FromColorRef(ini.GetInt("RegMap", "BackColor", ToColorRef(regMap.backColor)));
+	regMap.backColorBright = ini.GetInt("RegMap", "BackColorBright", regMap.backColorBright);
 
 	{
 		// 旧 mxv 以来、カーソルの色は CursorBright という名前だった
@@ -133,6 +143,11 @@ bool Colors::Save(const std::string &path) const {
 	ini.SetInt("MDXTitle", "ColorBright", mdxTitle.colorBright);
 	ini.SetInt("MDXTitle", "BackColor", ToColorRef(mdxTitle.backColor));
 	ini.SetInt("MDXTitle", "BackColorBright", mdxTitle.backColorBright);
+
+	ini.SetInt("RegMap", "Color", ToColorRef(regMap.color));
+	ini.SetInt("RegMap", "ColorBright", regMap.colorBright);
+	ini.SetInt("RegMap", "BackColor", ToColorRef(regMap.backColor));
+	ini.SetInt("RegMap", "BackColorBright", regMap.backColorBright);
 
 	ini.Remove("Filer", "CursorBright");  // 旧い名前。残すと紛らわしい
 	ini.SetInt("Filer", "CursorColor", ToColorRef(filer.cursorColor));

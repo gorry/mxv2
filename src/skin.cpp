@@ -154,6 +154,12 @@ Skin::Skin() {
 	statusY = 4;
 	statusW = 128;
 	statusH = 35;
+	regMapX = 0;
+	regMapY = 0;
+	regMapW = 340;
+	regMapH = 229;
+	regMapPosX = 1;
+	regMapPosY = 1;
 	{
 		static const int kX[8] = { 0, 0, 0, 0, 68, 68, 68, 68 };
 		static const int kY[8] = { 0, 9, 18, 27, 0, 9, 18, 27 };
@@ -462,6 +468,16 @@ void Skin::ApplyLayout(const std::string &skinDir) {
 	}
 	GetIntList(ini, "Status", "OPMOperatorY", opmOperatorY, 4);
 
+	{
+		Xywh r = { regMapX, regMapY, regMapW, regMapH };
+		GetXywh(ini, "RegMap", "Rect", &r);
+		regMapX = r.x;
+		regMapY = r.y;
+		regMapW = r.w;
+		regMapH = r.h;
+	}
+	GetXy(ini, "RegMap", "Pos", &regMapPosX, &regMapPosY);
+
 	levelMeterPalOfs = ini.GetInt("LevelMeter", "PaletteOffset", levelMeterPalOfs);
 	levelMeterWidthCells = ini.GetInt("LevelMeter", "Cells", levelMeterWidthCells);
 	levelMeterSrcX = ini.GetInt("LevelMeter", "SrcX", levelMeterSrcX);
@@ -690,6 +706,8 @@ Skin Skin::PlacedFor(int canvasW, int canvasH) const {
 		s.kbY += otherY;
 		s.statusX += otherX;
 		s.statusY += otherY;
+		s.regMapX += otherX;
+		s.regMapY += otherY;
 		s.bannerX += otherX;
 		s.bannerY += otherY;
 		s.titleX += otherX;

@@ -2102,7 +2102,8 @@ int main(int argc, char **argv) {
 		}
 
 		// 長押し（STOP でフェードアウト、ファイラーで文字サイズ、ステータス欄で
-		// 音色データ表示）はイベントではなく時間で決まるので、ここで拾う。
+		// 音色データ表示、鍵盤で OPM レジスタ一覧）はイベントではなく時間で
+		// 決まるので、ここで拾う。
 		switch (mouse.Poll(SDL_GetTicks())) {
 			case mxv2::kMouseRequestToggleFontSize:
 				ToggleFileListFontSize(&draw, &filer, &fileListRefresh);
@@ -2113,6 +2114,10 @@ int main(int argc, char **argv) {
 				// ので、切り替えた直後は全部を頼む）。
 				draw.ToggleStatusMode();
 				player.RequestStatusRefresh();
+				break;
+			case mxv2::kMouseRequestToggleRegMap:
+				// レジスタの写しは表示 OFF でも届いているので、積み直しは要らない。
+				draw.ToggleRegMap();
 				break;
 			default:
 				break;

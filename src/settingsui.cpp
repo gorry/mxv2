@@ -1530,6 +1530,16 @@ void SettingsUi::BuildColorsWindow(Settings *settings, DrawScreen *draw, Player 
 			GroupTrailingSpace();
 		}
 
+		// OPM レジスタ一覧（regmap.md）は BlitTo で乗せるので、Reload を待たず
+		// 次のフレームから効く（Rebuild はほかと同じに呼んでおく）。
+		if (GroupHeader(Msg("Colors.RegMap"))) {
+			if (ColorRow(L("Colors.Text", "##rm"), &t.regMap.color)) dirty = true;
+			if (AlphaRow(L("Colors.TextStrength", "##rm"), &t.regMap.colorBright)) dirty = true;
+			if (ColorRow(L("Colors.Back", "##rm"), &t.regMap.backColor)) dirty = true;
+			if (AlphaRow(L("Colors.BackStrength", "##rm"), &t.regMap.backColorBright)) dirty = true;
+			GroupTrailingSpace();
+		}
+
 		if (GroupHeader(Msg("Colors.Filer"))) {
 			if (ColorRow(L("Colors.Cursor", "##fi"), &t.filer.cursorColor)) dirty = true;
 			if (AlphaRow(L("Colors.CursorStrength", "##fi"), &t.filer.cursorColorBright)) dirty = true;

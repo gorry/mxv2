@@ -167,6 +167,15 @@ struct Skin {
 	// 0,18,9,27 で上から M1 / C1 / M2 / C2（MML の OP1〜OP4 の順）に並ぶ。
 	int opmOperatorY[4];
 
+	// ---- OPM レジスタ一覧（regmap.md） ----------------------------------
+	// 鍵盤の長押しで出すオーバーレイ。layout.ini では [RegMap] Rect に
+	// "x,y,w,h"（矩形。配色の BackColor で塗る）、Pos に "x,y"（矩形の左上
+	// からの、文字を描き始める位置）。文字はミニフォントで、送りは
+	// [MiniFont] Width、行送りは [MiniFont] Height + 1（drawscreen.cpp の
+	// kRegMapRowGap）。
+	int regMapX, regMapY, regMapW, regMapH;
+	int regMapPosX, regMapPosY;
+
 	// ---- レベルメータ -------------------------------------------------
 	int levelMeterPalOfs;      // levelmeter.bmp のパレット開始番号
 	int levelMeterWidthCells;  // セル数

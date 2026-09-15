@@ -51,6 +51,15 @@ struct Colors {
 		int backColorBright;
 	} mdxTitle;
 
+	// OPM レジスタ一覧のオーバーレイ（regmap.md）。backColorBright は
+	// 下の絵にどれだけ被せるか（alpha）。
+	struct {
+		Rgb color;
+		int colorBright;
+		Rgb backColor;
+		int backColorBright;
+	} regMap;
+
 	struct {
 		// カーソルは背景に対する**ゲイン**（100 が素通し。既定は青へ寄せる
 		// (50,50,200)）。cursorColorBright はそれをどれだけ効かせるかで、

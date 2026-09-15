@@ -39,6 +39,12 @@ public static class ColorsIo
         c.mdxTitle.backColorBright =
             ini.GetInt("MDXTitle", "BackColorBright", c.mdxTitle.backColorBright);
 
+        c.regMap.color = RgbColor.FromColorRef(ini.GetInt("RegMap", "Color", c.regMap.color.ToColorRef()));
+        c.regMap.colorBright = ini.GetInt("RegMap", "ColorBright", c.regMap.colorBright);
+        c.regMap.backColor =
+            RgbColor.FromColorRef(ini.GetInt("RegMap", "BackColor", c.regMap.backColor.ToColorRef()));
+        c.regMap.backColorBright = ini.GetInt("RegMap", "BackColorBright", c.regMap.backColorBright);
+
         {
             // 旧い名前 CursorBright も読む。両方あれば新しい方 (CursorColor) が勝つ
             // （colors.cpp と同じ順で読む）。
@@ -84,6 +90,11 @@ public static class ColorsIo
         ini.SetInt("MDXTitle", "ColorBright", c.mdxTitle.colorBright);
         ini.SetInt("MDXTitle", "BackColor", c.mdxTitle.backColor.ToColorRef());
         ini.SetInt("MDXTitle", "BackColorBright", c.mdxTitle.backColorBright);
+
+        ini.SetInt("RegMap", "Color", c.regMap.color.ToColorRef());
+        ini.SetInt("RegMap", "ColorBright", c.regMap.colorBright);
+        ini.SetInt("RegMap", "BackColor", c.regMap.backColor.ToColorRef());
+        ini.SetInt("RegMap", "BackColorBright", c.regMap.backColorBright);
 
         ini.Remove("Filer", "CursorBright");
         ini.SetInt("Filer", "CursorColor", c.filer.cursorColor.ToColorRef());

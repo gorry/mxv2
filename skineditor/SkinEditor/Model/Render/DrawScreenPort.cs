@@ -343,6 +343,111 @@ public sealed class DrawScreenPort
         sy = g / MiniFontCols * _miniGlyphH;
     }
 
+    // ---- OPM レジスタ一覧（本体 DrawScreen::OverlayRegMap。regmap.md） ------
+    // 本体は鍵盤の長押しで出すオーバーレイ。プレビューは [レジスタ一覧] タブを
+    // 選んでいる間だけ、全部描いたあとに OverlayRegMap で重ねる（本体は BlitTo の
+    // ときに乗せるが、プレビューは毎回全部描くので _screen に直に描いてよい）。
+    // 雛形は本体 kRegMapRows の写し。56 桁 x 25 行で、"FF" の場所に値が入る。
+    public const int RegMapCols = 56;
+    private static readonly (string Text, int Base, int Cells)[] RegMapRows =
+    {
+        ("     |   LFO-RESET           |KEY                NFRQ|AD", -1, 0),
+        ("     |FF FF FF FF FF FF FF FF|FF FF FF FF FF FF FF FF|00", 0x00, 16),
+        ("     |CLKA  CLKB  TIMER  LFRQ|   P/AMD W/CT          |  ", -1, 0),
+        ("     |FF FF FF FF FF FF FF FF|FF FF FF FF FF FF FF FF|10", 0x10, 16),
+        ("     |                       |                       |  ", -1, 0),
+        ("  CH.| 1  2  3  4  5  6  7  8|                       |  ", -1, 0),
+        ("AL/FB|FF FF FF FF FF FF FF FF|                       |20", 0x20, 8),
+        ("   KC|FF FF FF FF FF FF FF FF|                       |28", 0x28, 8),
+        ("   KF|FF FF FF FF FF FF FF FF|                       |30", 0x30, 8),
+        ("P/AMS|FF FF FF FF FF FF FF FF|                       |38", 0x38, 8),
+        ("     |                       |                       |  ", -1, 0),
+        ("     |       OP.1/OP.2       |        OP.3/OP.4      |  ", -1, 0),
+        ("  CH.| 1  2  3  4  5  6  7  8| 1  2  3  4  5  6  7  8|  ", -1, 0),
+        ("DT/ML|FF FF FF FF FF FF FF FF|FF FF FF FF FF FF FF FF|40", 0x40, 16),
+        ("     |FF FF FF FF FF FF FF FF|FF FF FF FF FF FF FF FF|50", 0x50, 16),
+        ("   TL|FF FF FF FF FF FF FF FF|FF FF FF FF FF FF FF FF|60", 0x60, 16),
+        ("     |FF FF FF FF FF FF FF FF|FF FF FF FF FF FF FF FF|70", 0x70, 16),
+        ("KS/AR|FF FF FF FF FF FF FF FF|FF FF FF FF FF FF FF FF|80", 0x80, 16),
+        ("     |FF FF FF FF FF FF FF FF|FF FF FF FF FF FF FF FF|90", 0x90, 16),
+        ("AM/DR|FF FF FF FF FF FF FF FF|FF FF FF FF FF FF FF FF|A0", 0xa0, 16),
+        ("     |FF FF FF FF FF FF FF FF|FF FF FF FF FF FF FF FF|B0", 0xb0, 16),
+        ("D2/SR|FF FF FF FF FF FF FF FF|FF FF FF FF FF FF FF FF|C0", 0xc0, 16),
+        ("     |FF FF FF FF FF FF FF FF|FF FF FF FF FF FF FF FF|D0", 0xd0, 16),
+        ("SL/RR|FF FF FF FF FF FF FF FF|FF FF FF FF FF FF FF FF|E0", 0xe0, 16),
+        ("     |FF FF FF FF FF FF FF FF|FF FF FF FF FF FF FF FF|F0", 0xf0, 16),
+    };
+    public static int RegMapRowCount => RegMapRows.Length;
+    // 行送りは [MiniFont] Height にこれだけ足す（本体 kRegMapRowGap）。
+    public const int RegMapRowGap = 1;
+
+    // i 番目のセル (0..15) の桁。左の枠は 6 桁目から、右の枠は 30 桁目から 3 桁おき。
+    private static int RegMapCellCol(int i) => i < 8 ? 6 + 3 * i : 30 + 3 * (i - 8);
+
+    // プレビュー用のダミーのレジスタ値（本体には無い）。PutOPMDummy と同じ
+    // 「それらしい」音色を 8ch に配り、残りは OPM の初期値らしい 0 にする。
+    private static byte[] DummyOpmRegs()
+    {
+        var r = new byte[256];
+        var dt1mul = new[] { 0x31, 0x02, 0x11, 0x01 };
+        var tl = new[] { 0x1e, 0x00, 0x28, 0x02 };
+        var ksar = new[] { 0x5f, 0x1f, 0x5c, 0x1a };
+        var amed1r = new[] { 0x0a, 0x85, 0x08, 0x83 };
+        var dt2d2r = new[] { 0x40, 0x03, 0x02, 0x44 };
+        var d1lrr = new[] { 0x27, 0xf8, 0x36, 0xf9 };
+        r[0x01] = 0x02;  // LFO-RESET
+        r[0x08] = 0x78;  // KEY (最後に鳴らした ch)
+        r[0x12] = 0xc8;  // CLKB
+        r[0x14] = 0x3a;  // TIMER
+        r[0x18] = 0x2a;  // LFRQ
+        r[0x19] = 0x90;  // PMD (bit7=1)
+        r[0x1b] = 0x02;  // W/CT
+        for (int ch = 0; ch < 8; ch++)
+        {
+            r[0x20 + ch] = (byte)(0xc0 | 0x3c);   // L/R + FB/AL
+            r[0x28 + ch] = (byte)(0x4a + ch);     // KC
+            r[0x30 + ch] = 0x00;                  // KF
+            r[0x38 + ch] = 0x00;                  // PMS/AMS
+            for (int s = 0; s < 4; s++)
+            {
+                int slot = ch + s * 8;
+                r[0x40 + slot] = (byte)dt1mul[s];
+                r[0x60 + slot] = (byte)tl[s];
+                r[0x80 + slot] = (byte)ksar[s];
+                r[0xa0 + slot] = (byte)amed1r[s];
+                r[0xc0 + slot] = (byte)dt2d2r[s];
+                r[0xe0 + slot] = (byte)d1lrr[s];
+            }
+        }
+        return r;
+    }
+
+    // 矩形を背景色で被せ、その上に雛形の文字を文字色で描く。
+    public void OverlayRegMap()
+    {
+        var c = _colors.regMap;
+        Blitter.Fill(_screen, _skin.regMapX, _skin.regMapY, _skin.regMapW, _skin.regMapH,
+            c.backColor.R, c.backColor.G, c.backColor.B, Math.Clamp(c.backColorBright, 0, 100));
+        if (_miniFont is not { Valid: true }) return;
+
+        var regs = DummyOpmRegs();
+        const string hex = "0123456789ABCDEF";
+        for (int i = 0; i < RegMapRows.Length; i++)
+        {
+            var (text, baseReg, cells) = RegMapRows[i];
+            var line = text.ToCharArray();
+            for (int k = 0; k < cells; k++)
+            {
+                byte v = regs[(baseReg + k) & 0xff];
+                int col = RegMapCellCol(k);
+                line[col] = hex[v >> 4];
+                line[col + 1] = hex[v & 0x0f];
+            }
+            PrintMini(_skin.regMapX + _skin.regMapPosX, _skin.regMapY + _skin.regMapPosY + i * (_skin.miniFontH + RegMapRowGap),
+                new string(line), c.color, Math.Clamp(c.colorBright, 0, 100));
+        }
+    }
+
     private void PrintMini(int x, int y, string msg, RgbColor color, int alpha)
     {
         if (_miniFont is not { Valid: true }) return;

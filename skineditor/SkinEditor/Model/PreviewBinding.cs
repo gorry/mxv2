@@ -137,6 +137,15 @@ public static class PreviewBindings
             case "Banner":
                 return new PreviewBinding(PreviewRegions.Ids.Banner, 10, PreviewDrag.Rect);
 
+            // OPM レジスタ一覧（regmap.md）。オーバーレイは [レジスタ一覧] タブを
+            // 選んでいる間だけプレビューに出るので、クリックでは拾わない（H=0）。
+            // 矩形はドラッグで移動、文字の位置は矩形の左上からの相対。
+            case "RegMap":
+                return key == "Rect"
+                    ? new PreviewBinding(PreviewRegions.Ids.RegMap, 0, PreviewDrag.Rect)
+                    : new PreviewBinding(PreviewRegions.Ids.RegMapText, 0, PreviewDrag.Xy,
+                        PreviewRegions.Ids.RegMap);
+
             case "Title":
                 // 掴んで動かせるのは矩形だけ。ScrollSpeed などは曲名の枠を選ぶだけ。
                 return key == "Rect"
@@ -231,6 +240,7 @@ public static class PreviewBindings
         "鍵盤 (KB)" => new PreviewBinding(PreviewRegions.Ids.Indexed(PreviewRegions.Ids.KeyboardRow, 0)),
         "ステータス (Status)" => new PreviewBinding(PreviewRegions.Ids.Status),
         "曲名 (MDXTitle)" => new PreviewBinding(PreviewRegions.Ids.Title),
+        "OPM レジスタ一覧 (RegMap)" => new PreviewBinding(PreviewRegions.Ids.RegMap),
         "ファイラー (Filer)" => new PreviewBinding(PreviewRegions.Ids.FileList),
         "操作ボタン (PlayKey)" => new PreviewBinding(PreviewRegions.Ids.PlayKey),
         _ => None,

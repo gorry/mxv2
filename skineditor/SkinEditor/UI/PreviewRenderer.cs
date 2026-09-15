@@ -39,6 +39,9 @@ public sealed class PreviewState
     // ステータス欄の表示モード（[ステータス] の [音色] サブタブの
     // 「音色データを表示」トグル。本体はステータス欄の長押しで切り替える）。
     public bool ToneMode;
+    // OPM レジスタ一覧のオーバーレイ（[レジスタ一覧] タブを選んでいる間だけ true。
+    // 本体は鍵盤の長押しで切り替える。regmap.md）。
+    public bool RegMapMode;
     public int Volume;             // -100..100
     public double Progress = 0.4;  // 0..1
 
@@ -210,6 +213,9 @@ public sealed class PreviewRenderer : IDisposable
             (state.ScrollUpPressed ? DrawScreenPort.ScrollBarUpArrowDown : 0) |
             (state.ScrollDownPressed ? DrawScreenPort.ScrollBarDownArrowDown : 0);
         port.PutScrollBar(topPx, maxTopPx);
+
+        // OPM レジスタ一覧は一番上に乗る（本体は BlitTo のときに乗せる）。
+        if (state.RegMapMode) port.OverlayRegMap();
 
         _textDraws = port.TextDraws;
 

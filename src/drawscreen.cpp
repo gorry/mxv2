@@ -145,6 +145,8 @@ DrawScreen::DrawScreen()
       fileListFontSize_(0),
       statusMode_(kStatusModeChannel),
       channelMask_(0),
+      regMapVisible_(false),
+      regMapDirty_(true),
       scrollBarFlags_(0),
       scrollBarThumb_(0),
       miniGlyphW_(0),
@@ -164,6 +166,7 @@ DrawScreen::DrawScreen()
       fileListOffsetLast_(0) {
 	memset(kbPalette_, 0, sizeof(kbPalette_));
 	memset(palLevelMeter_, 0, sizeof(palLevelMeter_));
+	memset(opmRegs_, 0, sizeof(opmRegs_));
 }
 
 DrawScreen::~DrawScreen() {}
@@ -439,6 +442,8 @@ void DrawScreen::Reload() {
 	fileListScrollLast_.clear();
 	fileListTitleW_.clear();
 	fileListFsLast_ = -1;
+	// レジスタ一覧はスキン（矩形・ミニフォント）が変わっているかもしれない。
+	regMapDirty_ = true;
 
 	// 演奏中ならこの後ポーリングが本当の値を積み直す（Player::
 	// RequestStatusRefresh）。始まる前と止まっている間は 0 のまま。
@@ -463,6 +468,7 @@ void DrawScreen::BlitTo(Screen *out) const {
 		}
 	}
 	OverlayChannelMask(out);
+	OverlayRegMap(out);
 }
 
 // チャンネル ch (0..15) の鍵盤の矩形。
@@ -523,8 +529,160 @@ void DrawScreen::OverlayChannelMask(Screen *out) const {
 }
 
 // ---------------------------------------------------------------------------
+// OPM レジスタ一覧 (regmap.md)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// 一覧の 1 行。text は 56 桁の見出しつきの雛形で、base が 0 以上なら
+// その行の "FF" の場所に opmRegs_[base + i] を 16 進 2 桁で埋める
+// （cells 個。左の枠に 8 個、右の枠に 8 個）。
+struct RegMapRow {
+	const char *text;
+	int base;
+	int cells;
+};
+
+const RegMapRow kRegMapRows[] = {
+	{ "     |   LFO-RESET           |KEY                NFRQ|AD", -1, 0 },
+	{ "     |FF FF FF FF FF FF FF FF|FF FF FF FF FF FF FF FF|00", 0x00, 16 },
+	{ "     |CLKA  CLKB  TIMER  LFRQ|   P/AMD W/CT          |  ", -1, 0 },
+	{ "     |FF FF FF FF FF FF FF FF|FF FF FF FF FF FF FF FF|10", 0x10, 16 },
+	{ "     |                       |                       |  ", -1, 0 },
+	{ "  CH.| 1  2  3  4  5  6  7  8|                       |  ", -1, 0 },
+	{ "AL/FB|FF FF FF FF FF FF FF FF|                       |20", 0x20, 8 },
+	{ "   KC|FF FF FF FF FF FF FF FF|                       |28", 0x28, 8 },
+	{ "   KF|FF FF FF FF FF FF FF FF|                       |30", 0x30, 8 },
+	{ "P/AMS|FF FF FF FF FF FF FF FF|                       |38", 0x38, 8 },
+	{ "     |                       |                       |  ", -1, 0 },
+	{ "     |       OP.1/OP.2       |        OP.3/OP.4      |  ", -1, 0 },
+	{ "  CH.| 1  2  3  4  5  6  7  8| 1  2  3  4  5  6  7  8|  ", -1, 0 },
+	{ "DT/ML|FF FF FF FF FF FF FF FF|FF FF FF FF FF FF FF FF|40", 0x40, 16 },
+	{ "     |FF FF FF FF FF FF FF FF|FF FF FF FF FF FF FF FF|50", 0x50, 16 },
+	{ "   TL|FF FF FF FF FF FF FF FF|FF FF FF FF FF FF FF FF|60", 0x60, 16 },
+	{ "     |FF FF FF FF FF FF FF FF|FF FF FF FF FF FF FF FF|70", 0x70, 16 },
+	{ "KS/AR|FF FF FF FF FF FF FF FF|FF FF FF FF FF FF FF FF|80", 0x80, 16 },
+	{ "     |FF FF FF FF FF FF FF FF|FF FF FF FF FF FF FF FF|90", 0x90, 16 },
+	{ "AM/DR|FF FF FF FF FF FF FF FF|FF FF FF FF FF FF FF FF|A0", 0xa0, 16 },
+	{ "     |FF FF FF FF FF FF FF FF|FF FF FF FF FF FF FF FF|B0", 0xb0, 16 },
+	{ "D2/SR|FF FF FF FF FF FF FF FF|FF FF FF FF FF FF FF FF|C0", 0xc0, 16 },
+	{ "     |FF FF FF FF FF FF FF FF|FF FF FF FF FF FF FF FF|D0", 0xd0, 16 },
+	{ "SL/RR|FF FF FF FF FF FF FF FF|FF FF FF FF FF FF FF FF|E0", 0xe0, 16 },
+	{ "     |FF FF FF FF FF FF FF FF|FF FF FF FF FF FF FF FF|F0", 0xf0, 16 },
+};
+const int kRegMapRowLen = 56;
+const int kNumRegMapRows = (int)(sizeof(kRegMapRows) / sizeof(kRegMapRows[0]));
+// 行送りは [MiniFont] Height にこれだけ足す（行間を空けて読みやすくする。
+// 2026-09-15、ユーザーの指示で 1px）。
+const int kRegMapRowGap = 1;
+
+// i 番目のセル (0..15) の桁。左の枠は 6 桁目から、右の枠は 30 桁目から 3 桁おき。
+inline int RegMapCellCol(int i) {
+	return (i < 8) ? (6 + 3 * i) : (30 + 3 * (i - 8));
+}
+
+}  // namespace
+
+void DrawScreen::SetOpmReg(int no, int value) {
+	if (no < 0 || no >= 256) return;
+	const uint8_t v = (uint8_t)value;
+	if (opmRegs_[no] == v) return;
+	opmRegs_[no] = v;
+	regMapDirty_ = true;
+}
+
+void DrawScreen::SetRegMapVisible(bool visible) {
+	if (regMapVisible_ == visible) return;
+	regMapVisible_ = visible;
+	regMapDirty_ = true;
+}
+
+// 雛形の "FF" に今の値を埋めて、ステンシルへ描く。
+void DrawScreen::RenderRegMapText() const {
+	const int w = layout_.regMapW;
+	const int h = layout_.regMapH;
+	if (w <= 0 || h <= 0) {
+		regMapText_.Destroy();
+		return;
+	}
+	if (!regMapText_.valid() || regMapText_.width() != w || regMapText_.height() != h) {
+		if (!regMapText_.Create(w, h, 8)) return;
+	}
+	memset(regMapText_.bits(), 0, (size_t)regMapText_.stride() * regMapText_.height());
+	if (!miniFont_.valid()) return;
+
+	static const char kHex[] = "0123456789ABCDEF";
+	char line[kRegMapRowLen + 1];
+	for (int r = 0; r < kNumRegMapRows; r++) {
+		const RegMapRow &row = kRegMapRows[r];
+		memcpy(line, row.text, kRegMapRowLen);
+		line[kRegMapRowLen] = '\0';
+		for (int i = 0; i < row.cells; i++) {
+			const uint8_t v = opmRegs_[(row.base + i) & 0xff];
+			const int col = RegMapCellCol(i);
+			line[col] = kHex[v >> 4];
+			line[col + 1] = kHex[v & 0x0f];
+		}
+		PrintMiniStencil(&regMapText_, layout_.regMapPosX,
+		                 layout_.regMapPosY + r * (layout_.miniFontH + kRegMapRowGap), line);
+	}
+}
+
+// 矩形を背景色で被せ、ステンシルの立っている画素に文字色を乗せる。
+void DrawScreen::OverlayRegMap(Screen *out) const {
+	if (!regMapVisible_) return;
+	if (regMapDirty_) {
+		RenderRegMapText();
+		regMapDirty_ = false;
+	}
+
+	const int outW = out->width();
+	const int outH = out->height();
+	const int x0 = Max(0, layout_.regMapX);
+	const int y0 = Max(0, layout_.regMapY);
+	const int x1 = Min(outW, layout_.regMapX + layout_.regMapW);
+	const int y1 = Min(outH, layout_.regMapY + layout_.regMapH);
+	if (x0 >= x1 || y0 >= y1) return;
+
+	const Rgb back = colors_.regMap.backColor;
+	const Rgb text = colors_.regMap.color;
+	const int ba = Max(0, Min(100, colors_.regMap.backColorBright));
+	const int ta = Max(0, Min(100, colors_.regMap.colorBright));
+	const bool stencil = regMapText_.valid();
+
+	for (int y = y0; y < y1; y++) {
+		uint32_t *q = out->pixels() + (size_t)y * outW;
+		const uint8_t *s = stencil ? regMapText_.RowFromTop(y - layout_.regMapY) : 0;
+		for (int x = x0; x < x1; x++) {
+			const uint32_t c = q[x];
+			int r = (int)((c >> 16) & 0xff);
+			int g = (int)((c >> 8) & 0xff);
+			int b = (int)(c & 0xff);
+			r = (r * (100 - ba) + back.r * ba) / 100;
+			g = (g * (100 - ba) + back.g * ba) / 100;
+			b = (b * (100 - ba) + back.b * ba) / 100;
+			if (s != 0 && s[x - layout_.regMapX] != 0) {
+				r = (r * (100 - ta) + text.r * ta) / 100;
+				g = (g * (100 - ta) + text.g * ta) / 100;
+				b = (b * (100 - ta) + text.b * ta) / 100;
+			}
+			q[x] = 0xff000000u | ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
 // 文字描画 (ミニフォント)
 // ---------------------------------------------------------------------------
+
+void DrawScreen::PrintMiniStencil(Bitmap *dst, int x, int y, const char *msg) const {
+	for (const char *p = msg; *p != '\0'; p++) {
+		int sx = 0, sy = 0;
+		MiniGlyphSrc((unsigned char)*p, miniGlyphW_, miniGlyphH_, &sx, &sy);
+		BmpCopyTransparent(dst, x, y, miniGlyphW_, miniGlyphH_, &miniFont_, sx, sy, 100);
+		x += layout_.miniFontW;
+	}
+}
 
 void DrawScreen::PrintMini(int x, int y, const char *msg, const Rgb &color, int alpha) {
 	miniFont_.SetPalette(1, color.r, color.g, color.b);

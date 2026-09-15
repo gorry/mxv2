@@ -111,6 +111,14 @@ public static class LayoutFieldSchema
             new("MiniFont", "Width", "送り幅", FieldKind.Int, e => $"{e.miniFontW}", IntMin: 0, IntMax: 9999),
             new("MiniFont", "Height", "行の高さ", FieldKind.Int, e => $"{e.miniFontH}", IntMin: 0, IntMax: 9999),
 
+            // ---- OPM レジスタ一覧（regmap.md） -----------------------------
+            // 鍵盤の長押しで出すオーバーレイ。矩形と、その左上からの文字の描き始め。
+            new("RegMap", "Rect", "矩形", FieldKind.Xywh,
+                e => $"{e.regMapX},{e.regMapY},{e.regMapW},{e.regMapH}", Suffix: "(x,y,w,h)",
+                ComponentMin: RectMin, ComponentMax: RectMax),
+            new("RegMap", "Pos", "文字の位置", FieldKind.IntList,
+                e => $"{e.regMapPosX},{e.regMapPosY}", Suffix: "(x,y)"),
+
             // ---- バナー / 曲名 ---------------------------------------------
             new("Banner", "Rect", "矩形", FieldKind.Xywh,
                 e => $"{e.bannerX},{e.bannerY},{e.bannerW},{e.bannerH}", Suffix: "(x,y,w,h)",

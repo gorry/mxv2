@@ -61,6 +61,13 @@ enum DispCmd {
 	DISP_OPMCH,
 	DISP_OPMOP,
 	DISP_OPMGLOBAL,
+
+	// ---- OPM レジスタ一覧（regmap.md） ---------------------------------
+	// 256 本の写しをそのまま届ける。生成側は変化したレジスタだけを積む
+	// （ForgetLastValues で全部積み直す）。描く側 (DrawScreen) は表示の
+	// ON/OFF に関わらず写しを更新し続け、ON のときだけ描く。
+	// DISP_OPMREG   : param1 = レジスタ番号 (0..255), param2 = 値
+	DISP_OPMREG,
 };
 
 // DISP_OPMOP の param2。値はそのレジスタのバイトそのもの（TL だけは音色

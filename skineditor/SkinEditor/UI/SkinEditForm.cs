@@ -179,7 +179,8 @@ public sealed class SkinEditForm : Form
         split.Panel2.Controls.Add(tabs);
 
         _builder = new TabPageBuilder(doc, _preview, this, RegisterPreview, MoveActionFor);
-        foreach (var tab in TabLayout.Build())
+        var tabDefs = TabLayout.Build();
+        foreach (var tab in tabDefs)
         {
             var flow = new FlowLayoutPanel
             {
@@ -192,6 +193,19 @@ public sealed class SkinEditForm : Form
             var page = new TabPage(tab.Title);
             page.Controls.Add(flow);
             tabs.TabPages.Add(page);
+        }
+        // タブに連動するプレビューの状態（[レジスタ一覧] のオーバーレイなど）。
+        // 選ばれたタブに true、それ以外に false を配る。
+        if (tabDefs.Any(t => t.OnSelected != null))
+        {
+            tabs.SelectedIndexChanged += (_, _) =>
+            {
+                for (int i = 0; i < tabDefs.Count && i < tabs.TabPages.Count; i++)
+                {
+                    tabDefs[i].OnSelected?.Invoke(_preview, tabs.SelectedIndex == i);
+                }
+                _preview.Invalidate();
+            };
         }
 
         // プレビューのクリック。その点で拾えるアイテムを優先順位の高い順に
