@@ -2494,46 +2494,33 @@ void SettingsUi::BuildHelpWindow() {
 	if (ImGui::BeginPopupModal(kHelpTitle, &showHelp_,
 	                           ImGuiWindowFlags_NoCollapse |
 	                               ImGuiWindowFlags_NoSavedSettings)) {
-		ImGui::BeginChild("##help", ImVec2(0, 0), ImGuiChildFlags_None,
-		                  ImGuiWindowFlags_HorizontalScrollbar);
+		ImGui::BeginChild("##help", ImVec2(0, 0), ImGuiChildFlags_None, ImGuiWindowFlags_None);
 
 		// キー名の桁を揃えて 2 段組で出す。空白で揃えないのは、同梱フォントが
 		// プロポーショナルで桁が合わないため。
 		//
-		// 幅は「一番広いキー名」と「一番広い説明」から決める。横に収まらな
-		// ければ字を小さくする。文字の幅は大きさに比例するので、今の大きさで
-		// 測った比をそのまま倍率にしてよい。PushFont に渡すのは**倍率を
-		// 掛ける前**の大きさ (FontSizeBase)。
+		// キー名の列幅は「一番広いキー名」で決め、説明は残りの幅で**折り返す**
+		// （禁則つき。kinsoku.h）。以前は横に収まらないと字を縮めていたが、
+		// 指で操作する端末では字に下限があって縮められず、横スクロールに
+		// なっていた（2026-09-15、英語の [操作方法] で発覚）。字は縮めない。
+		// キー名の列は表示幅の 4 割で頭打ちにし、それより長いキー名は
+		// キー名のほうを折り返す（説明の幅を食いつぶさないように）。
 		const float avail = ImGui::GetContentRegionAvail().x;
-		float scale = 1.0f;
-		{
-			float keyW = 0.0f;
-			float descW = 0.0f;
-			for (size_t i = 0; i < helpRows_.size(); i++) {
-				if (helpRows_[i].header) continue;
-				const float k = ImGui::CalcTextSize(helpRows_[i].key.c_str()).x;
-				const float d = ImGui::CalcTextSize(helpRows_[i].desc.c_str()).x;
-				if (k > keyW) keyW = k;
-				if (d > descW) descW = d;
-			}
-			const float unit = ImGui::CalcTextSize(" ").x;  // 字下げと段間に使う
-			const float total = unit * 4.0f + keyW + descW;
-			if (total > avail && avail > 0.0f && total > 0.0f) scale = avail / total;
-		}
-		const bool shrink = (scale < 1.0f);
-		if (shrink) ImGui::PushFont(NULL, ImGui::GetStyle().FontSizeBase * scale);
-
-		// 縮めたあとの大きさで測り直す。
+		const float unit = ImGui::CalcTextSize(" ").x;  // 字下げと段間に使う
 		float keyW = 0.0f;
 		for (size_t i = 0; i < helpRows_.size(); i++) {
 			if (helpRows_[i].header) continue;
 			const float k = ImGui::CalcTextSize(helpRows_[i].key.c_str()).x;
 			if (k > keyW) keyW = k;
 		}
-		const float unit = ImGui::CalcTextSize(" ").x;
+		const float keyWMax = avail * 0.4f;
+		if (keyW > keyWMax) keyW = keyWMax;
 		const float x0 = ImGui::GetCursorPosX();
 		const float keyX = x0 + unit * 2.0f;   // 行頭の字下げ
 		const float descX = keyX + keyW + unit * 2.0f;
+		float descW = x0 + avail - descX;
+		if (descW < unit) descW = unit;
+		const float spacingY = ImGui::GetStyle().ItemSpacing.y;
 
 		for (size_t i = 0; i < helpRows_.size(); i++) {
 			const HelpRow &row = helpRows_[i];
@@ -2542,16 +2529,31 @@ void SettingsUi::BuildHelpWindow() {
 				ImGui::TextUnformatted(row.key.c_str());
 				continue;
 			}
+			// キー名と説明は別々に折り返して横に並べる。行の高さは高いほうに
+			// 合わせる（SameLine は前の項目の上端に戻すので、説明のほうが
+			// 短いとキー名の 2 行目に次の行が重なる）。
+			const std::string key = WrapTextKinsoku(row.key, keyW);
+			const std::string desc = WrapTextKinsoku(row.desc, descW);
+			const float y0 = ImGui::GetCursorPosY();
+			float h = ImGui::CalcTextSize(key.c_str()).y;
 			ImGui::SetCursorPosX(keyX);
-			ImGui::TextUnformatted(row.key.c_str());
-			if (row.desc.empty()) continue;
-			// SameLine の位置はウィンドウ左端からの距離なので、
-			// Indent ではなくこちらで直に指定する。
-			ImGui::SameLine(descX);
-			ImGui::TextUnformatted(row.desc.c_str());
+			ImGui::TextUnformatted(key.c_str());
+			if (!row.desc.empty()) {
+				const float hd = ImGui::CalcTextSize(desc.c_str()).y;
+				if (hd > h) h = hd;
+				// SameLine の位置はウィンドウ左端からの距離なので、
+				// Indent ではなくこちらで直に指定する。
+				ImGui::SameLine(descX);
+				ImGui::TextUnformatted(desc.c_str());
+			}
+			// カーソルを動かすだけで終わると ImGui が「項目を置け」と assert する
+			// （境界を伸ばすのは項目）ので、空の Dummy を置いて高さを確定する。
+			const float yEnd = y0 + h + spacingY;
+			if (ImGui::GetCursorPosY() < yEnd) {
+				ImGui::SetCursorPosY(yEnd - spacingY);
+				ImGui::Dummy(ImVec2(0.0f, 0.0f));
+			}
 		}
-
-		if (shrink) ImGui::PopFont();
 
 		DragToScroll(&dragScroll_, &dragMoved_, false, false);
 		ImGui::EndChild();
