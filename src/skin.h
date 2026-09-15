@@ -249,6 +249,10 @@ struct Skin {
 	// TimePos に "x,y" で書く（2026-09-04 に TimeX / TimeY をまとめた）。
 	int progX, progY, progW, progH;
 	int progTimePos[2];
+	// バーの素材を置く位置（Rect の左上からの相対。[ProgressBar] ProgressPos。
+	// 2026-09-15）。幅は Rect の幅、高さは素材の帯の高さ (progBarHeight)。
+	// Rect は当たり判定と時刻表示を含む領域。
+	int progPos[2];
 	// 素材の中の位置と大きさ。音量バーと同じ分け方（つまみが無いだけ）で、
 	// 左端 / 中央 / 右端 の 3 つ（2026-09-12。それまでは Rect と同じ幅の
 	// 絵をそのまま貼っていた）。左端は Rect の左端、右端は Rect の右端に
@@ -369,6 +373,15 @@ struct Skin {
 	// （素材の溝の高さではない。溝は繰り返して敷くので伸び縮みする）。
 	int scrollBarMovement() const { return scrollGrooveH - scrollSrcThumb.h; }
 	int volBarMovement() const { return volW - volSrcThumb.w; }
+	// プログレスバーの帯の高さ（素材の 3 片のうち一番高いもの）。Rect の高さは
+	// 当たり判定と時刻表示を含む領域なので、帯を描く高さには使わない
+	// （Rect いっぱいに敷くと、帯の描き直しが時刻表示を消す。2026-09-15）。
+	int progBarHeight() const {
+		int h = progSrcBarLeft.h;
+		if (progSrcBar.h > h) h = progSrcBar.h;
+		if (progSrcBarRight.h > h) h = progSrcBarRight.h;
+		return (h > 0) ? h : progH;
+	}
 
 private:
 	// skinDir/layout.ini を今の値の上に重ねる。無ければ何もしない。

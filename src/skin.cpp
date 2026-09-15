@@ -303,6 +303,8 @@ Skin::Skin() {
 	progH = 6;
 	progTimePos[0] = 16;
 	progTimePos[1] = 8;
+	progPos[0] = 0;
+	progPos[1] = 0;
 	{
 		// 同梱素材の並び: 左端 / 右端 / 中央（残り）。上段が未再生。
 		const Xywh left = { 0, 0, 12, 6 };
@@ -529,6 +531,7 @@ void Skin::ApplyLayout(const std::string &skinDir) {
 		progH = r.h;
 	}
 	GetIntList(ini, "ProgressBar", "TimePos", progTimePos, 2);
+	GetIntList(ini, "ProgressBar", "ProgressPos", progPos, 2);
 	GetXywh(ini, "ProgressBar", "SrcBarLeft", &progSrcBarLeft);
 	GetXywh(ini, "ProgressBar", "SrcBarRight", &progSrcBarRight);
 	GetXywh(ini, "ProgressBar", "SrcBar", &progSrcBar);

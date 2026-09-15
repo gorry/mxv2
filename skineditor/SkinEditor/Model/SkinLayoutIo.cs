@@ -92,6 +92,7 @@ public static class SkinLayoutIo
             t.progX = r.X; t.progY = r.Y; t.progW = r.W; t.progH = r.H;
         }
         GetIntList(ini, "ProgressBar", "TimePos", t.progTimePos, 2);
+        GetIntList(ini, "ProgressBar", "ProgressPos", t.progPos, 2);
         GetXywh(ini, "ProgressBar", "SrcBarLeft", ref t.progSrcBarLeft);
         GetXywh(ini, "ProgressBar", "SrcBarRight", ref t.progSrcBarRight);
         GetXywh(ini, "ProgressBar", "SrcBar", ref t.progSrcBar);
@@ -197,6 +198,7 @@ public static class SkinLayoutIo
 
         ini.SetString("ProgressBar", "Rect", $"{t.progX},{t.progY},{t.progW},{t.progH}");
         ini.SetString("ProgressBar", "TimePos", Join(t.progTimePos));
+        ini.SetString("ProgressBar", "ProgressPos", Join(t.progPos));
         ini.SetString("ProgressBar", "SrcBarLeft", t.progSrcBarLeft.ToString());
         ini.SetString("ProgressBar", "SrcBarRight", t.progSrcBarRight.ToString());
         ini.SetString("ProgressBar", "SrcBar", t.progSrcBar.ToString());

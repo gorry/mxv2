@@ -149,6 +149,7 @@ Min=-99999 / Max=99999 の決め打ち**になっている（でたらめ）。c
 | Section.Key | ラベル | 値 | 現Min | 現Max | 新Min | 新Max | 備考 |
 |---|---|---|---:|---:|---|---|---|
 | ProgressBar.Rect | 矩形 | (x,y,w,h) | -99999 | 99999 | -9999 | 9999 | w:1-9999, h:1-9999 |
+| ProgressBar.ProgressPos | 位置 | (x,y) | -9999 | 9999 | | | バーの素材の位置。Rect の左上からの相対 |
 | ProgressBar.TimePos | 時刻表示位置 | (x,y) | -99999 | 99999 | -9999 | 9999 | |
 | ProgressBar.SrcBarLeft | 素材内: バー左端 | (x,y,w,h) | -99999 | 99999 | | | x:0-(素材の横幅-1), y:0-(素材の縦幅-1), w:1-素材の右端, h:1-素材の下端 |
 | ProgressBar.SrcBarRight | 素材内: バー右端 | (x,y,w,h) | -99999 | 99999 | | | 同上 |

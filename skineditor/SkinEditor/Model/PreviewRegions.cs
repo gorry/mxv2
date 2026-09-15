@@ -53,6 +53,7 @@ public static class PreviewRegions
         public const string ScrollDownArrow = "scroll.down";
         public const string ProgressBar = "progressbar";
         public const string ProgressTime = "progressbar.time";
+        public const string ProgressImage = "progressbar.image";  // バーの素材（ProgressPos）
         public const string VolumeBar = "volumebar";
         public const string VolumeTime = "volumebar.time";
         public const string VolumeNob = "volumebar.nob";
@@ -267,6 +268,9 @@ public static class PreviewRegions
         r[Ids.ProgressBar] = new Rectangle(e.progX, e.progY, e.progW, e.progH);
         r[Ids.ProgressTime] = new Rectangle(e.progX + e.progTimePos[0], e.progY + e.progTimePos[1],
             TextWidth(ProgressTimeDigits, e.miniFontW, glyphW), glyphH);
+        // バーの素材。幅は Rect の幅、高さは素材の帯（上段）の高さ。
+        r[Ids.ProgressImage] = new Rectangle(e.progX + e.progPos[0], e.progY + e.progPos[1],
+            Math.Max(1, e.progW), Math.Max(1, e.ProgBarHeight()));
 
         r[Ids.VolumeBar] = new Rectangle(e.volX, e.volY, e.volW, e.volH);
         r[Ids.VolumeTime] = new Rectangle(e.volX + e.volVolumePos[0], e.volY + e.volVolumePos[1],

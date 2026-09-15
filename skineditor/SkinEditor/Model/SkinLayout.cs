@@ -121,6 +121,8 @@ public sealed class SkinLayout
     // TimePos は時刻表示の位置（Rect の左上からの相対）。
     public int progX = 476, progY = 270, progW = 160, progH = 6;
     public int[] progTimePos = { 16, 8 };
+    // バーの素材を置く位置（Rect の左上からの相対。skin.h の progPos）。
+    public int[] progPos = { 0, 0 };
     // 素材内の バー左端 / バー右端 / バー中央（上段 = 未再生。下段は同じ矩形を
     // その高さぶん下へずらした位置）。skin.h の progSrc*。
     public Xywh progSrcBarLeft = new(0, 0, 12, 6);
@@ -179,6 +181,12 @@ public sealed class SkinLayout
     // 敷くので、素材の高さではなく描く高さで決まる。
     public int ScrollBarMovement() => scrollGrooveH - scrollSrcThumb.H;
     public int VolBarMovement() => volW - volSrcThumb.W;
+    // プログレスバーの帯の高さ（素材の 3 片の一番高いもの。skin.h の progBarHeight）。
+    public int ProgBarHeight()
+    {
+        int h = Math.Max(progSrcBarLeft.H, Math.Max(progSrcBar.H, progSrcBarRight.H));
+        return h > 0 ? h : progH;
+    }
 
     // ---- キャンバスの大きさに合わせる（skin.cpp の Skin::PlacedFor） -------
     //

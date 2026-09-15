@@ -179,6 +179,9 @@ public static class LayoutFieldSchema
                 ComponentMin: RectMin, ComponentMax: RectMax),
             new("ProgressBar", "TimePos", "時刻表示位置", FieldKind.IntList,
                 e => SkinLayoutIo.Join(e.progTimePos), Suffix: "(x,y)"),
+            // バーの素材を置く位置（Rect の左上からの相対）。
+            new("ProgressBar", "ProgressPos", "位置", FieldKind.IntList,
+                e => SkinLayoutIo.Join(e.progPos), Suffix: "(x,y)"),
             new("ProgressBar", "SrcBarLeft", "素材内: バー左端", FieldKind.Xywh,
                 e => e.progSrcBarLeft.ToString(), Suffix: "(x,y,w,h)",
                 ComponentMin: SrcMin, ComponentMax: SrcMax, SizeBoundRole: BitmapRole.ProgressBar),

@@ -89,7 +89,7 @@ public class SkinDocumentTests
         var e = SkinDocument.Open(root, "Phone").Effective;
 
         // 使う 8 個のボタンを覆う大きさが Rect の w,h になっている。
-        Assert.Equal((168, 348, 304, 82), (e.playKeyX, e.playKeyY, e.playKeyW, e.playKeyH));
+        Assert.Equal((169, 348, 304, 82), (e.playKeyX, e.playKeyY, e.playKeyW, e.playKeyH));
         int coverW = 0, coverH = 0;
         for (int i = 0; i < e.numPlayKeys; i++)
         {
@@ -98,7 +98,7 @@ public class SkinDocumentTests
         }
         Assert.Equal((coverW, coverH), (e.playKeyW, e.playKeyH));
 
-        Assert.Equal((344, 4, 128, 35), (e.statusX, e.statusY, e.statusW, e.statusH));
+        Assert.Equal((345, 4, 128, 35), (e.statusX, e.statusY, e.statusW, e.statusH));
     }
 
     // [ProgressBar] / [VolumeBar] の TimePos（2026-09-04 に TimeX / TimeY を

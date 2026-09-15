@@ -272,6 +272,7 @@ public static class TabLayout
         {
             Bitmap(BitmapRole.ProgressBar),
             Field("ProgressBar", "Rect"),
+            Field("ProgressBar", "ProgressPos"),
             Field("ProgressBar", "TimePos"),
             Field("ProgressBar", "SrcBarLeft"),
             Field("ProgressBar", "SrcBarRight"),

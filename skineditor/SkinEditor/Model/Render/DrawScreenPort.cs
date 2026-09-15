@@ -196,7 +196,7 @@ public sealed class DrawScreenPort
         }
 
         // 組み立て用のバッファ（8bpp。パレットは素材から引き継ぐ）
-        _progressBar = CreateScratch(_skin.progW, _skin.progH, _progressBarBase);
+        _progressBar = CreateScratch(_skin.progW, _skin.ProgBarHeight(), _progressBarBase);
         _totalVolBar = CreateScratch(_skin.volW, _skin.volH, _totalVolBarBase);
         _scrollBar = CreateScratch(_skin.scrollW, _skin.scrollH, _scrollBarBase);
 
@@ -932,7 +932,8 @@ public sealed class DrawScreenPort
         // バーは 左端 / 中央の繰り返し / 右端 の 3 つで敷く（音量バーと同じ。
         // つまみが無いだけ）。進んだ部分 [0,len) は素材の下段、残りは上段。
         // 下段は同じ矩形をその高さぶん下へずらした位置。
-        Blitter.Fill(_progressBar, 0, 0, _skin.progW, _skin.progH, 0, 0, 0, 100);
+        int barH = _skin.ProgBarHeight();
+        Blitter.Fill(_progressBar, 0, 0, _skin.progW, barH, 0, 0, 0, 100);
         var left = _skin.progSrcBarLeft;
         var right = _skin.progSrcBarRight;
         var bar = _skin.progSrcBar;
@@ -950,8 +951,11 @@ public sealed class DrawScreenPort
             }
             PutBarPiece(right, _skin.progW - right.W, right.W, xFrom, xTo, played ? right.H : 0);
         }
-        Blitter.CopyComposite(_screen, _skin.progX, _skin.progY, _skin.progW, _skin.progH,
-            _progressBar, 0, 0, _back, _skin.progX, _skin.progY, Blend.Mul);
+        // 素材は Rect の左上から ProgressPos だけずらした位置に置く（本体と同じ）。
+        int bx = _skin.progX + _skin.progPos[0];
+        int by = _skin.progY + _skin.progPos[1];
+        Blitter.CopyComposite(_screen, bx, by, _skin.progW, barH,
+            _progressBar, 0, 0, _back, bx, by, Blend.Mul);
 
         int nowSec = (int)(nowTimeMs / 1000);
         int t = Math.Min(nowSec, 99 * 60 + 59);

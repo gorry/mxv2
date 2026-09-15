@@ -312,7 +312,7 @@ bool DrawScreen::LoadAssets(std::string *err) {
 	}
 
 	// 組み立て用のバッファ
-	if (!progressBar_.Create(layout_.progW, layout_.progH, 8)) {
+	if (!progressBar_.Create(layout_.progW, layout_.progBarHeight(), 8)) {
 		*err = Msg("Error.ProgressBuffer");
 		return false;
 	}
@@ -1461,7 +1461,8 @@ void DrawScreen::PutProgressBar(uint32_t nowTimeMs, uint32_t playTimeMs, bool re
 		// バーは 左端 / 中央の繰り返し / 右端 の 3 つで敷く（音量バーと同じ。
 		// つまみが無いだけ）。進んだ部分 [0,len) は素材の下段、残りは上段。
 		// 下段は同じ矩形をその高さぶん下へずらした位置。
-		BmpFill(&progressBar_, 0, 0, layout_.progW, layout_.progH, 0, 0, 0, 100);
+		const int barH = layout_.progBarHeight();
+		BmpFill(&progressBar_, 0, 0, layout_.progW, barH, 0, 0, 0, 100);
 		const Xywh &left = layout_.progSrcBarLeft;
 		const Xywh &right = layout_.progSrcBarRight;
 		const Xywh &bar = layout_.progSrcBar;
@@ -1483,8 +1484,11 @@ void DrawScreen::PutProgressBar(uint32_t nowTimeMs, uint32_t playTimeMs, bool re
 			PutBarPiece(&progressBar_, &progressBarBase_, right, layout_.progW - right.w, right.w,
 			            xFrom, xTo, played ? right.h : 0);
 		}
-		BmpCopyComposite(&screen_, layout_.progX, layout_.progY, layout_.progW, layout_.progH, &progressBar_, 0, 0, &back_,
-		                 layout_.progX, layout_.progY, kBlendMul);
+		// 素材は Rect の左上から ProgressPos だけずらした位置に置く。
+		const int bx = layout_.progX + layout_.progPos[0];
+		const int by = layout_.progY + layout_.progPos[1];
+		BmpCopyComposite(&screen_, bx, by, layout_.progW, barH, &progressBar_, 0, 0, &back_, bx, by,
+		                 kBlendMul);
 	}
 
 	const int nowSec = (int)(nowTimeMs / 1000);

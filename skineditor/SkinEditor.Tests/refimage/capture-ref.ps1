@@ -81,6 +81,9 @@ if (Get-Process mxv2 -ErrorAction SilentlyContinue) {
 }
 
 New-Item -ItemType Directory -Force $scratch | Out-Null
+# A fresh user folder would start the first-run tutorial, which dims the whole
+# screen and puts a bubble on top of it. Mark it as already seen.
+Set-Content -Path (Join-Path $scratch "mxv2.ini") -Value "[Tutorial]`r`nDone=1`r`n" -Encoding Ascii
 $proc = Start-Process -FilePath $exe -PassThru -WorkingDirectory (Split-Path -Parent $exe) `
     -ArgumentList "-skin", $Skin, "-zoom", "100", "-userdir", $scratch
 

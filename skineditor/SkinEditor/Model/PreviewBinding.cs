@@ -185,6 +185,9 @@ public static class PreviewBindings
                     "Rect" => new PreviewBinding(PreviewRegions.Ids.ProgressBar, 20, PreviewDrag.Rect),
                     "TimePos" => new PreviewBinding(PreviewRegions.Ids.ProgressTime, 21,
                         PreviewDrag.Xy, PreviewRegions.Ids.ProgressBar),
+                    // バーの素材の位置。矩形の左上からの相対。
+                    "ProgressPos" => new PreviewBinding(PreviewRegions.Ids.ProgressImage, 22,
+                        PreviewDrag.Xy, PreviewRegions.Ids.ProgressBar),
                     _ => new PreviewBinding(PreviewRegions.Ids.ProgressBar),
                 };
 
