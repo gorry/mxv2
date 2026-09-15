@@ -1,0 +1,51 @@
+mxv2のステータス部の長押しで、現在の「mxdrv内チャンネルステータス」と、新しく作る「音色データ」を切り替えられるようにします。
+- layout.iniの[Status]に、以下を追加します。
+  - OPMOperatorY=0,18,9,27         ; オペレータ1, オペレータ3, オペレータ2, オペレータ4のY位置（OPMのオペレータ番号とMMLの音色データのY位置が異なるので、ここで合わせる）
+  - PosOPMAlgorythm=0,0            ; アルゴリズム
+  - PosOPMFeedback=0,9             ; フィードバック
+  - PosOPMAttackRate=14,0          ; アタックレート（OPMOperatorYを加算）
+  - PosOPMDecayRate=28,0           ; ディケイレート（OPMOperatorYを加算）
+  - PosOPMSustainRate=42,0         ; サスティンレート（OPMOperatorYを加算）
+  - PosOPMReleaseRate=56,0         ; リリースレート（OPMOperatorYを加算）
+  - PosOPMSustainLevel=64,0        ; サスティンレベル（OPMOperatorYを加算）
+  - PosOPMTotalLevel=72,0          ; トータルレベル（OPMOperatorYを加算）
+  - PosOPMKeyScaling=86,0          ; キースケーリング（OPMOperatorYを加算）
+  - PosOPMMultiple=94,0            ; マルチプル（OPMOperatorYを加算）
+  - PosOPMDetune1=102,0            ; デチューン（OPMOperatorYを加算）
+  - PosOPMDetune2=110,0            ; デチューン2（OPMOperatorYを加算）
+  - PosOPMAMSEnable=118,0          ; AMSイネーブル（OPMOperatorYを加算）
+  - PosOPMNoise=0,0                ; ノイズ
+  - PosOPMClockB=0,9               ; CLKB
+  - PosOPMLFOFreq=68,0             ; LFRQ
+  - PosOPMLFOPMD=68,9              ; PMD
+  - PosOPMLFOAMD=68,18             ; AMD
+  - PosOPMLFOWAVE=68,27            ; LFOWAVE
+- チャンネルFM1-8のステータスに、以下を表示します（すべて16進数、「00-FF」形式）。
+  - **アルゴリズム**: "A"+「OPMレジスタ「$20+チャンネル」のbit0-2」:1桁
+  - **フィードバック**: "F"+「OPMレジスタ「$20+チャンネル」のbit3-5」:1桁
+  - **マルチプル**: 「OPMレジスタ「$40+チャンネル+オペレータ*8」のbit0-3」:1桁
+  - **デチューン**: 「OPMレジスタ「$40+チャンネル+オペレータ*8」のbit4-6」:1桁
+  - **トータルレベル**: 「音色データ「$06+オペレータ」のbit0-6」:2桁
+  - **アタックレート**: 「OPMレジスタ「$80+チャンネル+オペレータ*8」のbit0-4」:2桁
+  - **キースケーリング**: 「OPMレジスタ「$80+チャンネル+オペレータ*8」のbit6-7」:1桁
+  - **ディケイレート**: 「OPMレジスタ「$a0+チャンネル+オペレータ*8」のbit0-4」:2桁
+  - **AMSイネーブル**: 「OPMレジスタ「$a0+チャンネル+オペレータ*8」のbit7」:1桁
+  - **サスティンレート**: 「OPMレジスタ「$c0+チャンネル+オペレータ*8」のbit0-4」:2桁
+  - **デチューン2**: 「OPMレジスタ「$c0+チャンネル+オペレータ*8」のbit6-7」:1桁
+  - **リリースレート**: 「OPMレジスタ「$e0+チャンネル+オペレータ*8」のbit0-3」:1桁
+  - **サスティンレベル**: 「OPMレジスタ「$e0+チャンネル+オペレータ*8」のbit4-7」:1桁
+- PCMチャンネルのステータスに、以下を表示します（すべて16進数、「00-FF」形式）。
+  - **ノイズ**: "NOISE:"+「ノイズ値」:2桁
+    - OPMレジスタの$0Fのbit7が0なら"--"、1ならbit0-5の値
+  - **CLKB**: "CLKB :"+「クロック値」:2桁
+    - OPMレジスタの$12
+  - **LFRQ**: "LFRQ :"+「クロック値」:2桁
+    - OPMレジスタの$18
+  - **PMD**: "PMD  :"+「深度」:2桁
+    - OPMレジスタの$19のbit7が1の書き込みのbit0-6の値
+  - **AMD**: "AMD  :"+「深度」:2桁
+    - OPMレジスタの$19のbit7が0の書き込みのbit0-6の値
+  - **LFOWAVE**: "WAVE :"+「波形」:1桁
+    - OPMレジスタの$1bのbit0-1
+- 「どちらを表示しているか」は保存しない。常に「mxdrv内チャンネルステータス」で始まる。
+
