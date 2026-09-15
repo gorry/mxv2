@@ -392,10 +392,14 @@ bool Screen::CanResizeWindow() {
 }
 
 bool Screen::CanQuitApp() {
+	return !IsMobile();
+}
+
+bool Screen::IsMobile() {
 #if defined(__ANDROID__) || defined(__IPHONEOS__)
-	return false;
-#else
 	return true;
+#else
+	return false;
 #endif
 }
 

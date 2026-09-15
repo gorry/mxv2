@@ -2728,11 +2728,12 @@ void SettingsUi::BuildFolderWindow(Settings *settings, Filer *filer) {
 // まだ画面をクリックして操作できなかった頃の名残で、操作ボタン・鍵盤・
 // ステータス欄を押せるようになった今はもう要らない。モバイルでは階層のある
 // メニューが扱いづらく、横画面では項目数そのものに余裕が無い、という事情もある。
+//
+// **[表示] のサブメニューは 2026-09-15 に足した**（ユーザーの指示）。2 段目は
+// 音色データ表示（tonedata.md）とレジスタ一覧（regmap.md）の ON/OFF で、
+// 長押しの代わり。項目名が短いので横幅の下限 480px でも右に収まる。
 void SettingsUi::BuildContextMenu(Settings *settings, DrawScreen *draw, Player *player,
                                   Filer *filer) {
-	(void)draw;
-	(void)player;
-
 	// バナーを押したときはこちらから開ける（右クリックできない環境向け）。
 	// BeginPopupContextVoid と同じ id なので、下の Begin がそのまま拾う。
 	if (openContextMenu_) {
@@ -2757,7 +2758,8 @@ void SettingsUi::BuildContextMenu(Settings *settings, DrawScreen *draw, Player *
 		// 並びは bookmark.md の「メインメニュー」のとおり:
 		// 移動（フォルダを開く / ブックマークを開く / ブックマークに追加）→
 		// 設定 4 つ → 操作方法・バージョン情報 →（デスクトップのみ）終了。
-		if (ImGui::MenuItem(Msg("Menu.Folder"), "L")) {
+		// [フォルダを開く…] はモバイルには置かない（2026-09-15、ユーザーの指示）。
+		if (!Screen::IsMobile() && ImGui::MenuItem(Msg("Menu.Folder"), "L")) {
 			SetFolderDir(filer->currentRef());
 			showFolder_ = true;
 		}
@@ -2773,6 +2775,21 @@ void SettingsUi::BuildContextMenu(Settings *settings, DrawScreen *draw, Player *
 			                    "Shift+M", false, CanBookmark(cur))) {
 				bmOpenToggle_ = true;
 			}
+		}
+
+		ImGui::Separator();
+		// [表示] … 2 段目に表示の ON/OFF。チェックが今の状態。
+		if (ImGui::BeginMenu(Msg("Menu.View"))) {
+			const bool tone = (draw->statusMode() == DrawScreen::kStatusModeTone);
+			if (ImGui::MenuItem(Msg("Menu.ToneData"), "F7", tone)) {
+				// ステータス欄の長押しと同じ経路（値の積み直しまで）。
+				draw->ToggleStatusMode();
+				if (player != 0) player->RequestStatusRefresh();
+			}
+			if (ImGui::MenuItem(Msg("Menu.RegMap"), "F8", draw->regMapVisible())) {
+				draw->ToggleRegMap();
+			}
+			ImGui::EndMenu();
 		}
 
 		ImGui::Separator();

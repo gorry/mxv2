@@ -1826,6 +1826,14 @@ int main(int argc, char **argv) {
 				case SDLK_F4:
 					ui.OpenBookmarks();
 					break;
+				// 表示の切り替え（メニューの [表示] と同じ。長押しの代わり）。
+				case SDLK_F7:
+					draw.ToggleStatusMode();
+					player.RequestStatusRefresh();
+					break;
+				case SDLK_F8:
+					draw.ToggleRegMap();
+					break;
 				case SDLK_F11:
 				case SDLK_h:
 					ui.OpenHelp();
