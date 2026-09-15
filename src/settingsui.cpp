@@ -2769,13 +2769,16 @@ void SettingsUi::BuildContextMenu(Settings *settings, DrawScreen *draw, Player *
 		// ファイラーの "Bookmarks>"（ジャンプ専用）。設定ダイアログは下の段。
 		if (ImGui::MenuItem(Msg("Menu.BookmarkList"), "M")) OpenBookmarkList();
 		{
-			// カレントを控える / 控えを外す。どちらも確認してから実行するので、
-			// ここでは印を立てるだけ（メニューの中で OpenPopup すると入れ子の
-			// ポップアップになってしまう）。
+			// カレントを控える。確認してから実行するので、ここでは印を立てる
+			// だけ（メニューの中で OpenPopup すると入れ子のポップアップに
+			// なってしまう）。**控え外しはメニューに置かない**（2026-09-15、
+			// ユーザーの指示。以前は控え済みなら [ブックマークから削除…] に
+			// 化けていた）。控え済みの場所では項目を無効にする。外すのは
+			// Shift+M か [ブックマークの設定] から。
 			const std::string cur = filer->currentRef();
 			const bool has = (FindBookmark(settings->bookmarks, cur) >= 0);
-			if (ImGui::MenuItem(has ? Msg("Menu.BookmarkRemove") : Msg("Menu.BookmarkAdd"),
-			                    "Shift+M", false, CanBookmark(cur))) {
+			if (ImGui::MenuItem(Msg("Menu.BookmarkAdd"), "Shift+M", false,
+			                    CanBookmark(cur) && !has)) {
 				bmOpenToggle_ = true;
 			}
 		}
