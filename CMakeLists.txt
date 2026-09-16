@@ -284,6 +284,9 @@ mxv2_profile_get(AppId Windows MXV2_APPID_WINDOWS)
 # デバッグ版の目印。Windows は実行ファイル名（mxv2_<suffix>.exe）、Android は
 # applicationId の末尾（Gradle が付ける）に使う。
 mxv2_profile_get(AppId DebugSuffix MXV2_APPID_DEBUG_SUFFIX)
+# [URL] … バージョン情報から開く GitHub のページと NOTICE。
+mxv2_profile_get(URL Project MXV2_URL_PROJECT)
+mxv2_profile_get(URL Notice MXV2_URL_NOTICE)
 # VERSIONINFO 用の "a,b,c,d"。[Version] Text を "." で割り、先頭の 0 を落とし
 # （0820 → 820）、数字でなければ 0、4 つに満たなければ 0 で埋める。
 string(REPLACE "." ";" _mxv2_ver_parts "${MXV2_VERSION_TEXT}")

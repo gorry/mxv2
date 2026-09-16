@@ -11,6 +11,8 @@
 //                              → MXV2_APP_ID_NAMESPACE / MXV2_APP_ID_ANDROID /
 //                                MXV2_APP_ID_WINDOWS（Android は Gradle 側が
 //                                使う。Windows のぶんは定義だけ）
+//   [URL] Project / Notice     → MXV2_URL_PROJECT / MXV2_URL_NOTICE
+//                                （バージョン情報のボタンが開く場所）
 
 #ifndef MXV2_APPPROFILE_H
 #define MXV2_APPPROFILE_H
@@ -24,5 +26,7 @@
 #define MXV2_APP_ID_NAMESPACE "@MXV2_APPID_NAMESPACE@"
 #define MXV2_APP_ID_ANDROID "@MXV2_APPID_ANDROID@"
 #define MXV2_APP_ID_WINDOWS "@MXV2_APPID_WINDOWS@"
+#define MXV2_URL_PROJECT "@MXV2_URL_PROJECT@"
+#define MXV2_URL_NOTICE "@MXV2_URL_NOTICE@"
 
 #endif  // MXV2_APPPROFILE_H

@@ -9,10 +9,13 @@
 #include <cstdio>
 #include <cstring>
 
+#include <SDL.h>
+
 #include "imgui.h"
 
 #include "settingsui_internal.h"
 
+#include "appprofile.h"  // CMake が Profile.ini から生成する
 #include "fileutil.h"
 #include "kinsoku.h"
 #include "safaccess.h"
@@ -22,6 +25,21 @@ namespace mxv2 {
 using namespace settingsui;
 
 namespace {
+
+// バージョン情報から開く場所。NOTICE は配布物の中身と同じものが GitHub に
+// あるので、そこへ飛ばす（画面の字はコピーできないため。2026-09-16、
+// ユーザーの指示）。値は mxv2/Profile.ini の [URL] Project / Notice
+// （著作者専用）から CMake が appprofile.h に写したもの。
+const char *kNoticeUrl = MXV2_URL_NOTICE;
+const char *kProjectUrl = MXV2_URL_PROJECT;
+
+// 既定のブラウザで url を開く。SDL_OpenURL は Windows でも Android でも効く。
+void OpenUrl(const char *url) {
+	if (SDL_OpenURL(url) != 0) {
+		printf("warning  : %s\n", MsgF("Log.OpenUrlFailed", url, SDL_GetError()).c_str());
+		fflush(stdout);
+	}
+}
 
 // バージョン情報の字の大きさを決める物差し。NOTICE は等幅 80 桁で書いて
 // あるので、余裕をみた 88 桁ぶんが横に収まるようにする。
@@ -221,6 +239,10 @@ void SettingsUi::BuildAboutWindow() {
 		                           ImGuiWindowFlags_NoCollapse |
 		                               ImGuiWindowFlags_NoSavedSettings)) {
 			ImGui::TextUnformatted(aboutHeader_.c_str());
+			// GitHub のページと、そこにある NOTICE をブラウザで開く。
+			if (ImGui::Button(Msg("About.OpenGitHub"))) OpenUrl(kProjectUrl);
+			SameLineOrWrap(Msg("About.OpenNotice"));
+			if (ImGui::Button(Msg("About.OpenNotice"))) OpenUrl(kNoticeUrl);
 			ImGui::Separator();
 			// 下の枠は実行ファイルの隣の NOTICE をそのまま出したもの。
 			// 見出しと同じ行が頭に来るが、あちらは独立した配布用の文書なので
