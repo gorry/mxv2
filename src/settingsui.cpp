@@ -2834,8 +2834,15 @@ void SettingsUi::BuildContextMenu(Settings *settings, DrawScreen *draw, Player *
 		if (ImGui::MenuItem(Msg("Menu.Bookmarks"), "F4")) OpenBookmarks();
 
 		ImGui::Separator();
-		if (ImGui::MenuItem(Msg("Menu.Help"), "F11")) showHelp_ = true;
-		if (ImGui::MenuItem(Msg("Menu.About"), "F12")) showAbout_ = true;
+		// [その他] … 2 段目に [操作方法…] と [バージョン情報…]（2026-09-16、
+		// ユーザーの指示）。横画面の携帯でメニューが縦に収まらず（ジェスチャー
+		// ナビゲーションの帯ぶん短い Pixel 8 Pro でスクロールバーが出た）、
+		// 項目を減らすために畳んだ。
+		if (ImGui::BeginMenu(Msg("Menu.Other"))) {
+			if (ImGui::MenuItem(Msg("Menu.Help"), "F11")) showHelp_ = true;
+			if (ImGui::MenuItem(Msg("Menu.About"), "F12")) showAbout_ = true;
+			ImGui::EndMenu();
+		}
 		// [終了] はモバイルには置かない（区切り線ごと）。
 		if (Screen::CanQuitApp()) {
 			ImGui::Separator();
