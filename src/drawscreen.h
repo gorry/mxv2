@@ -265,9 +265,12 @@ public:
 
 	// つまみが動ける幅。旧 mxv の MX_CW_TOTALVOLBARMOVEMENT /
 	// MX_CH_SCROLLBARMOVEMENT / MX_CW_PROGRESSBAR。スキンで変わる。
-	int totalVolBarMovement() const { return skin_->volBarMovement(); }
-	int progressBarWidth() const { return skin_->progW; }
-	int scrollBarMovement() const { return skin_->scrollBarMovement(); }
+	// 見るのは layout_（キャンバスに合わせて伸ばしたあと）。スクロールバーの
+	// 溝は画面に合わせて伸びるので、skin_ の値だとつまみが下端まで届かなかった
+	// （2026-09-16、ユーザーの指摘）。
+	int totalVolBarMovement() const { return layout_.volBarMovement(); }
+	int progressBarWidth() const { return layout_.progW; }
+	int scrollBarMovement() const { return layout_.scrollBarMovement(); }
 
 private:
 	bool LoadAssets(std::string *err);
