@@ -625,6 +625,50 @@ private:
 	// コンテキストメニュー
 	void BuildContextMenu(Settings *settings, DrawScreen *draw, Player *player,
 	                      Filer *filer);
+	// その項目（ポップアップの中から）。
+	void BuildContextMenuItems(Settings *settings, DrawScreen *draw, Player *player,
+	                           Filer *filer);
+	// 指で操作するとき（touchUi_）、[表示] と [その他] は ImGui のサブメニュー
+	// ではなく、同じポップアップの中身を入れ替える「ページ」にする。携帯の
+	// 縦画面ではメニューの左右どちらにもサブメニューを置く幅が無く、ImGui は
+	// 親に重ねて出すが、重ねた子は親の下に描かれて見えない（2026-09-16、
+	// Pixel 7a でユーザーの報告）。ページなら幅は要らない。
+	enum CtxPage {
+		kCtxPageMain = 0,
+		kCtxPageView,   // [表示] の中身
+		kCtxPageOther,  // [その他] の中身
+		kCtxPageCount,
+	};
+	int ctxPage_;  // メニューを開くたびに kCtxPageMain へ戻す
+	// ページの切り替えは横スクロールで見せる（2026-09-16、ユーザーの要望。
+	// 下るときは右から、戻るときは左から入ってくる）。各ページは自分の
+	// 子ウィンドウに描く（MenuItem の列幅はウィンドウごとなので、2 ページを
+	// 同じウィンドウに描くと列が揃ってしまう）。遷移中は 2 つの子を
+	// 横にずらして描き、ポップアップの大きさは前→次へ補間する。
+	int ctxSwitchTo_;         // このフレームで押された行き先（無ければ -1）
+	int ctxAnimFrom_;         // 滑り出ていく前のページ（遷移中でなければ -1）
+	bool ctxAnimForward_;     // 下る（次が右から入る）か、戻る（左から）か
+	Uint32 ctxAnimStartMs_;
+	// 各ページの中身の大きさ。描くたびに測り直す（未測は 0）。
+	ImVec2 ctxPageSize_[kCtxPageCount];
+	// 子ウィンドウの列幅が決まっているか。ImGui はウィンドウが出直すたびに
+	// 列幅を測り直すので、最初の 1 フレームはラベルと短縮キーが重なる。
+	// 決まるまではポップアップごと隠す（ポップアップ自身が最初のフレームで
+	// やっているのと同じ）。
+	bool ctxChildWarm_[kCtxPageCount];
+	// ページへ入る / 戻る項目。サブメニューの見出しと同じ見た目（右端に ▶、
+	// 戻るは ◀）で、押してもポップアップを閉じない。押されたら true。
+	bool CtxPageItem(const char *label, bool back);
+	// MenuItem。子ウィンドウの中では ImGui が自分でポップアップを閉じないので、
+	// 押されたらここで閉じる。
+	bool CtxMenuItem(const char *label, const char *shortcut, bool selected, bool enabled);
+	// 1 ページぶんの項目。paged でなければ [表示] [その他] は ImGui のサブメニュー。
+	void BuildCtxPageItems(int page, bool paged, Settings *settings, DrawScreen *draw,
+	                       Player *player, Filer *filer);
+	// ページを子ウィンドウに描き、中身の大きさを ctxPageSize_ に測る。
+	// 子が丸ごと切り取られて何も描けなかったら false。
+	bool BuildCtxPageChild(int page, const ImVec2 &pos, Settings *settings, DrawScreen *draw,
+	                       Player *player, Filer *filer);
 	bool openContextMenu_;
 	// 直前のフレームでメニューが開いていたか（ESC を食う判断に使う）と、
 	// ESC で閉じてほしいという印。
