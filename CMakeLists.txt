@@ -379,6 +379,35 @@ if(MSVC)
 	target_compile_definitions(mxv2_chunktest PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
 
+# ---------------------------------------------------------------------------
+# mxv2_benchmark（tools/benchmark.cpp）
+#   演奏時間の測定 (MXDRV_MeasurePlayTime2) とシーク (MXDRV_PlayAt) の負荷、
+#   および空回し中に x68sound のコマンドバッファへ積まれる OPM 書き込みの量を
+#   測る。Makefile の build-benchmark / run-benchmark から呼ぶ。SDL 不要。
+#
+#   portable_mdx の内部ヘッダ（コマンドバッファの水位を覗くため）を読むので、
+#   src/ に加えて mxdrv / x68sound のソースディレクトリも include に足す。
+# ---------------------------------------------------------------------------
+add_executable(mxv2_benchmark
+	tools/benchmark.cpp
+	src/fileutil.cpp
+	src/ini.cpp
+	src/message.cpp
+	src/text.cpp
+	src/mdxsong.cpp
+	src/vfs.cpp
+	src/safaccess.cpp
+)
+target_include_directories(mxv2_benchmark PRIVATE
+	"${CMAKE_CURRENT_SOURCE_DIR}/src"
+	"${PORTABLE_MDX_DIR}/src/mxdrv"
+	"${PORTABLE_MDX_DIR}/src/x68sound"
+)
+target_link_libraries(mxv2_benchmark PRIVATE portable_mdx)
+if(MSVC)
+	target_compile_definitions(mxv2_benchmark PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()
+
 endif()
 
 # SDL2.dll を実行ファイルの隣に置く

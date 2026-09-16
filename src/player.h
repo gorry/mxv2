@@ -53,6 +53,33 @@ public:
 #else
 	static const bool kSupports96kHz = false;
 #endif
+
+	// シーク時に OPM コマンドバッファへ積みたい本数（Config の既定値）。
+	//
+	// MXDRV_PlayAt は「曲の頭から飛び先まで」を空回しし、その間の OPM への
+	// 書き込みをすべてここへ積む。積まれる量は曲の長さに比例し、実測では
+	// 毎秒 400〜2600 本（曲の密度による。testdata で実測）。
+	//
+	// あふれると**飛び先に近いほうの書き込みが捨てられ**、飛んだ直後の
+	// 音源の状態が曲の頭のほうのものになってしまうので、足りないほうが困る。
+	// 2^21 - 1 本（4MB。マスクに使うので 2 のべき乗 - 1 にする）で、
+	// 密度の高い曲でも 15 分ぶん、ふつうの曲なら 1 時間以上まかなえる。
+	// それを超える長さの曲で終わり近くへ飛んだときだけ、頭のほうの書き込みが
+	// 残って飛び先の設定が欠ける（memo/playtime.md の 7.3 / 7.6）。
+	static const int kOpmCommandBufferEntries = (1 << 21) - 1;
+
+	// x68sound の OPM コマンドバッファの大きさを変えられる版か
+	// （gorry 版 portable_mdx の拡張。本家には無いので、そのときは既定のまま）。
+	//
+	// MXDRV が OPM へ書いた内容はこのバッファへ積まれ、**PCM を作るあいだに**
+	// 消費される。MXDRV_PlayAt（シーク）は音を出さずに空回しするので、その間は
+	// 誰も消費しない。既定の 65535 本では 2 分 40 秒ぶんほどであふれ、
+	// 飛び先に近いほうの書き込みが黙って捨てられる（memo/playtime.md の 7.3）。
+	#ifdef MXDRV_SUPPORT_ADJUST_X68SOUND_COMMAND_BUFFER_SIZE
+	static const bool kCanAdjustOpmCommandBuffer = true;
+#else
+	static const bool kCanAdjustOpmCommandBuffer = false;
+#endif
 	// 指定できるレートか。x68sound は知らない値を黙って 22050 に落とすので、
 	// 渡す前にここで弾く。
 	static bool IsSupportedSampleRate(int rate) {
@@ -68,6 +95,13 @@ public:
 		// 「一定の長さ (kRingMs) ぶん溜まる深さ」を計算して必要なら増やす。
 		int numAudioBlocks;
 		int memoryPoolBytes;    // MxdrvContext のメモリプール
+		// x68sound の OPM コマンドバッファに積める本数。
+		// **0 なら portable_mdx の既定（65535 本）のまま**で、今までと変わらない。
+		// 正の値にすると Open() が取り直す（1 本 2 バイト）。
+		// 大きくすると長いシークでも書き込みが捨てられなくなるが、そのぶん
+		// 溜まった書き込みを吐き出しきるまでの時間も延びる。
+		// 大きくするだけでは音は直らない（memo/playtime.md の 7.3 / 7.4）。
+		int opmCommandBufferEntries;
 		int mdxBufferBytes;
 		int pdxBufferBytes;
 		bool pcm8;

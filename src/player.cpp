@@ -65,6 +65,7 @@ Player::Config::Config()
 #endif
       numAudioBlocks(4),
       memoryPoolBytes(8 * 1024 * 1024),
+      opmCommandBufferEntries(Player::kOpmCommandBufferEntries),
       mdxBufferBytes(1 * 1024 * 1024),
       pdxBufferBytes(2 * 1024 * 1024),
       pcm8(true),
@@ -153,6 +154,22 @@ bool Player::Open(const Config &config, std::string *err) {
 		return false;
 	}
 	mxdrvStarted_ = true;
+
+	// x68sound の OPM コマンドバッファ。0 なら portable_mdx の既定のまま。
+	// **鳴らし始める前でなければならない**（取り直すと中身を捨てるため）。
+	// 取れなくても演奏はできるので、警告だけ出して続ける。
+#ifdef MXDRV_SUPPORT_ADJUST_X68SOUND_COMMAND_BUFFER_SIZE
+	if (config_.opmCommandBufferEntries > 0) {
+		const int r = MXDRV_SetX68SoundCommandBufferSize(
+			&context_, config_.opmCommandBufferEntries);
+		if (r != 0) {
+			printf("warning  : %s\n",
+			       MsgF("Log.OpmBufferFailed",
+			            MsgNum("%d", config_.opmCommandBufferEntries), MsgNum("%d", r))
+			           .c_str());
+		}
+	}
+#endif
 
 	MXDRV_PCM8Enable(&context_, config_.pcm8 ? 1 : 0);
 	// メイン音量は記録しないので、起動時は必ず 0（マスターのみ）から始まる。
@@ -473,6 +490,16 @@ bool Player::SeekMs(uint32_t ms) {
 	const bool fade = autoFadeout();
 	MXDRV_PlayAt(&context_, ms, fade ? loops : loops + 1, fade ? 1 : 0);
 	SetChannelMask(mask);
+
+	// 空回しの間に OPM へ書かれたぶんは、音源へ渡らずコマンドバッファに
+	// 溜まっている（消費は PCM を作るあいだにしか進まない）。このまま
+	// 鳴らし始めると「曲の頭から飛び先まで」の古い設定が数秒かけて流れ込み、
+	// その間おかしな音になる。ここで音を捨てながら一度に吐き出しておく。
+	// 中で書き込み待ちを最短にするので、進む曲の時間は 20ms ほどで済む
+	// （memo/playtime.md の 7.4）。
+#ifdef MXDRV_SUPPORT_ADJUST_X68SOUND_COMMAND_BUFFER_SIZE
+	MXDRV_FlushX68SoundCommandBuffer(&context_);
+#endif
 
 	// 飛ぶ前に鳴っていた鍵盤を画面から消させる。watch_.Reset() は
 	// 「前は鳴っていた」という記憶ごと捨てるので、そのままだと**もう

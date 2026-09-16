@@ -154,6 +154,7 @@ WIN_OUT_DIR := $(WIN_BUILD_DIR)/$(CONFIG)
 EXE_NAME = mxv2$(if $(filter debug,$(BUILD)),_$(PROFILE_DEBUG_SUFFIX)).exe
 EXE_MAIN = $(WIN_OUT_DIR)/$(EXE_NAME)
 EXE_CHUNKTEST := $(WIN_OUT_DIR)/mxv2_chunktest.exe
+EXE_BENCHMARK := $(WIN_OUT_DIR)/mxv2_benchmark.exe
 
 CMAKE_CONFIGURE := cmake -B $(WIN_BUILD_DIR) -S . -A $(VS_ARCH)
 
@@ -192,6 +193,45 @@ TESTDATA_CMDS := $(foreach f,$(TESTDATA_MDX),"$(EXE_CHUNKTEST)" "$(f)" &&)
 .PHONY: test-windows
 test-windows: build-windows
 	$(TESTDATA_CMDS) cd .
+
+# ---------------------------------------------------------------------------
+# 演奏時間の測定とシークの負荷を測る（mxv2_benchmark）
+# ---------------------------------------------------------------------------
+# MDX は再生してみるまで長さが分からず、途中の時刻を指す索引も持たない。
+# mxv2 はどちらも「音を出さずに曲を全速力で走らせる」——空回し——で解いている
+# （仕組みは memo/playtime.md）。その費用と、空回し中に x68sound の
+# コマンドバッファへ積まれる OPM 書き込みの量を測る。
+#
+# **Windows 専用の開発用ツール**。TARGET は win32 / win64 を、BUILD は
+# debug / release を見る（デバッグビルドは最適化が効かないぶん遅く出るので、
+# 数字を比べるときは BUILD を揃えること）。install には含めない。
+#
+#   make run-benchmark
+#   make run-benchmark BUILD=release
+#   make run-benchmark MDXFILE=testdata/foo.mdx SEEKMS=90000
+#   make run-benchmark SEEKMS="60000 180000 360000"
+#   make run-benchmark BUFSIZE=524288
+#
+# MDXFILE はカレントディレクトリからの相対、または絶対パス。そこに無ければ
+# **実行ファイルの隣**（＝ 同梱の assets/）からも探すので、既定値がそのまま通る。
+# SEEKMS は空白区切りで複数書ける。BUFSIZE は OPM コマンドバッファに積める
+# 本数（MXDRV_SetX68SoundCommandBufferSize）。空なら portable_mdx の既定
+# （65535 本）のまま測る。
+MDXFILE ?= assets/mdx/ArctanX/am_field.mdx
+SEEKMS ?= 360000
+BUFSIZE ?=
+
+.PHONY: check-benchmark-platform
+check-benchmark-platform:
+	$(if $(filter windows,$(PLATFORM)),,$(error build-benchmark / run-benchmark are Windows only; use TARGET=win32 or win64))
+
+.PHONY: build-benchmark
+build-benchmark: check-benchmark-platform $(WIN_BUILD_DIR)/CMakeCache.txt
+	cmake --build $(WIN_BUILD_DIR) --config $(CONFIG) --target mxv2_benchmark --parallel
+
+.PHONY: run-benchmark
+run-benchmark: build-benchmark
+	"$(EXE_BENCHMARK)" "$(MDXFILE)" $(if $(BUFSIZE),-buf $(BUFSIZE)) $(SEEKMS)
 
 # install / uninstall は mxv2 独自の約束（CMakeLists.txt に install() は無い）。
 # 「実行ファイル + SDL2.dll + assets + NOTICE + LICENSE + README.md」という、
@@ -520,6 +560,11 @@ help:
 	@echo              win64 also bundles the skin editor + README_SkinEditor.md)
 	@echo   arc-all    arc for TARGET=win64 and TARGET=android
 	@echo   help       show this
+	@echo Benchmark (tools/benchmark.cpp, Windows only):
+	@echo   build-benchmark  build mxv2_benchmark (BUILD selects Debug/Release)
+	@echo   run-benchmark    measure MXDRV_MeasurePlayTime2 / MXDRV_PlayAt and
+	@echo                    the x68sound command-buffer level, with MDXFILE
+	@echo                    and SEEKMS
 	@echo Skin editor (skineditor/, C# .NET 8, Windows only; TARGET is ignored):
 	@echo   build-skineditor      dotnet build (BUILD selects Debug/Release)
 	@echo   clean-skineditor      remove bin/ obj/ and the copies in this folder
@@ -540,6 +585,13 @@ help:
 	@echo            Android)  default: (empty)
 	@echo   PREFIX   install/uninstall location for win32/win64 only
 	@echo            default: dist/^<TARGET^>-^<BUILD^>
+	@echo   MDXFILE  MDX file for `run-benchmark` (relative to the current
+	@echo            directory or to the exe; absolute also works)
+	@echo            default: assets/mdx/ArctanX/am_field.mdx
+	@echo   SEEKMS   seek target(s) in ms for `run-benchmark`, space separated
+	@echo            default: 360000 (6:00)
+	@echo   BUFSIZE  OPM command-buffer entries for `run-benchmark`
+	@echo            default: (empty = portable_mdx's own 65535)
 	@echo -----------------------------------------------------------------
 	@echo Examples:
 	@echo   make
@@ -549,6 +601,8 @@ help:
 	@echo   make install TARGET=win64 BUILD=release PREFIX=C:/mxv2
 	@echo   make build TARGET=android-arm64
 	@echo   make run TARGET=android
+	@echo   make run-benchmark BUILD=release
+	@echo   make run-benchmark MDXFILE=testdata/foo.mdx SEEKMS=90000
 	@echo   make test-skineditor
 	@echo   make install-skineditor BUILD=release PREFIX=C:/mxv2
 	@echo -----------------------------------------------------------------
