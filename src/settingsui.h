@@ -454,18 +454,22 @@ private:
 	// フォルダを選ぶダイアログ。選んだ結果の行き先は 2 つある。
 	//   kFolderTargetFiler … ファイラーを動かす (L キー / メニュー)
 	//   kFolderTargetPdx   … PDX の探索先に入れる (設定ウィンドウの [参照...])
+	//   kFolderTargetBookmark … ブックマークに足す ([ブックマークの設定] の [追加])
 	enum FolderTarget {
 		kFolderTargetFiler = 0,
 		kFolderTargetPdx,
+		kFolderTargetBookmark,
 	};
 	// ダイアログの題名。"###" 以降が ImGui の id なので、見出しを変えても
 	// 同じポップアップとして扱われる。
 	const char *folderTitle() const;
 	void BuildFolderWindow(Settings *settings, Filer *filer);
 	FolderTarget folderTarget_;
-	// 設定ウィンドウから呼ばれたときの往復。モーダルは入れ子にせず、
-	// 設定ウィンドウが閉じきってからフォルダ選択を出し、閉じたら開き直す。
+	// 設定ウィンドウ / ブックマークの設定から呼ばれたときの往復。モーダルは
+	// 入れ子にせず、呼び出し元が閉じきってからフォルダ選択を出し、閉じたら
+	// 開き直す。どちらへ戻るかは folderTarget_ で分かる。
 	bool folderReturnToSettings_;
+	bool folderReturnToBookmarks_;
 	bool folderOpenPending_;
 	// 子フォルダの一覧だけ作り直す（入力欄には触らない）。**読むのは
 	// 別スレッド**なので、中身が入るのはあとのフレーム (PollFolderDir)。

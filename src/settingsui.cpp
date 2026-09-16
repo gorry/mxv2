@@ -115,6 +115,7 @@ const char *kColorsTitle;
 const char *kOverwriteTitle;
 const char *kFolderTitle;
 const char *kPdxFolderTitle;
+const char *kBookmarkFolderTitle;
 const char *kHelpTitle;
 const char *kFileSystemsTitle;
 const char *kFsRemoveTitle;
@@ -142,6 +143,7 @@ void InitTitles() {
 	// 見出しだけ用途で変えて、ポップアップとしては同じものとして扱う。
 	kFolderTitle = TitleWithId("Dialog.Folder", "###mxv2folder");
 	kPdxFolderTitle = TitleWithId("Dialog.PdxFolder", "###mxv2folder");
+	kBookmarkFolderTitle = TitleWithId("Dialog.BookmarkFolder", "###mxv2folder");
 	kHelpTitle = Msg("Dialog.Help");
 	kFileSystemsTitle = Msg("Dialog.FileSystems");
 	kFsRemoveTitle = Msg("Dialog.FsRemove");
@@ -482,6 +484,7 @@ SettingsUi::SettingsUi()
       showFolder_(false),
       folderTarget_(kFolderTargetFiler),
       folderReturnToSettings_(false),
+      folderReturnToBookmarks_(false),
       folderOpenPending_(false),
       songLoader_(0),
       folderLister_(new DirLister()),
@@ -996,13 +999,16 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 		visible_ = true;  // 新しい題名で開き直す
 	}
 
-	// 設定ウィンドウの [参照...] から来た往復。ImGui のポップアップは
-	// 同じ階層で掛け替えられないので、片方が閉じきってからもう片方を開く。
-	if (folderOpenPending_ && !ImGui::IsPopupOpen(kSettingsTitle)) {
+	// 設定ウィンドウの [参照...] / ブックマークの設定の [追加] から来た往復。
+	// ImGui のポップアップは同じ階層で掛け替えられないので、呼び出し元が
+	// 閉じきってからフォルダ選択を開く。
+	if (folderOpenPending_ && !ImGui::IsPopupOpen(kSettingsTitle) &&
+	    !ImGui::IsPopupOpen(kBookmarksTitle)) {
 		folderOpenPending_ = false;
-		// PDX の探索先が入っていればそこから、無ければファイラーの今の場所から。
+		// PDX なら探索先が入っていればそこから、無ければファイラーの今の場所から。
+		// ブックマークはファイラーの今の場所から。
 		std::string start = filer->currentRef();
-		if (vfs_ != 0 && pdxPathBuf_[0] != '\0') {
+		if (folderTarget_ == kFolderTargetPdx && vfs_ != 0 && pdxPathBuf_[0] != '\0') {
 			std::string ref;
 			if (vfs_->Resolve(pdxPathBuf_, filer->currentRef(), &ref) && vfs_->IsDir(ref)) {
 				start = ref;
@@ -1028,6 +1034,11 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	    !ImGui::IsPopupOpen(folderTitle())) {
 		folderReturnToSettings_ = false;
 		visible_ = true;
+	}
+	if (folderReturnToBookmarks_ && !showFolder_ && !folderOpenPending_ &&
+	    !ImGui::IsPopupOpen(folderTitle())) {
+		folderReturnToBookmarks_ = false;
+		showBookmarks_ = true;
 	}
 
 	// ここから下は設定ウィンドウ。モーダルなので、開いている間はメイン画面も
@@ -2152,34 +2163,28 @@ void SettingsUi::BuildBookmarksWindow(Settings *settings, Filer *filer) {
 	}
 	ImGui::EndDisabled();
 
-	// [追加] はカレントフォルダを選択位置へ挿し込む。ルート（ファイル
-	// システムの選択）と "Bookmarks>" 自身、すでに控えてある場所は入れられない。
-	const std::string cur = (filer != 0) ? filer->currentRef() : std::string();
-	const bool bookmarkable = CanBookmark(cur);
-	const bool dup = (FindBookmark(list, cur) >= 0);
+	// [追加] はフォルダ選択ダイアログを経由して、選んだフォルダを選択位置へ
+	// 挿し込む（2026-09-16、ユーザーの指示。それまではカレントフォルダを
+	// そのまま入れていた）。ダイアログの開始位置はファイラーの今の場所。
+	// モーダル同士は入れ子にせず、いったんこのダイアログを閉じてから出し、
+	// 閉じたらまた開く（設定ウィンドウの [参照...] と同じ往復）。
+	// 入れられない場所（ルート・"Bookmarks>"・控え済み）の判定は、選んだ
+	// あとでフォルダ選択の側が行う。ここで見るのは「いっぱい」だけ。
+	(void)filer;
 	const bool full = (count >= Settings::kMaxBookmarks);
 	ImGui::SameLine();
-	ImGui::BeginDisabled(!bookmarkable || dup || full);
-	if (ImGui::Button(Msg("Button.Add"))) {
-		const int at = (bmSelected_ >= 0) ? bmSelected_ : count;
-		list.insert(list.begin() + at, cur);
-		bmSelected_ = at;
-		changedFields_ |= Settings::kFieldBookmarks;
+	ImGui::BeginDisabled(full);
+	// ダイアログを開くボタンなので末尾に "…"（Button.AddBookmark）。
+	if (ImGui::Button(Msg("Button.AddBookmark"))) {
 		bmError_.clear();
+		folderTarget_ = kFolderTargetBookmark;
+		folderReturnToBookmarks_ = true;
+		folderOpenPending_ = true;
+		showBookmarks_ = false;
 	}
 	ImGui::EndDisabled();
 	if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-		if (!bookmarkable) {
-			ImGui::SetTooltip("%s", Msg("Bookmark.AddRoot"));
-		} else if (dup) {
-			ImGui::SetTooltip("%s",
-			                  MsgF("Bookmark.AddDuplicate", vfs_->DisplayPath(cur)).c_str());
-		} else if (full) {
-			ImGui::SetTooltip("%s", Msg("Bookmark.AddFull"));
-		} else {
-			ImGui::SetTooltip("%s",
-			                  MsgF("Bookmark.AddHint", vfs_->DisplayPath(cur)).c_str());
-		}
+		ImGui::SetTooltip("%s", full ? Msg("Bookmark.AddFull") : Msg("Bookmark.AddBrowse"));
 	}
 
 	ImGui::SameLine();
@@ -2562,7 +2567,9 @@ void SettingsUi::BuildHelpWindow() {
 }
 
 const char *SettingsUi::folderTitle() const {
-	return (folderTarget_ == kFolderTargetPdx) ? kPdxFolderTitle : kFolderTitle;
+	if (folderTarget_ == kFolderTargetPdx) return kPdxFolderTitle;
+	if (folderTarget_ == kFolderTargetBookmark) return kBookmarkFolderTitle;
+	return kFolderTitle;
 }
 
 void SettingsUi::BuildFolderWindow(Settings *settings, Filer *filer) {
@@ -2711,6 +2718,25 @@ void SettingsUi::BuildFolderWindow(Settings *settings, Filer *filer) {
 				changedFields_ |= Settings::kFieldPdxPath;
 				showFolder_ = false;
 			}
+		} else if (folderTarget_ == kFolderTargetBookmark) {
+			// ブックマークに足す。ルート（ファイルシステムの選択）と
+			// "Bookmarks>" 自身、控え済みの場所は入れられない。挿す位置は
+			// [ブックマークの設定] で選んでいた行（無ければ末尾）。
+			std::vector<std::string> &list = settings->bookmarks;
+			if (!CanBookmark(ref)) {
+				folderError_ = Msg("Bookmark.AddRoot");
+			} else if (FindBookmark(list, ref) >= 0) {
+				folderError_ = MsgF("Bookmark.AddDuplicate", vfs_->DisplayPath(ref));
+			} else if ((int)list.size() >= Settings::kMaxBookmarks) {
+				folderError_ = Msg("Bookmark.AddFull");
+			} else {
+				const int count = (int)list.size();
+				const int at = (bmSelected_ >= 0 && bmSelected_ <= count) ? bmSelected_ : count;
+				list.insert(list.begin() + at, ref);
+				bmSelected_ = at;
+				changedFields_ |= Settings::kFieldBookmarks;
+				showFolder_ = false;
+			}
 		} else {
 			// ファイラーを動かすのはメインループの持ち物なので、要求だけ積む。
 			requestedFolder_ = ref;
@@ -2769,16 +2795,18 @@ void SettingsUi::BuildContextMenu(Settings *settings, DrawScreen *draw, Player *
 		// ファイラーの "Bookmarks>"（ジャンプ専用）。設定ダイアログは下の段。
 		if (ImGui::MenuItem(Msg("Menu.BookmarkList"), "M")) OpenBookmarkList();
 		{
-			// カレントを控える。確認してから実行するので、ここでは印を立てる
-			// だけ（メニューの中で OpenPopup すると入れ子のポップアップに
-			// なってしまう）。**控え外しはメニューに置かない**（2026-09-15、
-			// ユーザーの指示。以前は控え済みなら [ブックマークから削除…] に
-			// 化けていた）。控え済みの場所では項目を無効にする。外すのは
-			// Shift+M か [ブックマークの設定] から。
+			// カレントを控える / 控えを外す。どちらも確認してから実行するので、
+			// ここでは印を立てるだけ（メニューの中で OpenPopup すると入れ子の
+			// ポップアップになってしまう）。項目は 1 つで、
+			//   控えられる場所 … [ブックマークに追加…]
+			//   控え済みの場所 … [ブックマークから削除…]
+			//   どちらもできない場所（ルート・Bookmarks>）… [ブックマークに追加…] を無効で
+			// （2026-09-16、ユーザーの指示。前日に削除を外したのは勘違いだったとのこと）。
+			// 追加も削除もできる状態は無い（控え済みなら削除しかできない）。
 			const std::string cur = filer->currentRef();
 			const bool has = (FindBookmark(settings->bookmarks, cur) >= 0);
-			if (ImGui::MenuItem(Msg("Menu.BookmarkAdd"), "Shift+M", false,
-			                    CanBookmark(cur) && !has)) {
+			if (ImGui::MenuItem(has ? Msg("Menu.BookmarkRemove") : Msg("Menu.BookmarkAdd"),
+			                    "Shift+M", false, CanBookmark(cur))) {
 				bmOpenToggle_ = true;
 			}
 		}
