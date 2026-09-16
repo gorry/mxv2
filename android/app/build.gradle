@@ -143,6 +143,16 @@ android {
 	}
 
 	buildTypes {
+		// デバッグ版は applicationId の末尾に mxv2/Profile.ini の [AppId] DebugSuffix
+		// を付ける（net.gorry.mxv2.debug）。配布版と並べて入れられ、ユーザーフォルダ
+		// （Android/data/<applicationId>/files）と SAF の権限も別になる。
+		// namespace（Java のパッケージ）は変えない。2026-09-16、ユーザーの指示。
+		debug {
+			applicationIdSuffix ".${mxv2Profile['AppId.DebugSuffix']}"
+			// ホーム画面の名前にも同じ接尾辞（"mxv2 debug"）。配布版と並べて
+			// 入れたときに見分けるため。
+			resValue 'string', 'app_name', "${mxv2Profile['Title.ShortText']} ${mxv2Profile['AppId.DebugSuffix']}"
+		}
 		release {
 			minifyEnabled false
 			proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'

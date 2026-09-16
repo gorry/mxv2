@@ -129,7 +129,7 @@ cmake --build build --config Release
 
 | | |
 |---|---|
-| `mxv2.exe` | 本体 |
+| `mxv2.exe` | 本体（Debug 構成では `mxv2_debug.exe`。末尾は `Profile.ini` の `[AppId] DebugSuffix`） |
 | `mxv2_chunktest.exe` | 検証ツール（後述） |
 | `simple_mdx_player.exe` `simple_mdx2wav.exe` | portable_mdx 付属サンプル |
 | `SDL2.dll` | 自動コピー |
@@ -263,7 +263,13 @@ make clean-skineditor                 # bin/ obj/ と、ここへコピーされ
   （[AppId] Namespace）・`applicationId`（[AppId] Android）・`versionName`
   （[Version] Text）・`versionCode`（[Version] Number）・`app_name`
   （[Title] ShortText。ホーム画面の名前）に写す。[AppId] Windows は
-  いまは使い道が無く、`appprofile.h` に定義が出るだけ。`res/values/strings.xml` に
+  いまは使い道が無く、`appprofile.h` に定義が出るだけ。
+  **[AppId] DebugSuffix はデバッグ版の目印**で、Windows の Debug 構成の実行ファイルは
+  `mxv2_<DebugSuffix>.exe`（`mxv2_debug.exe`）、Android の debug ビルドの
+  `applicationId` は `<AppId Android>.<DebugSuffix>`（`net.gorry.mxv2.debug`）、ホーム画面の
+  名前も `<ShortText> <DebugSuffix>`（`mxv2 debug`）になる。
+  配布版と並べて入れられ、Android ではユーザーフォルダと SAF の権限も別になる
+  （`namespace` は変えないので Java のパッケージは `net.gorry.mxv2` のまま）。`res/values/strings.xml` に
   `app_name` は置かない（重複で止まる）。
 
 ## 6. Android 版のビルド
@@ -302,8 +308,13 @@ ndk.path=D:/dev/android-ndk
 cd android
 ./gradlew assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
-adb shell am start -n net.gorry.mxv2/.MainActivity
+adb shell am start -n net.gorry.mxv2.debug/net.gorry.mxv2.MainActivity
 ```
+
+debug ビルドの `applicationId` は `net.gorry.mxv2.debug`（上の [AppId] DebugSuffix）
+なので、`am start` にはパッケージ名とクラスの完全名を分けて渡す（release なら
+`net.gorry.mxv2/.MainActivity`）。`make run TARGET=android BUILD=<debug|release>` は
+これを自動で組み立てる。
 
 生成物は `app/build/outputs/apk/debug/app-debug.apk`。ABI は
 `gradle.properties` の `mxv2.abiFilters`（既定は `arm64-v8a,armeabi-v7a`。
@@ -316,7 +327,7 @@ third_party/portable_mdx が「常に真の比較」の警告を出すが、thir
 - **コマンドライン引数**はインテントの extra `args` で渡せる。
 
   ```sh
-  adb shell am start -n net.gorry.mxv2/.MainActivity --esa args "assets:ArctanX/am_field.mdx"
+  adb shell am start -n net.gorry.mxv2.debug/net.gorry.mxv2.MainActivity --esa args "assets:ArctanX/am_field.mdx"
   ```
 
 - 設定と展開した素材は `/data/data/net.gorry.mxv2/files/` の下。debug ビルド

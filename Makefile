@@ -148,7 +148,11 @@ endif
 # （`cmake --build ... --config <Debug|Release>` で選ぶだけ）。
 WIN_BUILD_DIR := build/$(TARGET)
 WIN_OUT_DIR := $(WIN_BUILD_DIR)/$(CONFIG)
-EXE_MAIN := $(WIN_OUT_DIR)/mxv2.exe
+# デバッグ構成の実行ファイルは mxv2_<DebugSuffix>.exe（CMakeLists.txt の
+# OUTPUT_NAME_DEBUG。値は Profile.ini の [AppId] DebugSuffix）。
+# （PROFILE_DEBUG_SUFFIX は下のほうで定義するので、ここは遅延展開の = で書く）
+EXE_NAME = mxv2$(if $(filter debug,$(BUILD)),_$(PROFILE_DEBUG_SUFFIX)).exe
+EXE_MAIN = $(WIN_OUT_DIR)/$(EXE_NAME)
 EXE_CHUNKTEST := $(WIN_OUT_DIR)/mxv2_chunktest.exe
 
 CMAKE_CONFIGURE := cmake -B $(WIN_BUILD_DIR) -S . -A $(VS_ARCH)
@@ -196,7 +200,7 @@ test-windows: build-windows
 .PHONY: install-windows
 install-windows: build-windows
 	$(MKDIR_P) "$(PREFIX)"
-	cp "$(EXE_MAIN)" "$(PREFIX)/mxv2.exe"
+	cp "$(EXE_MAIN)" "$(PREFIX)/$(EXE_NAME)"
 	cp "$(WIN_OUT_DIR)/SDL2.dll" "$(PREFIX)/SDL2.dll"
 	rm -rf "$(PREFIX)/assets"
 	cp -r "$(WIN_OUT_DIR)/assets" "$(PREFIX)/assets"
@@ -207,7 +211,7 @@ install-windows: build-windows
 
 .PHONY: uninstall-windows
 uninstall-windows:
-	rm -rf "$(PREFIX)/mxv2.exe" "$(PREFIX)/SDL2.dll" "$(PREFIX)/assets" "$(PREFIX)/NOTICE" "$(PREFIX)/LICENSE" "$(PREFIX)/README.md"
+	rm -rf "$(PREFIX)/mxv2.exe" "$(PREFIX)/mxv2_$(PROFILE_DEBUG_SUFFIX).exe" "$(PREFIX)/SDL2.dll" "$(PREFIX)/assets" "$(PREFIX)/NOTICE" "$(PREFIX)/LICENSE" "$(PREFIX)/README.md"
 	@echo Removed mxv2 files from $(PREFIX)
 
 # ---------------------------------------------------------------------------
@@ -280,8 +284,8 @@ uninstall-android:
 
 .PHONY: run-android
 run-android: install-android
-	adb shell am force-stop net.gorry.mxv2
-	adb shell am start -n net.gorry.mxv2/.MainActivity $(if $(OPTION),--esa args "$(OPTION)")
+	adb shell am force-stop $(ANDROID_APP_ID)
+	adb shell am start -n $(ANDROID_APP_ID)/$(PROFILE_NAMESPACE).MainActivity $(if $(OPTION),--esa args "$(OPTION)")
 
 # Android 側にはまだ自動テストが無い（BUILD.md のとおり）。ここは Gradle の
 # （中身が空の）ユニットテストタスクを実行するだけの、将来テストを足すため
@@ -313,6 +317,11 @@ profile_get = $(strip $(shell sed -n "/^\[$(1)\]/,/^\[/{s/^$(2)=//p;}" $(PROFILE
 # `=`（再帰展開）にしてあるので、arc を頼まれたときだけ sed が走る。
 PROFILE_SHORT = $(call profile_get,Title,ShortText)
 PROFILE_VERSION = $(call profile_get,Version,Text)
+PROFILE_DEBUG_SUFFIX = $(call profile_get,AppId,DebugSuffix)
+PROFILE_NAMESPACE = $(call profile_get,AppId,Namespace)
+# Android の applicationId。デバッグ版は末尾に .<DebugSuffix>（build.gradle の
+# buildTypes.debug.applicationIdSuffix と同じ規則）。
+ANDROID_APP_ID = $(call profile_get,AppId,Android)$(if $(filter debug,$(BUILD)),.$(PROFILE_DEBUG_SUFFIX))
 
 ARC_DIR := Release
 ARC_NAME = $(PROFILE_SHORT)_$(TARGET)_$(PROFILE_VERSION)

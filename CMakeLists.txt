@@ -264,6 +264,9 @@ mxv2_profile_get(Copyright Name MXV2_COPYRIGHT_NAME)
 mxv2_profile_get(AppId Namespace MXV2_APPID_NAMESPACE)
 mxv2_profile_get(AppId Android MXV2_APPID_ANDROID)
 mxv2_profile_get(AppId Windows MXV2_APPID_WINDOWS)
+# デバッグ版の目印。Windows は実行ファイル名（mxv2_<suffix>.exe）、Android は
+# applicationId の末尾（Gradle が付ける）に使う。
+mxv2_profile_get(AppId DebugSuffix MXV2_APPID_DEBUG_SUFFIX)
 # VERSIONINFO 用の "a,b,c,d"。[Version] Text を "." で割り、先頭の 0 を落とし
 # （0820 → 820）、数字でなければ 0、4 つに満たなければ 0 で埋める。
 string(REPLACE "." ";" _mxv2_ver_parts "${MXV2_VERSION_TEXT}")
@@ -323,6 +326,9 @@ endif()
 # ログを見たいときは -console を付ける（src/main.cpp の SetupConsole）。
 if(WIN32)
 	set_target_properties(mxv2 PROPERTIES WIN32_EXECUTABLE TRUE)
+	# デバッグ構成の実行ファイルは mxv2_<DebugSuffix>.exe（Profile.ini の [AppId]
+	# DebugSuffix）。配布物の mxv2.exe と見分けるため（2026-09-16、ユーザーの指示）。
+	set_target_properties(mxv2 PROPERTIES OUTPUT_NAME_DEBUG "mxv2_${MXV2_APPID_DEBUG_SUFFIX}")
 endif()
 if(MSVC)
 	target_compile_definitions(mxv2 PRIVATE _CRT_SECURE_NO_WARNINGS)
