@@ -168,12 +168,23 @@ bool WantsConsole(int argc, char **argv) {
 // 気付かれないので、ためておいて最初のフレームでダイアログに出す。
 // 演奏中に出る警告（PDX が無い、など）はログだけ。あちらは操作の結果として
 // その場で出るものなので、起動時の箱には入れない。
-typedef std::vector<std::string> Warnings;
+typedef std::vector<mxv2::SettingsUi::StartupWarning> Warnings;
 
 void Warn(Warnings *box, const std::string &text) {
 	printf("warning  : %s\n", text.c_str());
 	fflush(stdout);
-	if (box != 0) box->push_back(text);
+	if (box != 0) {
+		mxv2::SettingsUi::StartupWarning w;
+		w.text = text;
+		box->push_back(w);
+	}
+}
+
+// アクセス許可が失われた SAF の警告。ダイアログではその場で取り直せる
+// ボタンが付く（SettingsUi::StartupWarning::regrantRef）。
+void WarnRegrant(Warnings *box, const std::string &text, const std::string &mountRef) {
+	Warn(box, text);
+	if (box != 0 && !box->empty()) box->back().regrantRef = mountRef;
 }
 
 // ini に書かれたスキンが無い（読めない）ときの落とし先。その系統
@@ -337,6 +348,12 @@ bool LoadFileSystems(mxv2::Vfs *vfs, const std::vector<std::string> &refs,
 		// 同じものが二重に書かれていたか、この環境では使えない
 		// （Android のローカル FS）。どちらも書き戻して消す。
 		if (!vfs->Mount(fs)) fixed = true;
+		// アクセス許可が失われているもの（再インストールで SAF の権限が
+		// 消えた）は**残す**。警告だけ出し、ini は直さない（消すと、その先を
+		// 指すブックマークまで失われる）。取り直しは [ファイルシステムの設定]。
+		if (!fs->accessible()) {
+			WarnRegrant(box, mxv2::MsgF("Log.FileSystemNoAccess", fs->label()), fs->mountRef());
+		}
 	}
 	if (vfs->EnsureRequired()) fixed = true;
 	return fixed;
@@ -716,6 +733,11 @@ void OpenCursor(const PlayContext &ctx, mxv2::Filer *filer, mxv2::SettingsUi *ui
 		case mxv2::kFilerOpenBookmarkSettings:
 			ui->OpenBookmarks();
 			break;
+		case mxv2::kFilerOpenNeedsAccess:
+			// SAF の許可が失われている。OS のピッカーを直に出して取り直させる
+			// （出せなければ設定ダイアログをその行で開く）。
+			ui->RegrantAccess(path);
+			break;
 		default:
 			break;
 	}
@@ -1021,7 +1043,11 @@ int main(int argc, char **argv) {
 	// apk の assets は fopen で開けないので、まず内部ストレージへ展開して
 	// 「実行ファイルの隣」と同じ姿にする。ここから先は Windows と同じ道を通る。
 	// カタログを読む前なので、ここで出る警告だけは英語のまま。
-	mxv2::ExtractBundledAssets(mxv2::ExecutableDir(), &warnings);
+	{
+		std::vector<std::string> extractWarnings;
+		mxv2::ExtractBundledAssets(mxv2::ExecutableDir(), &extractWarnings);
+		for (size_t i = 0; i < extractWarnings.size(); i++) Warn(&warnings, extractWarnings[i]);
+	}
 	// 曲の置き場所 assets/mdx は空でも作る（Windows では CMake が作っている）。
 	mxv2::MakeDirectories(mxv2::JoinPath(paths.bundledDir, "mdx"));
 #endif

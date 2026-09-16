@@ -471,6 +471,8 @@ void Filer::AppendFileSystems(std::vector<FileItem> *out) {
 		FileItem f;
 		f.baseName = fs->prefix();
 		f.title = fs->label();
+		// アクセス許可が失われている（SAF）ときはその旨を添える。
+		if (!fs->accessible()) f.title += " " + std::string(Msg("Fs.NoAccess"));
 		f.path = Vfs::MakeRef(fs, fs->Root());
 		f.type = kFileItemFileSystem;
 		out->push_back(f);
@@ -688,6 +690,16 @@ FilerOpen Filer::Open(std::string *playPath) {
 		return kFilerOpenBookmark;
 	}
 	if (f.type & kFileItemFileSystem) {
+		// 許可が失われているファイルシステム（SAF）は入れない。設定で
+		// 取り直してもらう（行は残しておく。消すと ini の控えごと失われる）。
+		if (!f.path.empty()) {
+			FileSystem *target = 0;
+			std::string rel;
+			if (vfs_->Parse(f.path, &target, &rel) && target != 0 && !target->accessible()) {
+				*playPath = target->mountRef();
+				return kFilerOpenNeedsAccess;
+			}
+		}
 		// 選択画面の 1 行ならその FS のルートへ、ルートの "[FS]" なら
 		// 選択画面へ（path が空）。
 		const std::string leaving = currentRef_;

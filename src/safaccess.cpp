@@ -5,10 +5,13 @@
 #ifdef __ANDROID__
 
 #include <cstdio>
+#include <cstdlib>
 
 #include <jni.h>
 
 #include <SDL.h>
+
+#include "message.h"
 
 namespace mxv2 {
 
@@ -63,7 +66,7 @@ bool EnsureJni() {
 	env->DeleteLocalRef(local);
 
 	g.available = env->GetStaticMethodID(g.cls, "available", "()Z");
-	g.pickTree = env->GetStaticMethodID(g.cls, "pickTree", "()Z");
+	g.pickTree = env->GetStaticMethodID(g.cls, "pickTree", "(Ljava/lang/String;)Z");
 	g.takeResult = env->GetStaticMethodID(g.cls, "takeResult", "()Ljava/lang/String;");
 	g.hasPermission = env->GetStaticMethodID(g.cls, "hasPermission", "(Ljava/lang/String;)Z");
 	g.rootName = env->GetStaticMethodID(g.cls, "rootName",
@@ -178,15 +181,78 @@ jstring ToJava(JNIEnv *env, const std::string &s) {
 //
 // rel は「ツリーの URI + '/' + 相対パス」。dir: と同じで、根の外は指せない。
 // -------------------------------------------------------------------------
+// ツリーの URI の権限が生きているか（次の起動で確かめる）。
+bool QueryPermission(const std::string &treeUri) {
+	if (!EnsureJni()) return false;
+	JNIEnv *env = Env();
+	if (env == 0) return false;
+	jstring jtree = ToJava(env, treeUri);
+	const jboolean ok = env->CallStaticBooleanMethod(g.cls, g.hasPermission, jtree);
+	if (env->ExceptionCheck()) env->ExceptionClear();
+	env->DeleteLocalRef(jtree);
+	return ok != JNI_FALSE;
+}
+
+// ツリーの根の表示名。権限が無いなどで取れなければ空。
+std::string QueryRootName(const std::string &treeUri) {
+	if (!EnsureJni()) return std::string();
+	JNIEnv *env = Env();
+	if (env == 0) return std::string();
+	jstring jtree = ToJava(env, treeUri);
+	jstring jname = (jstring)env->CallStaticObjectMethod(g.cls, g.rootName, jtree);
+	if (env->ExceptionCheck()) env->ExceptionClear();
+	std::string name;
+	if (jname != 0) {
+		name = FromJava(env, jname);
+		env->DeleteLocalRef(jname);
+	}
+	env->DeleteLocalRef(jtree);
+	return name;
+}
+
+// 権限が無くて名前を聞けないときの代わり。ツリーの URI の末尾
+// ("tree/primary%3Amdx") をデコードして "primary:mdx" のように出す。
+std::string NameFromTreeUri(const std::string &treeUri) {
+	std::string tail = treeUri;
+	const size_t slash = tail.rfind('/');
+	if (slash != std::string::npos) tail = tail.substr(slash + 1);
+	std::string out;
+	for (size_t i = 0; i < tail.size(); i++) {
+		if (tail[i] == '%' && i + 2 < tail.size()) {
+			const char hex[3] = { tail[i + 1], tail[i + 2], '\0' };
+			char *end = 0;
+			const long v = strtol(hex, &end, 16);
+			if (end != 0 && *end == '\0') {
+				out += (char)v;
+				i += 2;
+				continue;
+			}
+		}
+		out += tail[i];
+	}
+	return out.empty() ? treeUri : out;
+}
+
 class SafFileSystem : public FileSystem {
 public:
-	SafFileSystem(const std::string &treeUri, const std::string &name)
-	    : root_(Trim(treeUri)), name_(name) {}
+	SafFileSystem(const std::string &treeUri, const std::string &name, bool permitted)
+	    : root_(Trim(treeUri)), name_(name), permitted_(permitted) {}
 
 	const char *id() const { return kSafId; }
 	// 種類は prefix ("SAF>") で分かるので、こちらは選んだフォルダの名前。
-	std::string label() const { return name_.empty() ? root_ : name_; }
+	// 許可が無いときは名前を聞けないので URI の末尾から作る（「許可なし」の
+	// 注記は出す側が accessible() を見て添える。ここに入れると警告文や
+	// ブックマークの行まで長くなる）。
+	std::string label() const { return name_.empty() ? NameFromTreeUri(root_) : name_; }
 	const char *prefix() const { return "SAF>"; }
+
+	// 許可が失われている間は読めない（マウントには残す。vfs.h の accessible）。
+	bool accessible() const { return permitted_; }
+	bool Reconnect() {
+		permitted_ = QueryPermission(root_);
+		if (permitted_ && name_.empty()) name_ = QueryRootName(root_);
+		return permitted_;
+	}
 
 	bool removable() const { return true; }
 	bool hasPdxDir() const { return true; }
@@ -246,7 +312,7 @@ public:
 
 	bool List(const std::string &rel, std::vector<DirEntry> *out) const {
 		out->clear();
-		if (!EnsureJni()) return false;
+		if (!permitted_ || !EnsureJni()) return false;
 		JNIEnv *env = Env();
 		if (env == 0) return false;
 
@@ -279,7 +345,7 @@ public:
 
 	bool Read(const std::string &rel, std::vector<uint8_t> *out) const {
 		out->clear();
-		if (!EnsureJni()) return false;
+		if (!permitted_ || !EnsureJni()) return false;
 		JNIEnv *env = Env();
 		if (env == 0) return false;
 
@@ -355,7 +421,7 @@ private:
 	}
 
 	int Stat(const std::string &rel) const {
-		if (!EnsureJni()) return -1;
+		if (!permitted_ || !EnsureJni()) return -1;
 		JNIEnv *env = Env();
 		if (env == 0) return -1;
 		jstring jtree = ToJava(env, root_);
@@ -371,7 +437,8 @@ private:
 	}
 
 	std::string root_;  // ツリーの URI（末尾に '/' は付けない）
-	std::string name_;  // 根の表示名
+	std::string name_;  // 根の表示名（許可が無いと取れないので空のこともある）
+	bool permitted_;    // 永続 URI 権限が生きているか
 };
 
 }  // namespace
@@ -388,11 +455,13 @@ bool SafAvailable() {
 	return r != JNI_FALSE;
 }
 
-bool SafPickTree() {
+bool SafPickTree(const std::string &initialTreeUri) {
 	if (!EnsureJni()) return false;
 	JNIEnv *env = Env();
 	if (env == 0) return false;
-	const jboolean r = env->CallStaticBooleanMethod(g.cls, g.pickTree);
+	jstring jinit = initialTreeUri.empty() ? 0 : ToJava(env, initialTreeUri);
+	const jboolean r = env->CallStaticBooleanMethod(g.cls, g.pickTree, jinit);
+	if (jinit != 0) env->DeleteLocalRef(jinit);
 	if (env->ExceptionCheck()) {
 		env->ExceptionClear();
 		return false;
@@ -418,30 +487,14 @@ bool SafPollPicked(std::string *uri) {
 
 FileSystem *CreateSafFileSystem(const std::string &treeUri) {
 	if (treeUri.empty() || !EnsureJni()) return 0;
-	JNIEnv *env = Env();
-	if (env == 0) return 0;
 
-	jstring jtree = ToJava(env, treeUri);
-
-	// 権限は前の起動から持ち越しているはず。切れていたらマウントしない
-	// （呼んだ側が「そのフォルダは見つかりません」として捨てる）。
-	const jboolean okPerm = env->CallStaticBooleanMethod(g.cls, g.hasPermission, jtree);
-	if (env->ExceptionCheck()) env->ExceptionClear();
-	if (okPerm == JNI_FALSE) {
-		env->DeleteLocalRef(jtree);
-		return 0;
-	}
-
-	jstring jname = (jstring)env->CallStaticObjectMethod(g.cls, g.rootName, jtree);
-	if (env->ExceptionCheck()) env->ExceptionClear();
-	std::string name;
-	if (jname != 0) {
-		name = FromJava(env, jname);
-		env->DeleteLocalRef(jname);
-	}
-	env->DeleteLocalRef(jtree);
-
-	return new SafFileSystem(treeUri, name);
+	// 権限は前の起動から持ち越しているはず。アンインストールで OS が捨てて
+	// いる（クラウドバックアップから戻った ini）こともあるので、切れていても
+	// **マウントは作る**。読めない状態 (accessible() = false) で一覧に残し、
+	// ユーザーが許可を取り直せば Reconnect() で戻る。
+	const bool permitted = QueryPermission(treeUri);
+	const std::string name = permitted ? QueryRootName(treeUri) : std::string();
+	return new SafFileSystem(treeUri, name, permitted);
 }
 
 }  // namespace mxv2
@@ -454,7 +507,8 @@ bool SafAvailable() {
 	return false;
 }
 
-bool SafPickTree() {
+bool SafPickTree(const std::string &initialTreeUri) {
+	(void)initialTreeUri;
 	return false;
 }
 

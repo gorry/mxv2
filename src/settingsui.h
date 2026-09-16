@@ -113,6 +113,10 @@ public:
 		showFileSystems_ = true;
 		fsSelected_ = 0;
 	}
+	// 同じダイアログを、mountRef のファイルシステムを選んだ状態で開く。
+	// アクセス許可が失われた SAF をファイラーで開こうとしたときに使う
+	// （[許可を取り直す…] へ導く。実体は settingsui.cpp）。
+	void OpenFileSystemsFor(const std::string &mountRef);
 
 	// ブックマークの設定 (F4)。よく開く場所を控えておいて、そこへ移る。
 	// 管理が主で、ジャンプもできる。コンテキストメニューと、ファイラーの
@@ -223,7 +227,22 @@ public:
 	// 起動時に出た警告。ウィンドウが開く前に出たものを持ち越して、
 	// 最初のフレームでダイアログとして出す（ログにも同じものが出ている）。
 	// 空なら何も出ない。Init() のあとに渡すこと。
-	void SetStartupWarnings(const std::vector<std::string> &lines);
+	// regrantRef が空でなければ「アクセス許可が失われた SAF」の項目で、文の
+	// 隣に [許可を取り直す…] を添える（押すと OS のピッカーへ。2026-09-16）。
+	struct StartupWarning {
+		std::string text;
+		std::string regrantRef;  // 取り直す相手の mountRef。無ければ空
+		bool done;               // 取り直せた（ボタンを消して文を差し替える）
+		StartupWarning() : done(false) {}
+	};
+	void SetStartupWarnings(const std::vector<StartupWarning> &lines);
+
+	// アクセス許可が失われた SAF (mountRef) の許可を取り直す。OS のピッカーを
+	// 元のフォルダで出し、同じフォルダを選び直せばそのマウントが戻る。
+	// ファイラーでその行や、その先を指す控えを開いたときに main から呼ぶ。
+	// ピッカーを出せないとき・取り消したとき・別のフォルダを選んだときは
+	// [ファイルシステムの設定] をその行と注記つきで開く。
+	void RegrantAccess(const std::string &mountRef);
 
 	// バージョン情報の見出し（名前・版・ビルド日付・著作権表示）。
 	// 文言は main.cpp が持っているので渡してもらう。
@@ -525,6 +544,12 @@ private:
 	void BuildAddFsWindow(Filer *filer);
 	void PollSafPicked(Filer *filer);
 	bool safPicking_;  // SAF の選択画面を出していて、結果を待っている
+	// [許可を取り直す…] で出した選択画面なら、取り直す相手の mountRef。
+	// 空なら [追加…]（新しくマウントする）。
+	std::string safRegrantRef_;
+	// ファイラー（RegrantAccess）から出したピッカーか。うまくいかなかった
+	// ときに [ファイルシステムの設定] へ落とすかどうかの印。
+	bool safRegrantFromFiler_;
 	bool addFsOpen_;   // 次のフレームで開く
 	bool addFsShow_;   // いま開いている（ESC の判断に使う）
 	bool addFsClose_;  // ESC で閉じてほしい
@@ -579,7 +604,7 @@ private:
 	// 起動時の警告。ウィンドウが出る前の printf を持ち越したもの。
 	void BuildStartupWindow();
 	bool showStartup_;
-	std::vector<std::string> startupLines_;
+	std::vector<StartupWarning> startupLines_;
 
 	// コンテキストメニュー
 	void BuildContextMenu(Settings *settings, DrawScreen *draw, Player *player,

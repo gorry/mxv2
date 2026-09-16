@@ -49,6 +49,14 @@ public:
 
 	// 使えるか（Android のローカル FS のように、環境によって塞がるもの）。
 	virtual bool available() const { return true; }
+	// 今アクセスできるか。SAF のように OS の許可が要るものは、再インストール
+	// などで許可が失われると false になる。available() と違って**マウントには
+	// 残し、ini からも消さない**（クラウドバックアップから戻った mxv2.ini の
+	// 控えを消してしまわないため。2026-09-16）。ユーザーが [ファイルシステムの
+	// 設定] の [許可を取り直す…] で戻せる。
+	virtual bool accessible() const { return true; }
+	// 許可を取り直したあとで状態を見直す。アクセスできるようになれば true。
+	virtual bool Reconnect() { return accessible(); }
 	// ルートの pdx/ を PDX の探索先に入れるか。ローカル FS だけは入れない
 	// （ルートがドライブの根なので、そこに pdx/ を置く前提が立たない）。
 	virtual bool hasPdxDir() const { return true; }

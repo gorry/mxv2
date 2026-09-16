@@ -67,6 +67,9 @@ enum FilerOpen {
 	kFilerOpenSettings,  // ファイルシステムの設定を開いてほしい
 	kFilerOpenBookmark,  // playPath のブックマークへ移ってほしい
 	kFilerOpenBookmarkSettings,  // ブックマークの設定を開いてほしい
+	// playPath のファイルシステム（mountRef）はアクセス許可が失われている。
+	// [ファイルシステムの設定] を開いて取り直させてほしい（SAF。vfs.h の accessible）。
+	kFilerOpenNeedsAccess,
 };
 
 class Filer {

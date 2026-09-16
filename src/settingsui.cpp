@@ -474,6 +474,7 @@ SettingsUi::SettingsUi()
       bmCloseToggle_(false),
       fsSelected_(0),
       safPicking_(false),
+      safRegrantFromFiler_(false),
       addFsOpen_(false),
       addFsShow_(false),
       addFsClose_(false),
@@ -1753,16 +1754,22 @@ void SettingsUi::BuildFileSystemsWindow(Filer *filer) {
 		ImGui::BeginChild("##fslist", ImVec2(0, -foot), ImGuiChildFlags_Borders);
 		for (int i = 0; i < count; i++) {
 			const FileSystem *fs = vfs_->at(i);
-			char label[256];
-			snprintf(label, sizeof(label), "%s  %s##fs%d", fs->prefix(),
-			         fs->label().c_str(), i);
+			// 削除できないものは薄く、アクセス許可が失われたものは赤く（注記つき）。
 			const bool fixed = !fs->removable();
-			if (fixed) ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+			const bool noAccess = !fs->accessible();
+			char label[256];
+			snprintf(label, sizeof(label), "%s  %s%s%s##fs%d", fs->prefix(),
+			         fs->label().c_str(), noAccess ? " " : "", noAccess ? Msg("Fs.NoAccess") : "", i);
+			if (noAccess) {
+				ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.45f, 0.45f, 1.0f));
+			} else if (fixed) {
+				ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+			}
 			if (ImGui::Selectable(label, i == fsSelected_) && !dragMoved_) {
 				fsSelected_ = i;
 				fsError_.clear();
 			}
-			if (fixed) ImGui::PopStyleColor();
+			if (noAccess || fixed) ImGui::PopStyleColor();
 		}
 		DragToScroll(&dragScroll_, &dragMoved_, false, true);
 		ImGui::EndChild();
@@ -1832,6 +1839,30 @@ void SettingsUi::BuildFileSystemsWindow(Filer *filer) {
 	}
 	ImGui::EndDisabled();
 
+	// [許可を取り直す…]。アクセス許可が失われた SAF（再インストールで OS が
+	// 権限を捨て、クラウドから戻った ini だけが残ったとき）を選んでいるときだけ
+	// 押せる。同じフォルダを選び直せば、そのマウントが読める状態に戻り、
+	// その先を指すブックマークもそのまま効く（PollSafPicked）。
+	// 2026-09-16、ユーザーの指示。
+	{
+		const bool canRegrant = (sel != 0) && !sel->accessible() && SafAvailable();
+		ImGui::SameLine();
+		ImGui::BeginDisabled(!canRegrant);
+		if (ImGui::Button(Msg("Button.Regrant"))) {
+			fsError_.clear();
+			if (SafPickTree(sel->Root())) {
+				safPicking_ = true;
+				safRegrantRef_ = sel->mountRef();
+			} else {
+				fsError_ = Msg("FileSystems.PickFailed");
+			}
+		}
+		ImGui::EndDisabled();
+		if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) && canRegrant) {
+			ImGui::SetTooltip("%s", Msg("FileSystems.RegrantHint"));
+		}
+	}
+
 	BuildAddFsWindow(filer);
 	BuildFsRemoveWindow(filer);
 
@@ -1862,14 +1893,74 @@ void SettingsUi::QuiesceVfsReaders(Filer *filer) {
 	if (songLoader_ != 0) songLoader_->Quiesce();
 }
 
+void SettingsUi::OpenFileSystemsFor(const std::string &mountRef) {
+	OpenFileSystems();
+	if (!showFileSystems_ || vfs_ == 0) return;
+	for (int i = 0; i < vfs_->count(); i++) {
+		if (CompareNoCase(vfs_->at(i)->mountRef(), mountRef) != 0) continue;
+		fsSelected_ = i;
+		fsError_ = MsgF("FileSystems.NoAccessNote", vfs_->at(i)->label());
+		break;
+	}
+}
+
+void SettingsUi::RegrantAccess(const std::string &mountRef) {
+	if (busy() || vfs_ == 0) return;
+	FileSystem *fs = vfs_->FindByMountRef(mountRef);
+	if (fs == 0 || fs->accessible()) return;
+	// ピッカーを直に出す。出せなければ設定ダイアログで事情を示す。
+	if (SafAvailable() && !safPicking_ && SafPickTree(fs->Root())) {
+		safPicking_ = true;
+		safRegrantRef_ = mountRef;
+		safRegrantFromFiler_ = true;
+		return;
+	}
+	OpenFileSystemsFor(mountRef);
+}
+
 void SettingsUi::PollSafPicked(Filer *filer) {
 	if (!safPicking_) return;
 
 	std::string uri;
 	if (!SafPollPicked(&uri)) return;
 	safPicking_ = false;
-	if (uri.empty()) return;  // 取り消した
+	const std::string regrant = safRegrantRef_;
+	const bool fromFiler = safRegrantFromFiler_;
+	safRegrantRef_.clear();
+	safRegrantFromFiler_ = false;
+	if (uri.empty()) {
+		// 取り消した。ファイラーから直に出したピッカーなら、設定ダイアログで
+		// 「許可が無い」ことを示しておく（何も起きないと分からない）。
+		if (!regrant.empty() && fromFiler) OpenFileSystemsFor(regrant);
+		return;
+	}
 	if (vfs_ == 0) return;
+
+	// [許可を取り直す…] から来て、同じフォルダを選び直したなら、そのマウントを
+	// 読める状態に戻すだけ（ini も順番も変わらない）。別のフォルダを選んだ
+	// ときは、下の [追加…] と同じ扱いで新しく足す（古いものは残る）。
+	if (!regrant.empty()) {
+		FileSystem *target = vfs_->FindByMountRef(regrant);
+		if (target != 0 && CompareNoCase(target->mountRef(), std::string("saf:") + uri) == 0) {
+			if (target->Reconnect()) {
+				fsError_.clear();
+				if (filer != 0) filer->Refresh();
+				// 起動時の警告に同じ項目があれば、済んだ印に差し替える。
+				for (size_t i = 0; i < startupLines_.size(); i++) {
+					if (CompareNoCase(startupLines_[i].regrantRef, regrant) != 0) continue;
+					startupLines_[i].done = true;
+					startupLines_[i].text = MsgF("FileSystems.Regranted", target->label());
+				}
+			} else {
+				fsError_ = Msg("FileSystems.RegrantFailed");
+				if (fromFiler) OpenFileSystemsFor(regrant);
+			}
+			return;
+		}
+		// 別のフォルダを選んだ。新しく足したうえで、元の行が残っていることを
+		// 設定ダイアログで見せる（ファイラーから来たときだけ）。
+		if (fromFiler) OpenFileSystemsFor(regrant);
+	}
 
 	FileSystem *made = vfs_->CreateFromMountRef(std::string("saf:") + uri);
 	if (made == 0) {
@@ -2033,6 +2124,16 @@ void SettingsUi::OpenBookmark(Settings *settings, int index) {
 	if (vfs_ == 0 || index < 0 || index >= (int)list.size()) return;
 
 	std::string ref = list[index];
+	// 行き先のファイルシステムのアクセス許可が失われている（SAF）ときは、
+	// 「見つかりません」ではなくその旨を出す（控えは消さない）。
+	{
+		FileSystem *fs = 0;
+		std::string rel;
+		if (vfs_->Parse(ref, &fs, &rel) && fs != 0 && !fs->accessible()) {
+			bmError_ = MsgF("FileSystems.NoAccessNote", fs->label());
+			return;
+		}
+	}
 	if (!vfs_->IsDir(ref)) {
 		const std::string parent = vfs_->Parent(ref);
 		if (!vfs_->Exists(ref) || parent.empty() || !vfs_->IsDir(parent)) {
@@ -2069,6 +2170,16 @@ void SettingsUi::OpenBookmarkList() {
 
 void SettingsUi::JumpToBookmarkRef(Settings *settings, const std::string &ref) {
 	if (vfs_ == 0 || ref.empty()) return;
+	// 行き先の SAF の許可が失われていれば、[ファイルシステムの設定] を
+	// その行を選んだ状態で開く（取り直してもらう）。
+	{
+		FileSystem *fs = 0;
+		std::string rel;
+		if (vfs_->Parse(ref, &fs, &rel) && fs != 0 && !fs->accessible()) {
+			RegrantAccess(fs->mountRef());
+			return;
+		}
+	}
 	const int index = FindBookmark(settings->bookmarks, ref);
 	if (index >= 0) {
 		OpenBookmark(settings, index);
@@ -2427,7 +2538,7 @@ void SettingsUi::SelectFolderEntry(const std::string &path) {
 // パスの打ち込みと子フォルダの一覧を持つ自前のダイアログにしてある。
 // 決まった行き先は request_ に積んで、実際の移動はメインループに任せる
 // （ファイラーの持ち物はあちらなので、コンテキストメニューと同じ作法）。
-void SettingsUi::SetStartupWarnings(const std::vector<std::string> &lines) {
+void SettingsUi::SetStartupWarnings(const std::vector<StartupWarning> &lines) {
 	startupLines_ = lines;
 	showStartup_ = !startupLines_.empty();
 }
@@ -2451,8 +2562,28 @@ void SettingsUi::BuildStartupWindow() {
 		const float foot = ImGui::GetFrameHeightWithSpacing();
 		ImGui::BeginChild("##startup", ImVec2(0, -foot), ImGuiChildFlags_Borders);
 		for (size_t i = 0; i < startupLines_.size(); i++) {
+			const StartupWarning &w = startupLines_[i];
 			ImGui::Bullet();
-			TextWrappedKinsoku(startupLines_[i].c_str());
+			TextWrappedKinsoku(w.text.c_str());
+			// アクセス許可が失われた SAF なら、その場で取り直せるボタンを
+			// 添える（[ファイルシステムの設定] まで辿らなくて済むように）。
+			// ピッカーを出している間は他の項目のボタンを押せなくする。
+			if (!w.regrantRef.empty() && !w.done) {
+				ImGui::PushID((int)i);
+				ImGui::Indent();
+				ImGui::BeginDisabled(safPicking_ || !SafAvailable());
+				if (ImGui::Button(Msg("Button.Regrant"))) {
+					FileSystem *fs = (vfs_ != 0) ? vfs_->FindByMountRef(w.regrantRef) : 0;
+					if (fs != 0 && SafPickTree(fs->Root())) {
+						safPicking_ = true;
+						safRegrantRef_ = w.regrantRef;
+						safRegrantFromFiler_ = false;
+					}
+				}
+				ImGui::EndDisabled();
+				ImGui::Unindent();
+				ImGui::PopID();
+			}
 		}
 		DragToScroll(&dragScroll_, &dragMoved_, false, false);
 		ImGui::EndChild();

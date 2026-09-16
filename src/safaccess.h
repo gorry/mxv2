@@ -30,14 +30,18 @@ bool SafAvailable();
 
 // 端末の「フォルダを選ぶ」画面を出す。開けたら true。
 // 結果は SafPollPicked() で拾う（この呼び出しでは待たない）。
-bool SafPickTree();
+// initialTreeUri を渡すと、その場所を最初に見せる（許可を取り直すときに、
+// 同じフォルダを選びやすくする。Android 8 以降でだけ効く）。
+bool SafPickTree(const std::string &initialTreeUri = std::string());
 
 // 選び終わっていれば true を返し、*uri にツリーの URI を入れる。
 // 取り消されたときも true で、*uri は空になる。まだなら false。
 bool SafPollPicked(std::string *uri);
 
-// ツリーの URI を根にするファイルシステムを作る。権限が切れていたり
-// SAF が使えない環境では 0。所有権は呼び出し側（Vfs::Add に渡す）。
+// ツリーの URI を根にするファイルシステムを作る。SAF が使えない環境では 0。
+// **権限が切れていても作る**（accessible() が false のマウントになる。
+// 再インストールでクラウドから戻った ini の項目を消さないため）。
+// 所有権は呼び出し側（Vfs::Add に渡す）。
 FileSystem *CreateSafFileSystem(const std::string &treeUri);
 
 }  // namespace mxv2
