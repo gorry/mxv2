@@ -721,7 +721,11 @@ bool Vfs::Resolve(const std::string &input, const std::string &baseRef,
 
 	std::string scheme, rest;
 	if (SplitRef(input, &scheme, &rest)) {
-		FileSystem *f = FindById(scheme);
+		// 同じ種類のマウントが複数あるとき（dir: や saf:）は、場所まで見て
+		// どのマウントの持ち物かを決める（Parse と同じ FindForRef）。
+		// FindById だと常に 1 つ目に割り当てられ、2 つ目の SAF の中を
+		// PDX の探索先に指定できなかった（2026-09-16、Pixel 7a で発覚）。
+		FileSystem *f = FindForRef(scheme, rest);
 		if (f == 0) return false;  // 未知の接頭辞はエラー
 		*outRef = MakeRef(f, f->ResolveInput(rest, std::string()));
 		return true;
