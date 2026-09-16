@@ -251,7 +251,7 @@ make clean-skineditor                 # bin/ obj/ と、ここへコピーされ
 `mxv2/Profile.ini` が唯一の置き場（著作者専用）。ビルド時に写される:
 
 - CMake: `src/appprofile.h.in` → `build/<構成>/generated/appprofile.h`
-  （`main.cpp` の `kAppName` / `kAppVersion` / `kAppCopyright`）と、Windows では
+  （`cmdline.cpp` の `kAppName` / `kAppVersion` / `kAppCopyright`）と、Windows では
   `res/mxv2.rc.in` → `generated/mxv2.rc`（アイコンと VERSIONINFO。exe の
   プロパティに出る）。Profile.ini を変えると configure が自動で走る。
 - スキンエディタ: `skineditor/SkinEditor/SkinEditor.csproj` が同じファイルを

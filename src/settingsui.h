@@ -8,6 +8,9 @@
 //
 // スキンの切り替えは画面サイズごと変わりうるので、ここでは名前を
 // pendingSkin() に置くだけにして、実際の作り直しはメインループに任せる。
+//
+// 実装はダイアログ単位で settingsui_*.cpp に分けてある（一覧は
+// settingsui_internal.h の頭）。
 
 #ifndef MXV2_SETTINGSUI_H
 #define MXV2_SETTINGSUI_H
@@ -323,6 +326,10 @@ private:
 	// 倍率か「指で操作する」が変わったら true（ダイアログの大きさも
 	// 作り直すため）。
 	bool ApplyScale(float scale, bool touch);
+	// [mxv2 の設定] の本体 (settingsui_settings.cpp)。Build() がフレームの
+	// 支度とダイアログの呼び出しを済ませてから呼ぶ。
+	void BuildSettingsWindow(Settings *settings, DrawScreen *draw, Player *player, Filer *filer,
+	                         Screen *screen);
 
 	// ダイアログを出す位置と大きさに使う ImGuiCond。ふつうは Appearing
 	// （開いたときだけ中央に出し、あとは掴んで動かせる）。倍率が変わった
@@ -675,6 +682,8 @@ private:
 	bool contextMenuOpen_;
 	bool closeContextMenu_;
 	Request request_;
+	// バージョン情報 (F12)。settingsui_info.cpp。
+	void BuildAboutWindow();
 	bool showAbout_;
 	// 中身をドラッグしてスクロール中。ダイアログはモーダルで一度に 1 つしか
 	// 開かないので、どのダイアログでもこの 1 つを使い回す。

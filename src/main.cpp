@@ -1,5 +1,9 @@
 // mxv2 - エントリポイント
 //
+// コマンドライン (cmdline.cpp)・起動時の組み立て (appsetup.cpp)・曲の進行
+// (playctl.cpp)・キーとマウスの割り当て (keybind.cpp) はここから切り出してある。
+// ここに残るのは起動の手順とメインループ。
+//
 // 使い方:
 //   mxv2 [オプション] [<mdxfile> | <ディレクトリ>]
 // 引数を省略するとカレントディレクトリのファイラーだけを開く。
@@ -12,28 +16,18 @@
 
 #include <SDL.h>
 
-#ifdef _WIN32
-#include <windows.h>
-#endif
-
 #ifdef __ANDROID__
-#include <android/log.h>
-#include <unistd.h>
-
 #include "androidassets.h"
 #endif
 
-#include "appprofile.h"  // CMake が Profile.ini から生成する
 #include "assetpath.h"
 #include "drawscreen.h"
 #include "fileutil.h"
 #include "filer.h"
-#include "mdxsong.h"
 #include "message.h"
 #include "gamepad.h"
 #include "mouse.h"
 #include "nowplaying.h"
-#include "orientlock.h"
 #include "player.h"
 #include "screen.h"
 #include "settings.h"
@@ -45,978 +39,67 @@
 #include "vfs.h"
 #include "visualizer.h"
 
+#include "appsetup.h"
+#include "cmdline.h"
+#include "keybind.h"
+#include "playctl.h"
+
+using namespace mxv2::app;
+
 namespace {
-
-// アプリの名前・バージョン・著作権表示。Usage の先頭とバージョン情報。
-// 値は mxv2/Profile.ini（著作者専用）からコピーします。CMake が configure の
-// たびに src/appprofile.h.in → appprofile.h を生成し、ここはそれを写すだけ
-// （ソースに値を刻まない。Windows の VERSIONINFO と Android の versionName も
-// 同じ Profile.ini から出る）。
-const char *kAppName = MXV2_APP_NAME;
-const char *kAppVersion = MXV2_APP_VERSION;
-const char *kAppCopyright = MXV2_APP_COPYRIGHT;
-
-// ビルド日付はこのファイルをコンパイルした日付 (__DATE__)。
-std::string AppHeader() {
-	char buf[256];
-	snprintf(buf, sizeof(buf), "%s  Version %s  (build %s)\n%s\n", kAppName, kAppVersion,
-	         __DATE__, kAppCopyright);
-	return buf;
-}
-
-// - / + (;) キー 1 回で動かす音量。音量は -100..+100 なので、この幅だと端から端まで
-// 40 回。旧 mxv はバー 1 画素ぶん (64 段) 動かしていたので、それに近い刻み。
-const int kVolumeKeyStep = 5;
 
 // 設定を書き戻すまでの待ち時間 (ms)。音量のドラッグやウィンドウ移動は毎フレーム
 // 値が変わるので、手が止まってからまとめて 1 回書く。
 const uint32_t kSettingsSaveDelayMs = 400;
-
-// アンダーラン（音の途切れ）を知らせる間隔 (ms)。まとめて 1 行にする。
-const uint32_t kUnderrunReportMs = 5000;
 
 // バックグラウンド（描かないとき）に回る間隔 (ms)。演奏そのものはオーディオ
 // 装置とデコードスレッドが進めるので、ここでやるのは曲送りと通知の更新だけ。
 // 曲の終わりに気付くのがこの間隔ぶん遅れうるので、あまり長くはしない。
 const int kBackgroundTickMs = 100;
 
-#ifdef __ANDROID__
-// 標準出力を logcat へ流す番人。Android のアプリは標準出力がどこにも
-// 繋がっていないので、そのままでは printf が消えてしまう。パイプに
-// 差し替えて、こちらの端を読んだぶんだけ logcat へ渡す。
-//
-// **SDL_Log は使わないこと。** SDL の既定のログ出力は logcat へ書いたあと
-// stderr にも同じものを書くので、stderr までパイプに差し替えていると
-// 「読んだものをまた書く」の輪ができて延々と回り続ける。ここでは
-// stdout だけを差し替え、書き出しも __android_log_write を直に呼ぶ。
-int LogcatPumpThread(void *data) {
-	const int fd = (int)(intptr_t)data;
-	std::string line;
-	char buf[512];
-	for (;;) {
-		const ssize_t n = read(fd, buf, sizeof(buf));
-		if (n <= 0) break;
-		for (ssize_t i = 0; i < n; i++) {
-			if (buf[i] == '\n') {
-				__android_log_write(ANDROID_LOG_INFO, "mxv2", line.c_str());
-				line.clear();
-			} else if (buf[i] != '\r') {
-				line += buf[i];
-			}
-		}
-		// 行の途中で溜め込みすぎないよう、長すぎるものはそこで出す。
-		if (line.size() >= 1024) {
-			__android_log_write(ANDROID_LOG_INFO, "mxv2", line.c_str());
-			line.clear();
-		}
+// キー・マウス・メニューのどこからでも変わる項目（文字の大きさ・音量・
+// 今の場所・CONT / REPEAT・窓の位置）を設定と見比べて、変わっていれば
+// 設定に写す。返すのは変わった項目のビット和。フレームごと（保存の待ち
+// 時間へ入れる）と終了時（残りを流す）の 2 か所から同じ手順を通す。
+unsigned CollectDirtyFields(mxv2::Settings *settings, mxv2::DrawScreen *draw,
+                            mxv2::Player *player, mxv2::Filer *filer, mxv2::Screen *screen,
+                            bool autoNext, bool autoRepeat) {
+	unsigned dirt = 0;
+	if (settings->fileListFontSize != draw->fileListFontSize()) {
+		settings->fileListFontSize = draw->fileListFontSize();
+		dirt |= mxv2::Settings::kFieldFontSize;
 	}
-	if (!line.empty()) __android_log_write(ANDROID_LOG_INFO, "mxv2", line.c_str());
-	return 0;
-}
-#endif
-
-// 標準出力の行き先を用意する。
-//
-// Windows では GUI アプリとしてリンクしてあるので、既定ではコンソールが無く
-// printf は捨てられる（黒いウィンドウを出さないため）。
-//   ・出力がすでにファイル等へ繋がっているなら何もしない（リダイレクト）
-//   ・端末から起動されたならその端末へ出す（新しい窓は開かない）
-//   ・それも無く wantConsole なら、新しくコンソールを開く（-console / -h）
-// Android は標準出力が捨てられるので、パイプ経由で logcat へ流す
-// （logcat -s mxv2 で読める。SDL 自身のログは SDL/APP など別のタグに出る）。
-// それ以外は元から標準出力があるので何もしない。
-void SetupConsole(bool wantConsole) {
-#if defined(__ANDROID__)
-	(void)wantConsole;
-	int fds[2];
-	if (pipe(fds) != 0) return;
-	// stderr は差し替えない（SDL のログがそこへ二重に出るため。上の注記）。
-	if (dup2(fds[1], STDOUT_FILENO) < 0) return;
-	close(fds[1]);
-	SDL_Thread *th = SDL_CreateThread(LogcatPumpThread, "logcat", (void *)(intptr_t)fds[0]);
-	// スレッドが作れなくても動きはする（ログが出ないだけ）。
-	if (th != 0) SDL_DetachThread(th);
-#elif defined(_WIN32)
-	{
-		const HANDLE h = GetStdHandle(STD_OUTPUT_HANDLE);
-		if (h != NULL && h != INVALID_HANDLE_VALUE) return;
+	if (settings->masterVolume != player->masterVolume()) {
+		settings->masterVolume = player->masterVolume();
+		dirt |= mxv2::Settings::kFieldVolume;
 	}
-	if (!AttachConsole(ATTACH_PARENT_PROCESS)) {
-		if (!wantConsole) return;
-		if (!AllocConsole()) return;
+	if (settings->lastDir != filer->currentRef()) {
+		settings->lastDir = filer->currentRef();
+		dirt |= mxv2::Settings::kFieldLastDir;
 	}
-	FILE *f = 0;
-	freopen_s(&f, "CONOUT$", "w", stdout);
-	freopen_s(&f, "CONOUT$", "w", stderr);
-	// 日本語が化けないよう、コンソール側も UTF-8 にする。
-	SetConsoleOutputCP(CP_UTF8);
-#else
-	(void)wantConsole;
-#endif
-}
-
-// コンソールを出す指定があるか。設定を読む前に見たいので、ここだけ先に走らせる。
-bool WantsConsole(int argc, char **argv) {
-	for (int i = 1; i < argc; i++) {
-		if (strcmp(argv[i], "-console") == 0) return true;
-		if (strcmp(argv[i], "-h") == 0 || strcmp(argv[i], "-help") == 0) return true;
+	if (settings->autoNext != autoNext || settings->autoRepeat != autoRepeat) {
+		settings->autoNext = autoNext;
+		settings->autoRepeat = autoRepeat;
+		dirt |= mxv2::Settings::kFieldContRepeat;
 	}
-	return false;
-}
-
-// 起動時の警告。ウィンドウが開く前に起きたことは、ログに出しても
-// 気付かれないので、ためておいて最初のフレームでダイアログに出す。
-// 演奏中に出る警告（PDX が無い、など）はログだけ。あちらは操作の結果として
-// その場で出るものなので、起動時の箱には入れない。
-typedef std::vector<mxv2::SettingsUi::StartupWarning> Warnings;
-
-void Warn(Warnings *box, const std::string &text) {
-	printf("warning  : %s\n", text.c_str());
-	fflush(stdout);
-	if (box != 0) {
-		mxv2::SettingsUi::StartupWarning w;
-		w.text = text;
-		box->push_back(w);
-	}
-}
-
-// アクセス許可が失われた SAF の警告。ダイアログではその場で取り直せる
-// ボタンが付く（SettingsUi::StartupWarning::regrantRef）。
-void WarnRegrant(Warnings *box, const std::string &text, const std::string &mountRef) {
-	Warn(box, text);
-	if (box != 0 && !box->empty()) box->back().regrantRef = mountRef;
-}
-
-// ini に書かれたスキンが無い（読めない）ときの落とし先。その系統
-// （切り替え OFF / 縦 / 横）の**既定のスキン**で、プラットフォームごとに
-// 違う（settings.cpp の kDefaultSkin*）。落ちたことは **ini に書き戻さない**
-// （2026-09-12 の決定。スキンを置き直せば次の起動で元の名前へ戻る）。
-std::string DefaultSkinFor(bool orientEnabled, mxv2::Screen::Orientation orient) {
-	if (!orientEnabled) return mxv2::MakeBundledSkinRef(mxv2::Settings::DefaultSkinName());
-	return (orient == mxv2::Screen::kPortrait) ? mxv2::Settings::DefaultSkinPortrait()
-	                                            : mxv2::Settings::DefaultSkinLandscape();
-}
-
-// ユーザーフォルダの名前。Windows なら %APPDATA%\mxv2\ になる。
-// 設定 (mxv2.ini) と、ユーザーが足したスキンの置き場所。
-const char *kUserDirName = "mxv2";
-
-// コマンドライン専用の指定。永続化する設定は Settings が持つ。
-struct Options {
-	std::string target;  // MDX ファイルかディレクトリ。空ならカレント（ref 可）
-	std::vector<std::string> pdxSearchDirs;  // -pdxpath (複数指定可)
-	std::string assetsDir;
-	std::string userDir;
-	std::string locale;  // 文言の言語。空なら既定 (ja-JP)
-	// 表示を遅らせる時間 (ms)。指定が無ければ音の遅れに自動で合わせる。
-	int latencyMs;
-	bool latencySet;
-	// 演奏し終えたら mxv2 ごと終わる（-quit）。**デバッグ用**で、既定は false。
-	// ふつうに MDX を渡して起動したときは、鳴らし終えても閉じずに、その
-	// ファイルのあるフォルダを開いたまま残る。
-	bool quitOnEnd;
-	// 出力サンプリングレート。0 なら設定 (ini) の値を使う。
-	int sampleRate;
-
-	// ---- 画面の向きでスキンを切り替える（screen_orientation.md） --------
-	// -orient <0|1>。-1 なら指定なしで、プラットフォームごとの既定
-	// （Android は ON、それ以外は OFF）になる。
-	int orient;
-	// -orientlock <0|1|2>。スキンを選ぶための向きを固定する**デバッグ用**。
-	// 0 なら実物（デスクトップではダミー）を見る。回転の制御には効かない。
-	int orientLock;
-	// -skin が指定されたか。指定されていたら縦横切り替えは OFF にする
-	// （名指しされたスキンを勝手に差し替えない）。
-	bool skinSet;
-	// -tutorial。見終えていてもチュートリアルを出す（**デバッグ用**。
-	// 終わっても ini の Done は触らない）。
-	bool tutorial;
-
-	Options()
-	    : latencyMs(0),
-	      latencySet(false),
-	      quitOnEnd(false),
-	      sampleRate(0),
-	      orient(-1),
-	      orientLock(0),
-	      skinSet(false),
-	      tutorial(false) {}
-};
-
-// 演奏位置の移動幅。, / . が普通、Shift 付きの < / > が高速。
-const uint32_t kSeekStepMs = 3 * 1000;
-const uint32_t kSeekFastStepMs = 30 * 1000;
-
-// 「名前」と「説明」の 2 段組を 1 行出す。桁は全角を 2 と数えて揃える
-// （同梱フォントの都合で、ダイアログ側も同じ数え方をしている）。
-void PrintRow(const std::string &name, const std::string &desc, int width) {
-	std::string pad;
-	for (int i = mxv2::MsgDisplayWidth(name); i < width; i++) pad += ' ';
-	printf("  %s%s %s\n", name.c_str(), pad.c_str(), desc.c_str());
-}
-
-// 一覧（[UsageOptions] [HelpKeys] [HelpMouse] [HelpPad]）を 2 段組で出す。
-// 名前の桁は一番広いものに合わせる。
-void PrintRows(const char *section, int width, const std::string &a0 = std::string(),
-               const std::string &a1 = std::string()) {
-	const std::vector<mxv2::MsgRow> &rows = mxv2::MsgList(section);
-	for (size_t i = 0; i < rows.size(); i++) {
-		PrintRow(rows[i].key, mxv2::MsgFill(rows[i].value, a0, a1), width);
-	}
-}
-
-// 一覧の中で一番広い名前（桁揃えの幅）。
-int RowsWidth(const char *section) {
-	const std::vector<mxv2::MsgRow> &rows = mxv2::MsgList(section);
-	int w = 0;
-	for (size_t i = 0; i < rows.size(); i++) {
-		const int n = mxv2::MsgDisplayWidth(rows[i].key);
-		if (n > w) w = n;
-	}
-	return w;
-}
-
-void PrintUsage(const char *argv0) {
-	printf("%s", AppHeader().c_str());
-	printf("usage:\n  %s [options] [<mdxfile> | <dir>]\noptions:\n", argv0);
-	PrintRows("UsageOptions", RowsWidth("UsageOptions"),
-	          mxv2::Player::kSupports96kHz ? " / 96000" : "",
-	          mxv2::MsgNum("%d", mxv2::Player::kDefaultSampleRate));
-
-	// キー・マウス・ゲームパッドの一覧。ダイアログ ([操作方法]) と同じものを
-	// 出す。桁は 3 つまとめて揃える（std::max は windows.h の max マクロと
-	// ぶつかるので使わない）。
-	int width = RowsWidth("HelpKeys");
-	const int mouseWidth = RowsWidth("HelpMouse");
-	const int padWidth = RowsWidth("HelpPad");
-	if (mouseWidth > width) width = mouseWidth;
-	if (padWidth > width) width = padWidth;
-	printf("%s\n", mxv2::Msg("Help.Keys"));
-	PrintRows("HelpKeys", width);
-	printf("%s\n", mxv2::Msg("Help.Mouse"));
-	PrintRows("HelpMouse", width);
-	printf("%s\n", mxv2::Msg("Help.Pad"));
-	PrintRows("HelpPad", width);
-}
-
-// 素材と設定の置き場所を決めるオプションだけ先に見る。mxv2.ini はここで
-// 決まったユーザーフォルダから読むので、ParseArgs より前に要る
-// （-console と同じ理由）。
-void PrescanDirs(int argc, char **argv, Options *opt) {
-	for (int i = 1; i + 1 < argc; i++) {
-		if (strcmp(argv[i], "-assets") == 0) {
-			opt->assetsDir = argv[++i];
-		} else if (strcmp(argv[i], "-userdir") == 0) {
-			opt->userDir = argv[++i];
-		} else if (strcmp(argv[i], "-locale") == 0) {
-			opt->locale = argv[++i];
+	if (settings->savePosition) {
+		int wx = 0, wy = 0, ww = 0, wh = 0;
+		screen->GetWindowRect(&wx, &wy, &ww, &wh);
+		if (wx != settings->windowX || wy != settings->windowY || ww != settings->windowW ||
+		    wh != settings->windowH) {
+			settings->windowX = wx;
+			settings->windowY = wy;
+			settings->windowW = ww;
+			settings->windowH = wh;
+			dirt |= mxv2::Settings::kFieldWindowPos;
 		}
 	}
-}
-
-// ini に書かれた順でファイルシステムをマウントする。仕様 (filesystem.md) の
-// とおり、知らないものは警告して捨て、削除できないものが抜けていれば足す。
-// 直したところがあれば true を返す（読み終えてから書き戻すため）。
-bool LoadFileSystems(mxv2::Vfs *vfs, const std::vector<std::string> &refs,
-                     Warnings *box) {
-	bool fixed = false;
-	vfs->ClearMounts();
-	for (size_t i = 0; i < refs.size(); i++) {
-		mxv2::FileSystem *fs = 0;
-
-		// 場所を持つもの（フォルダマウントや外部 FS）は、ここで作って預ける。
-		// 同じ場所が二重に書かれていたら、先に作ったほうを使う。
-		mxv2::FileSystem *made = vfs->CreateFromMountRef(refs[i]);
-		if (made != 0) {
-			if (vfs->Add(made)) {
-				fs = made;
-			} else {
-				fs = vfs->FindByMountRef(made->mountRef());
-				delete made;
-				fixed = true;
-			}
-		} else {
-			std::string rel;
-			if (!vfs->Parse(refs[i], &fs, &rel)) fs = 0;
-		}
-
-		if (fs == 0) {
-			Warn(box, mxv2::MsgF("Log.UnknownFileSystem", refs[i]));
-			fixed = true;
-			continue;
-		}
-		// 同じものが二重に書かれていたか、この環境では使えない
-		// （Android のローカル FS）。どちらも書き戻して消す。
-		if (!vfs->Mount(fs)) fixed = true;
-		// アクセス許可が失われているもの（再インストールで SAF の権限が
-		// 消えた）は**残す**。警告だけ出し、ini は直さない（消すと、その先を
-		// 指すブックマークまで失われる）。取り直しは [ファイルシステムの設定]。
-		if (!fs->accessible()) {
-			WarnRegrant(box, mxv2::MsgF("Log.FileSystemNoAccess", fs->label()), fs->mountRef());
-		}
-	}
-	if (vfs->EnsureRequired()) fixed = true;
-	return fixed;
-}
-
-// ini に書かれたブックマークを ref へ揃える。仕様 (bookmark.md) のとおり、
-// 知らないファイルシステムは警告して捨てる。到達できるかどうかはここでは
-// 見ない（時間が掛かるし、外付けが外れているだけかもしれない）。
-// 直したところがあれば true を返す（読み終えてから書き戻すため）。
-bool LoadBookmarks(const mxv2::Vfs &vfs, std::vector<std::string> *refs,
-                   Warnings *box) {
-	bool fixed = false;
-	std::vector<std::string> out;
-	for (size_t i = 0; i < refs->size(); i++) {
-		mxv2::FileSystem *fs = 0;
-		std::string rel;
-		if (!vfs.Parse((*refs)[i], &fs, &rel)) {
-			Warn(box, mxv2::MsgF("Log.BookmarkUnknownFs", (*refs)[i]));
-			fixed = true;
-			continue;
-		}
-		// ファイルシステムの選択そのもの（空の ref）と、ブックマークの
-		// 一覧 (bookmark:) 自身は控えられない。
-		if (fs == 0 || fs->isJumpList()) {
-			fixed = true;
-			continue;
-		}
-		const std::string ref = mxv2::Vfs::MakeRef(fs, rel);
-		if (ref != (*refs)[i]) fixed = true;  // 書き方を揃えた
-		out.push_back(ref);
-	}
-	if ((int)out.size() > mxv2::Settings::kMaxBookmarks) {
-		out.resize(mxv2::Settings::kMaxBookmarks);
-		fixed = true;
-	}
-	*refs = out;
-	return fixed;
-}
-
-// 今のマウント順を ini に書く形へ。
-std::vector<std::string> SaveFileSystems(const mxv2::Vfs &vfs) {
-	std::vector<std::string> out;
-	for (int i = 0; i < vfs.count(); i++) {
-		// 場所を持つ外部ファイルシステムは "<id>:<場所>" を返す。
-		out.push_back(vfs.at(i)->mountRef());
-	}
-	return out;
-}
-
-// 音まわりのログ 1 行。起動時と、出力レートを変えて開き直したときに出す。
-void PrintAudioInfo(const mxv2::Player &player, bool latencyAuto) {
-	// カタログの値は前後の空白が落ちるので、区切りはこちらで足す。
-	std::string line =
-	    mxv2::MsgF("Log.Audio", mxv2::MsgNum("%d", player.sampleRate()),
-	               mxv2::MsgNum("%d", player.audioBufferFrames()),
-	               mxv2::MsgNum("%d", player.displayLatencyFrames()),
-	               mxv2::MsgNum("%.1f", player.displayLatencyFrames() * 1000.0 /
-	                                        player.sampleRate()));
-	if (latencyAuto) line += std::string(" ") + mxv2::Msg("Log.AudioAuto");
-	printf("audio    : %s\n", line.c_str());
-	// どの口で鳴らしているか。Android は AAudio と OpenSL ES で音の
-	// 途切れやすさが変わるので、切り分けに要る。
-	{
-		const char *driver = SDL_GetCurrentAudioDriver();
-		if (driver != 0) printf("audiodrv : %s\n", driver);
-	}
-	fflush(stdout);
-}
-
-// 前の版が mxv2.ini を置いていた場所から、1 度だけ引き取る（元は残す）。
-// 引き取り先が既にあれば何もしない。心当たりは 2 つ:
-//   ・実行ファイルの隣（デスクトップの旧い版）
-//   ・Android の内部ストレージ（外から見えないので、ユーザーフォルダを
-//     外部へ移した 2026-08-31 より前の版）
-void MigrateLegacySettings(const std::string &newPath) {
-	if (mxv2::FileExists(newPath)) return;
-
-	std::vector<std::string> olds;
-	olds.push_back(mxv2::JoinPath(mxv2::ExecutableDir(), "mxv2.ini"));
-	{
-		const std::string legacy = mxv2::LegacyUserDataDir(kUserDirName);
-		if (!legacy.empty()) olds.push_back(mxv2::JoinPath(legacy, "mxv2.ini"));
-	}
-
-	for (size_t i = 0; i < olds.size(); i++) {
-		const std::string &oldPath = olds[i];
-		if (mxv2::DirNameOf(oldPath) == mxv2::DirNameOf(newPath)) continue;
-		std::vector<uint8_t> data;
-		if (!mxv2::FileExists(oldPath) || !mxv2::ReadWholeFile(oldPath, &data)) continue;
-		if (!mxv2::WriteWholeFile(newPath, data)) continue;
-		printf("settings : %s\n", mxv2::MsgF("Log.SettingsMigrated", oldPath).c_str());
-		return;
-	}
-}
-
-// mxv2.ini から読んだ設定を、コマンドラインで上書きする。
-bool ParseArgs(int argc, char **argv, Options *opt, mxv2::Settings *st) {
-	for (int i = 1; i < argc; i++) {
-		const char *a = argv[i];
-		if (a[0] != '-') {
-			if (!opt->target.empty()) {
-				printf("ERROR: %s\n", mxv2::MsgF("Error.TargetTwice", a).c_str());
-				return false;
-			}
-			opt->target = a;
-			continue;
-		}
-		if (strcmp(a, "-nofade") == 0) {
-			st->fadeout = false;
-		} else if (strcmp(a, "-quit") == 0) {
-			opt->quitOnEnd = true;
-		} else if (strcmp(a, "-tutorial") == 0) {
-			opt->tutorial = true;
-		} else if (strcmp(a, "-folderfirst") == 0) {
-			st->folderFirst = true;
-		} else if (strcmp(a, "-zoom") == 0 && i + 1 < argc) {
-			st->zoomPercent = atoi(argv[++i]);
-		} else if (strcmp(a, "-loops") == 0 && i + 1 < argc) {
-			st->loops = atoi(argv[++i]);
-		} else if (strcmp(a, "-rate") == 0 && i + 1 < argc) {
-			// 出力サンプリングレート。x68sound が持っているフィルタ表で
-			// 決まるので、対応していない値はここで弾く（そのまま渡すと
-			// 黙って 22050 に落とされる）。ini には残さない。
-			opt->sampleRate = atoi(argv[++i]);
-			if (!mxv2::Player::IsSupportedSampleRate(opt->sampleRate)) {
-				printf("ERROR: %s\n",
-				       mxv2::MsgF("Error.BadSampleRate",
-				                  mxv2::MsgNum("%d", opt->sampleRate))
-				           .c_str());
-				return false;
-			}
-		} else if (strcmp(a, "-latency") == 0 && i + 1 < argc) {
-			// 桁を間違えても画面が止まったきりにならないよう、常識的な幅で頭打ち。
-			opt->latencyMs = atoi(argv[++i]);
-			if (opt->latencyMs > 10000) opt->latencyMs = 10000;
-			if (opt->latencyMs < -10000) opt->latencyMs = -10000;
-			opt->latencySet = true;
-		} else if (strcmp(a, "-pdxpath") == 0 && i + 1 < argc) {
-			opt->pdxSearchDirs.push_back(argv[++i]);
-		} else if (strcmp(a, "-assets") == 0 && i + 1 < argc) {
-			// 実際の処理は PrescanDirs（設定を読む前に要る）。ここでは受け流す。
-			i++;
-		} else if (strcmp(a, "-userdir") == 0 && i + 1 < argc) {
-			i++;  // 同上
-		} else if (strcmp(a, "-locale") == 0 && i + 1 < argc) {
-			i++;  // 同上
-		} else if (strcmp(a, "-skin") == 0 && i + 1 < argc) {
-			st->skinName = argv[++i];
-			opt->skinSet = true;
-		} else if (strcmp(a, "-orient") == 0 && i + 1 < argc) {
-			opt->orient = atoi(argv[++i]);
-			if (opt->orient != 0 && opt->orient != 1) {
-				printf("ERROR: %s\n",
-				       mxv2::MsgF("Error.BadOption", a, argv[i]).c_str());
-				return false;
-			}
-		} else if (strcmp(a, "-orientlock") == 0 && i + 1 < argc) {
-			opt->orientLock = atoi(argv[++i]);
-			if (opt->orientLock < 0 || opt->orientLock > 2) {
-				printf("ERROR: %s\n",
-				       mxv2::MsgF("Error.BadOption", a, argv[i]).c_str());
-				return false;
-			}
-		} else if (strcmp(a, "-console") == 0) {
-			// 実際の処理は main の先頭 (SetupConsole)。ここでは受け流すだけ。
-		} else if (strcmp(a, "-h") == 0 || strcmp(a, "-help") == 0) {
-			return false;
-		} else {
-			printf("ERROR: %s\n", mxv2::MsgF("Error.UnknownOption", a).c_str());
-			return false;
-		}
-	}
-	if (st->loops < 1) st->loops = 1;
-	return true;
-}
-
-// 読み込み中の曲。**読み終わるまで前の曲はそのまま鳴っている**ので、
-// ここには「届いたら何をするか」だけを置く。
-struct SongLoad {
-	bool active;
-	std::string path;        // 読んでいる曲の ref
-	uint32_t startTicks;     // 頼んだ時刻 (SDL_GetTicks)
-	bool noticeShown;        // 「読み込み中」を曲名の位置に出したか
-	std::string prevTitle;   // 出す前の曲名（読めなかったときに戻す）
-
-	// 読み終わってから掛け直すもの。出力レートを変えたときだけ使う
-	// （同期だった頃は StartPlay の直後に呼んでいた）。
-	int seekMs;
-	bool pause;
-	uint32_t channelMask;
-	bool hasChannelMask;
-
-	SongLoad()
-	    : active(false),
-	      startTicks(0),
-	      noticeShown(false),
-	      seekMs(0),
-	      pause(false),
-	      channelMask(0),
-	      hasChannelMask(false) {}
-};
-
-// 曲を切り替えるときに触るもの一式。キーボード・マウス・自動送りの
-// どれからでも同じ手順を通すためにまとめてある。
-struct PlayContext {
-	const Options *opt;
-	const mxv2::Settings *settings;
-	const mxv2::Vfs *vfs;
-	mxv2::Player *player;
-	mxv2::DrawScreen *draw;
-	mxv2::Visualizer *visualizer;
-	mxv2::Screen *screen;
-	mxv2::SongLoader *loader;
-
-	bool *playing;
-	std::string *currentPath;
-	bool *endSeen;
-	bool *chromeRefresh;
-	bool *fileListRefresh;
-	SongLoad *load;
-};
-
-// PDX の探索先。-pdxpath の指定と設定の一覧を合わせたもの（この順）。
-// 入力は裸のパスでも ref でもよいので、ここで ref へ揃える。
-std::vector<std::string> PdxSearchDirs(const mxv2::Vfs &vfs, const Options &opt,
-                                       const mxv2::Settings &st) {
-	std::vector<std::string> in = opt.pdxSearchDirs;
-	in.insert(in.end(), st.pdxPaths.begin(), st.pdxPaths.end());
-
-	std::vector<std::string> dirs;
-	for (size_t i = 0; i < in.size(); i++) {
-		std::string ref;
-		if (!vfs.Resolve(in[i], std::string(), &ref) || ref.empty()) {
-			printf("warning  : %s\n",
-			       mxv2::MsgF("Log.PdxPathUnreadable", in[i]).c_str());
-			continue;
-		}
-		dirs.push_back(ref);
-	}
-	return dirs;
-}
-
-// 「読み込み中」を曲名の位置に出すまでの待ち時間 (ms)。ローカルの曲は
-// 一瞬で届くので、すぐ出すとちらつくだけになる。
-const uint32_t kSongNoticeDelayMs = 250;
-
-// 1 曲読み込んで演奏を始める。path は ref。
-// **読むのは別スレッド**なので、ここは依頼を出すだけ。実際に音が変わるのは
-// PollSong が結果を受け取ったとき。それまでは前の曲がそのまま鳴っている。
-void StartPlayResume(const PlayContext &ctx, const std::string &path,
-                     int seekMs, bool pause, uint32_t channelMask, bool hasChannelMask) {
-	SongLoad *ld = ctx.load;
-	ld->active = true;
-	ld->path = path;
-	ld->startTicks = SDL_GetTicks();
-	ld->noticeShown = false;
-	ld->prevTitle.clear();
-	ld->seekMs = seekMs;
-	ld->pause = pause;
-	ld->channelMask = channelMask;
-	ld->hasChannelMask = hasChannelMask;
-
-	ctx.loader->Start(ctx.vfs, path, PdxSearchDirs(*ctx.vfs, *ctx.opt, *ctx.settings));
-	*ctx.endSeen = false;
-}
-
-void StartPlay(const PlayContext &ctx, const std::string &path) {
-	StartPlayResume(ctx, path, 0, false, 0, false);
-}
-
-// 読み終わった曲を演奏へ渡す。毎フレーム呼ぶこと。何か起きたら true。
-bool PollSong(const PlayContext &ctx) {
-	SongLoad *ld = ctx.load;
-
-	mxv2::SongLoader::Result r;
-	if (ctx.loader->Take(&r)) {
-		// 世代番号で古いものは捨てられているが、念のため行き先も見る。
-		if (ld->active && r.ref == ld->path) {
-			ld->active = false;
-			const std::string prevTitle = ld->prevTitle;
-			const bool restoreTitle = ld->noticeShown;
-			ld->noticeShown = false;
-
-			std::string err;
-			if (!r.ok) {
-				printf("ERROR: %s\n", r.err.c_str());
-				fflush(stdout);
-				if (restoreTitle) ctx.draw->PutMDXTitle(prevTitle);
-				*ctx.playing = false;
-				*ctx.chromeRefresh = true;
-				*ctx.fileListRefresh = true;
-				return true;
-			}
-			if (!ctx.player->PlaySong(r.song, &err)) {
-				printf("ERROR: %s\n", err.c_str());
-				fflush(stdout);
-				if (restoreTitle) ctx.draw->PutMDXTitle(prevTitle);
-				*ctx.playing = false;
-				*ctx.chromeRefresh = true;
-				*ctx.fileListRefresh = true;
-				return true;
-			}
-
-			ctx.visualizer->Reset();
-			ctx.draw->Reload();
-			ctx.draw->PutMDXTitle(r.song.title);
-			if (ctx.screen != 0) {
-				ctx.screen->SetTitle(r.song.title.empty()
-				                         ? std::string("mxv2")
-				                         : ("mxv2 - " + r.song.title));
-			}
-
-			// 出力レートを変えたときの掛け直し。曲を掛け直すとマスクが
-			// 消えるので、ここで入れ直す。
-			if (ld->seekMs != 0) ctx.player->SeekMs(ld->seekMs);
-			if (ld->pause) ctx.player->Pause();
-			if (ld->hasChannelMask) ctx.player->SetChannelMask(ld->channelMask);
-
-			printf("play     : %s\n", r.song.path.c_str());
-			printf("title    : %s\n", r.song.title.c_str());
-			if (r.song.requiresPdx && !r.song.hasPdx) {
-				printf("warning  : %s\n",
-				       mxv2::MsgF("Log.PdxNotFound", r.song.pdxFileName).c_str());
-			}
-			printf("duration : %.1f sec\n", ctx.player->playTimeMs() / 1000.0f);
-			// MSVC の setvbuf は _IOLBF を全バッファ扱いにするので、明示的に流す。
-			fflush(stdout);
-
-			*ctx.playing = true;
-			*ctx.currentPath = r.ref;
-			*ctx.endSeen = false;
-			*ctx.chromeRefresh = true;
-			*ctx.fileListRefresh = true;
-			return true;
-		}
-	}
-
-	// 手間取っているときだけ、曲名の位置で知らせる。
-	if (ld->active && !ld->noticeShown &&
-	    (SDL_GetTicks() - ld->startTicks) >= kSongNoticeDelayMs) {
-		ld->prevTitle = ctx.draw->mdxTitle();
-		ctx.draw->PutMDXTitle(mxv2::Msg("Player.Loading"));
-		ld->noticeShown = true;
-		return true;
-	}
-	return false;
-}
-
-// ファイラーの文字サイズ（小 / 大）を切り替える。TAB キーと、ファイラーの
-// 長押し（キーボードの無い端末向け）の 2 か所から同じ手順を通す。
-void ToggleFileListFontSize(mxv2::DrawScreen *draw, mxv2::Filer *filer, bool *fileListRefresh) {
-	draw->SetFileListFontSize(draw->fileListFontSize() ^ 1);
-	filer->SetViewMetrics(draw->fileListRows(), draw->fileListItemH());
-	*fileListRefresh = true;
-}
-
-// ファイラーのカーソルを開く。曲なら演奏、フォルダやファイルシステムなら移動、
-// "[Setting]" ならファイルシステムの設定ダイアログ（"Bookmarks>" の中なら
-// ブックマークの設定）、ブックマークの行ならその場所へ移る。
-// キー (ENTER)・マウス・右へのスワイプから同じ手順を通す。
-void OpenCursor(const PlayContext &ctx, mxv2::Filer *filer, mxv2::SettingsUi *ui) {
-	std::string path;
-	switch (filer->Open(&path)) {
-		case mxv2::kFilerOpenPlay:
-			StartPlay(ctx, path);
-			break;
-		case mxv2::kFilerOpenMoved:
-			*ctx.fileListRefresh = true;
-			break;
-		case mxv2::kFilerOpenSettings:
-			ui->OpenFileSystems();
-			break;
-		case mxv2::kFilerOpenBookmark:
-			// 控え直し（ファイルを指していたとき）が要るので UI 側に任せる。
-			ui->OpenBookmarkRef(path);
-			break;
-		case mxv2::kFilerOpenBookmarkSettings:
-			ui->OpenBookmarks();
-			break;
-		case mxv2::kFilerOpenNeedsAccess:
-			// SAF の許可が失われている。OS のピッカーを直に出して取り直させる
-			// （出せなければ設定ダイアログをその行で開く）。
-			ui->RegrantAccess(path);
-			break;
-		default:
-			break;
-	}
-}
-
-// 画面をまるごと描き直させる。GL コンテキストが失われたあと
-// (SDL_RENDER_DEVICE_RESET / TARGETS_RESET) と、バックグラウンドから戻った
-// ときに呼ぶ。テクスチャは中身だけでなく**器ごと**無効になっているので
-// 作り直し、mxv2 は差分更新なので**「もう描いた」印まで戻す**。
-void ForceRedrawAll(mxv2::Screen *screen, mxv2::TextLayer *textLayer, mxv2::DrawScreen *draw,
-                    mxv2::Player *player, mxv2::SettingsUi *ui, bool *chromeRefresh,
-                    bool *fileListRefresh) {
-	std::string err;
-	if (!screen->ResetTextures(&err)) printf("warning  : %s\n", err.c_str());
-	if (!textLayer->Rebuild(screen, &err)) printf("warning  : %s\n", err.c_str());
-	ui->HandleDeviceReset();
-	draw->Reload();
-	player->RequestStatusRefresh();
-	*chromeRefresh = true;
-	*fileListRefresh = true;
+	return dirt;
 }
 
 // ---- 画面の向きでスキンを切り替える（screen_orientation.md） --------------
 
-// 切り替えかたから、いま使うべき向きを決める。「起動時の方向で切り替える」と
-// 「常に切り替える」は、渡された今の向きをそのまま使う。
-mxv2::Screen::Orientation OrientationForMode(int mode, mxv2::Screen::Orientation now) {
-	if (mode == mxv2::Settings::kOrientPortraitOnly) return mxv2::Screen::kPortrait;
-	if (mode == mxv2::Settings::kOrientLandscapeOnly) return mxv2::Screen::kLandscape;
-	return now;
-}
-
-// 端末そのものの向きを、切り替えかたに合わせて固定する（Android だけ。
-// それ以外では orientlock が何もしない）。
-//
-// **固定しても上下反転は許す**（SENSOR_PORTRAIT / SENSOR_LANDSCAPE）。
-// 「常に切り替える」なら自由に回してよい。
-void ApplyOrientationMode(int mode, mxv2::Screen::Orientation now) {
-	switch (mode) {
-		case mxv2::Settings::kOrientPortraitOnly:
-			mxv2::orientlock::Set(mxv2::orientlock::kPortrait);
-			break;
-		case mxv2::Settings::kOrientLandscapeOnly:
-			mxv2::orientlock::Set(mxv2::orientlock::kLandscape);
-			break;
-		case mxv2::Settings::kOrientStartup:
-			// 起動した（か、設定を閉じた）ときの向きで固定する。
-			mxv2::orientlock::Set((now == mxv2::Screen::kPortrait)
-			                          ? mxv2::orientlock::kPortrait
-			                          : mxv2::orientlock::kLandscape);
-			break;
-		default:
-			mxv2::orientlock::Set(mxv2::orientlock::kFree);
-			break;
-	}
-}
-
-// 窓の大きさに合わせてキャンバスを作り直す（fullscreen.md）。
-//
-// スキンは「宣言サイズ」でレイアウトを持っているが、窓の縦横比がそれと
-// 違うときは、ファイラーを置いた向きだけ伸ばして窓に寄せる。伸ばせる量は
-// 背景ビットマップの大きさで頭打ちになり、あふれたぶんは今までどおり
-// レターボックスになる。
-//
-// 呼ぶのは**フレームの頭で 1 回だけ**。窓のリサイズはイベントで印を立てる
-// だけにして、ここでまとめて作り直す。これがそのままリサイズ中のデバウンスに
-// なる（ドラッグ中に何十回イベントが来ても、作り直すのは 1 フレームに 1 回）。
-// 大きさが変わっていなければ何もしない。作り直したら true。
-bool SyncCanvasToWindow(mxv2::Screen *screen, mxv2::TextLayer *textLayer,
-                        mxv2::DrawScreen *draw, mxv2::Filer *filer, const mxv2::Skin &skin) {
-	int outW = 0, outH = 0;
-	screen->GetOutputSize(&outW, &outH);
-	int cw = 0, ch = 0;
-	skin.CanvasSizeFor(outW, outH, draw->stretchLimit(), &cw, &ch);
-	if (cw == screen->width() && ch == screen->height()) return false;
-
-	// 順番が大事: 画面 -> 文字レイヤー -> DrawScreen。
-	// DrawScreen::Resize は最後に Reload() まで済ませて曲名を描き直すので、
-	// その前にレイヤーを作り直しておく。
-	std::string err;
-	if (!screen->SetCanvasSize(cw, ch, &err)) {
-		printf("warning  : %s\n", err.c_str());
-		return false;
-	}
-	textLayer->SyncToScreen(screen);
-	if (!draw->Resize(cw, ch, &err)) {
-		printf("warning  : %s\n", err.c_str());
-		return false;
-	}
-	filer->SetViewMetrics(draw->fileListRows(), draw->fileListItemH());
-	return true;
-}
-
-// 演奏が終わったら CONT / REPEAT に従って次の曲へ送る。
-//
-// **バックグラウンド（描かないとき）でも呼ぶ**ので、描画とは切り離してある。
-// frame は表示位置 (Player::visualFrame)。終わってすぐには送らず、余韻
-// (lingerFrames) のぶん鳴らしきってから次へ行く。
-void PollSongEnd(const PlayContext &ctx, mxv2::Filer *filer, uint64_t frame,
-                 uint64_t lingerFrames, bool autoNext, bool autoRepeat, bool quitWhenDone,
-                 uint64_t *endFrame, bool *quit) {
-	// 読み込み中は前の曲が鳴り続けているので、その終わりで次へ送らない。
-	if (!*ctx.playing || ctx.load->active || !ctx.player->playTerminated()) return;
-
-	if (!*ctx.endSeen) {
-		*ctx.endSeen = true;
-		*endFrame = frame;
-		return;
-	}
-	if (frame <= *endFrame + lingerFrames) return;
-
-	*ctx.endSeen = false;
-	std::string path;
-	if (autoRepeat && !ctx.currentPath->empty()) {
-		StartPlay(ctx, *ctx.currentPath);
-	} else if (autoNext && filer->NextMdx(&path)) {
-		StartPlay(ctx, path);
-	} else if (quitWhenDone) {
-		*quit = true;
-	} else {
-		// 終わったら停止状態にする。[■] を押したときとまったく同じ扱いで、
-		// PLAY の LED が消え、鍵盤も消え、PLAY TIME は 00:00 へ戻る。
-		//
-		// **Player も止めること。** ここの印 (*ctx.playing) を下ろすだけだと
-		// `player.playing()` が true のまま残り、画面はいつまでも鳴っている
-		// ように見える（Visualizer::UpdateChrome が LED を点け続ける）。
-		// 通知 (UpdateNowPlaying) も同じ理由で消えなくなる。
-		*ctx.playing = false;
-		ctx.player->Stop();
-	}
-}
-
-// 演奏状態の通知（Android）。画面を見ていないときの唯一の窓口になるので、
-// バックグラウンドでも毎回呼ぶ。中身が変わらなければ何も起きない。
-void UpdateNowPlaying(const mxv2::Player &player, const std::string &currentPath, bool playing,
-                      bool autoNext, bool autoRepeat) {
-	// Windows などでは何もしない。文言を組み立てる前に抜ける。
-	if (!mxv2::nowplaying::Available()) return;
-
-	mxv2::nowplaying::State st;
-	// player.playing() は「曲を持っている」（[■] で止めると false）、
-	// playing は「終わりまで行っていない」。どちらか欠けたら通知は消す。
-	st.active = playing && player.playing();
-	if (st.active) {
-		st.playing = !player.paused();
-		st.title = player.song().title;
-		if (st.title.empty()) st.title = mxv2::BaseNameOf(currentPath);
-		if (st.title.empty()) st.title = mxv2::Msg("Notify.NoTitle");
-
-		st.text = mxv2::Msg(st.playing ? "Notify.Playing" : "Notify.Paused");
-		// CONT / REPEAT は画面が見えないところでも効くので、通知に出す。
-		if (autoNext) {
-			st.text += "  ";
-			st.text += mxv2::Msg("Notify.Cont");
-		}
-		if (autoRepeat) {
-			st.text += "  ";
-			st.text += mxv2::Msg("Notify.Repeat");
-		}
-
-		st.posMs = player.nowTimeMs();
-		st.durMs = player.playTimeMs();
-	}
-	mxv2::nowplaying::Update(st);
-}
-
-// 音が途切れた（デコードが間に合わず無音を差し込んだ）ことを知らせる。
-// **終了時のまとめだけでは、長く鳴らしっぱなしにするとき——バックグラウンド
-// 演奏——に気付けない**ので、増えたぶんをときどき出す。
-void PollUnderruns(const mxv2::Player &player, uint32_t *last, uint32_t *nextMs) {
-	const uint32_t now = player.underruns();
-	// 曲が変わると数え直しになる。
-	if (now < *last) *last = 0;
-	if (now == *last) return;
-
-	const uint32_t ticks = SDL_GetTicks();
-	if (*nextMs != 0 && (int32_t)(ticks - *nextMs) < 0) return;
-	printf("warning  : audio underrun x%u\n", now - *last);
-	fflush(stdout);
-	*last = now;
-	*nextMs = ticks + kUnderrunReportMs;
-}
-
-// 通知（Android）のボタンや、他のアプリ・ヘッドホンの都合で届いた要求。
-// 画面を見ていないときの唯一の操作手段なので、**バックグラウンドでも回す**。
-//
-// pausedByFocus は「他のアプリに音を譲って止めた」印。返してもらったときに
-// 自動で再開するのはこの印が立っているときだけで、自分で止めていた曲を
-// 勝手に鳴らし始めることはない。
-void PollNotifyRequests(const PlayContext &ctx, mxv2::Filer *filer, bool *pausedByFocus) {
-	mxv2::Player *player = ctx.player;
-	for (;;) {
-		const mxv2::nowplaying::Request req = mxv2::nowplaying::TakeRequest();
-		if (req == mxv2::nowplaying::kRequestNone) break;
-
-		std::string path;
-		switch (req) {
-			case mxv2::nowplaying::kRequestPlay:
-				*pausedByFocus = false;
-				if (player->paused()) player->Resume();
-				break;
-			case mxv2::nowplaying::kRequestPause:
-				*pausedByFocus = false;
-				if (!player->paused()) player->Pause();
-				break;
-			case mxv2::nowplaying::kRequestPrev:
-				if (filer->PrevMdx(&path)) StartPlay(ctx, path);
-				break;
-			case mxv2::nowplaying::kRequestNext:
-				if (filer->NextMdx(&path)) StartPlay(ctx, path);
-				break;
-			case mxv2::nowplaying::kRequestStop:
-				player->Stop();
-				break;
-			case mxv2::nowplaying::kRequestFocusLost:
-				// 鳴っていたときだけ印を付ける。
-				if (player->playing() && !player->paused()) {
-					player->Pause();
-					*pausedByFocus = true;
-				}
-				break;
-			case mxv2::nowplaying::kRequestFocusGained:
-				if (*pausedByFocus) {
-					*pausedByFocus = false;
-					player->Resume();
-				}
-				break;
-			default:
-				break;
-		}
-	}
-}
-
-// ドラッグ＆ドロップで落とされたものを開く。落とし物はネイティブのパスなので、
-// 行き先は必ずローカルファイルシステムになる。
-//   MDX      … そのファイルのあるフォルダへ移ってから演奏（コマンドラインで
-//               MDX を渡したときと同じ）
-//   フォルダ … そこへ移動するだけ
-//   それ以外 … 何もしない
-void OpenDropped(const PlayContext &ctx, mxv2::Filer *filer, const std::string &nativePath) {
-	std::string ref;
-	if (!ctx.vfs->Resolve(nativePath, std::string(), &ref) || ref.empty()) {
-		printf("warning  : %s\n", mxv2::MsgF("Log.DropUnreadable", nativePath).c_str());
-		return;
-	}
-
-	if (ctx.vfs->IsDir(ref)) {
-		filer->SetCurrentRef(ref);
-		*ctx.fileListRefresh = true;
-		return;
-	}
-
-	// 拡張子だけでなく中身も見る。拡張子を付け替えただけのファイルを
-	// 落とされても演奏を始めないため。
-	if (!mxv2::IsMdxFile(*ctx.vfs, ref)) {
-		printf("warning  : %s\n", mxv2::MsgF("Log.DropNotMdx", nativePath).c_str());
-		return;
-	}
-
-	filer->SetCurrentRef(ctx.vfs->Parent(ref));
-	filer->SelectByPath(ref);
-	StartPlay(ctx, ref);
-}
-
 }  // namespace
-
-// 演奏状態の通知（Android）に出す文言をカタログから渡す。起動時と、
-// 設定ウィンドウで言語を替えたときに呼ぶ（Java 側は文言を持っていない）。
-void SetNotifyLabels() {
-	mxv2::nowplaying::Labels labels;
-	labels.channel = mxv2::Msg("Notify.Channel");
-	labels.channelDesc = mxv2::Msg("Notify.ChannelDesc");
-	labels.prev = mxv2::Msg("Notify.Prev");
-	labels.play = mxv2::Msg("Notify.Play");
-	labels.pause = mxv2::Msg("Notify.Pause");
-	labels.next = mxv2::Msg("Notify.Next");
-	labels.stop = mxv2::Msg("Notify.Stop");
-	mxv2::nowplaying::SetLabels(labels);
-}
 
 int main(int argc, char **argv) {
 	// ログの行き先を先に決める。既定ではコンソールを出さない。
@@ -1518,19 +601,22 @@ int main(int argc, char **argv) {
 	ctx.fileListRefresh = &fileListRefresh;
 	ctx.load = &songLoad;
 
+	// キーとマウスの操作が触るもの一式（keybind.h）。
+	InputTargets targets;
+	targets.ctx = &ctx;
+	targets.filer = &filer;
+	targets.ui = &ui;
+	targets.player = &player;
+	targets.draw = &draw;
+	targets.autoNext = &autoNext;
+	targets.autoRepeat = &autoRepeat;
+	targets.chromeRefresh = &chromeRefresh;
+	targets.fileListRefresh = &fileListRefresh;
+	targets.currentPath = &currentPath;
+
 	// 演奏状態の通知（Android）に出す文言。Java 側には文言を持たせず、
 	// message.ini から引いたものを渡す。
-	{
-		mxv2::nowplaying::Labels labels;
-		labels.channel = mxv2::Msg("Notify.Channel");
-		labels.channelDesc = mxv2::Msg("Notify.ChannelDesc");
-		labels.prev = mxv2::Msg("Notify.Prev");
-		labels.play = mxv2::Msg("Notify.Play");
-		labels.pause = mxv2::Msg("Notify.Pause");
-		labels.next = mxv2::Msg("Notify.Next");
-		labels.stop = mxv2::Msg("Notify.Stop");
-		mxv2::nowplaying::SetLabels(labels);
-	}
+	SetNotifyLabels();
 
 	if (!startFile.empty()) StartPlay(ctx, startFile);
 
@@ -1800,247 +886,11 @@ int main(int argc, char **argv) {
 			// 直してから配る（当たり判定はすべて論理座標）。
 			SDL_Event mev = ev;
 			screen.WindowEventToCanvas(&mev);
-			switch (mouse.Handle(mev)) {
-				case mxv2::kMouseRequestOpenCursor:
-					OpenCursor(ctx, &filer, &ui);
-					break;
-				case mxv2::kMouseRequestPrev: {
-					std::string path;
-					if (filer.PrevMdx(&path)) {
-						StartPlay(ctx, path);
-					}
-					break;
-				}
-				case mxv2::kMouseRequestNext: {
-					std::string path;
-					if (filer.NextMdx(&path)) {
-						StartPlay(ctx, path);
-					}
-					break;
-				}
-				case mxv2::kMouseRequestReplay:
-					if (!currentPath.empty()) {
-						StartPlay(ctx, currentPath);
-					}
-					break;
-				case mxv2::kMouseRequestToggleCont:
-					autoNext = !autoNext;
-					chromeRefresh = true;
-					break;
-				case mxv2::kMouseRequestToggleRepeat:
-					autoRepeat = !autoRepeat;
-					chromeRefresh = true;
-					break;
-				case mxv2::kMouseRequestGoParent:
-					// ファイラーで左へはじいた。BACKSPACE と同じ。
-					filer.GoParent();
-					fileListRefresh = true;
-					break;
-				case mxv2::kMouseRequestContextMenu:
-					ui.OpenContextMenu();
-					break;
-				default:
-					break;
-			}
+			HandleMouseRequest(mouse.Handle(mev), targets);
 
 			if (ev.type != SDL_KEYDOWN) continue;
 
-			const SDL_Keycode key = ev.key.keysym.sym;
-			switch (key) {
-				// 終了は必ず確認してから。押し間違いで演奏が止まるのを防ぐ
-				// （ウィンドウの × とコンテキストメニューの [終了] は、
-				// 意図してそこを選んでいるので確認しない）。
-				case SDLK_ESCAPE:
-				case SDLK_q:
-					ui.OpenQuitConfirm();
-					break;
-
-				case SDLK_F1:
-					ui.OpenSettings();
-					break;
-				case SDLK_F2:
-					ui.OpenColors();
-					break;
-				case SDLK_F3:
-					ui.OpenFileSystems();
-					break;
-				case SDLK_F4:
-					ui.OpenBookmarks();
-					break;
-				// 表示の切り替え（メニューの [表示] と同じ。長押しの代わり）。
-				case SDLK_F7:
-					draw.ToggleStatusMode();
-					player.RequestStatusRefresh();
-					break;
-				case SDLK_F8:
-					draw.ToggleRegMap();
-					break;
-				case SDLK_F11:
-				case SDLK_h:
-					ui.OpenHelp();
-					break;
-				case SDLK_F12:
-				case SDLK_a:
-					ui.OpenAbout();
-					break;
-
-				// 演奏位置の移動。Shift 付き (< >) は大きく飛ぶ。
-				// 「,」「.」と「<」「>」は配列によって同じキーコードで届いたり
-				// 別のキーコードで届いたりするので、両方を受ける。
-				case SDLK_COMMA:
-				case SDLK_PERIOD:
-				case SDLK_LESS:
-				case SDLK_GREATER: {
-					const bool back = (key == SDLK_COMMA || key == SDLK_LESS);
-					const bool fast = (key == SDLK_LESS || key == SDLK_GREATER ||
-					                   (ev.key.keysym.mod & KMOD_SHIFT) != 0);
-					const uint32_t step = fast ? kSeekFastStepMs : kSeekStepMs;
-					const uint32_t now = player.nowTimeMs();
-					uint32_t want = 0;
-					if (back) {
-						want = (now > step) ? (now - step) : 0;
-					} else {
-						want = now + step;
-						const uint32_t total = player.playTimeMs();
-						if (total != 0 && want > total) want = total;
-					}
-					player.SeekMs(want);
-					break;
-				}
-
-				case SDLK_SPACE:
-					if (player.paused()) {
-						player.Resume();
-					} else {
-						player.Pause();
-					}
-					break;
-				case SDLK_f:
-					player.Fadeout();
-					break;
-
-				case SDLK_UP:
-					filer.MoveCursor(-1);
-					break;
-				case SDLK_DOWN:
-					filer.MoveCursor(1);
-					break;
-				case SDLK_PAGEUP:
-					filer.MoveCursor(-filer.visibleRows());
-					break;
-				case SDLK_PAGEDOWN:
-					filer.MoveCursor(filer.visibleRows());
-					break;
-				case SDLK_HOME:
-					filer.SetCursor(0);
-					break;
-				case SDLK_END:
-					filer.SetCursor(filer.itemCount() - 1);
-					break;
-
-				case SDLK_RETURN:
-				case SDLK_KP_ENTER:
-					OpenCursor(ctx, &filer, &ui);
-					break;
-				case SDLK_BACKSPACE:
-					filer.GoParent();
-					fileListRefresh = true;
-					break;
-
-				// Android の戻るキー。ダイアログ（上で処理済み）→ 親フォルダ
-				// → 終了の確認、の順に効く。ESC のようにいきなり閉じない。
-				case SDLK_AC_BACK: {
-					const std::string before = filer.currentRef();
-					filer.GoParent();
-					if (filer.currentRef() == before) {
-						ui.OpenQuitConfirm();
-					} else {
-						fileListRefresh = true;
-					}
-					break;
-				}
-				case SDLK_BACKSLASH:
-					filer.GoRoot();
-					fileListRefresh = true;
-					break;
-				case SDLK_l:
-					// フォルダを選ぶダイアログ。今の場所から出す。
-					ui.OpenFolder(filer.currentRef());
-					break;
-				case SDLK_m:
-					// Shift 付きはカレントフォルダの控え / 控え外し（確認あり）。
-					// 素の M はファイラーの "Bookmarks>"（ジャンプ専用の一覧）。
-					// 設定ダイアログは F4 だけ。
-					if (ev.key.keysym.mod & KMOD_SHIFT) {
-						ui.OpenBookmarkToggle();
-					} else {
-						ui.OpenBookmarkList();
-					}
-					break;
-
-				case SDLK_n: {
-					std::string path;
-					if (filer.NextMdx(&path)) {
-						StartPlay(ctx, path);
-					}
-					break;
-				}
-				case SDLK_b: {
-					std::string path;
-					if (filer.PrevMdx(&path)) {
-						StartPlay(ctx, path);
-					}
-					break;
-				}
-
-				case SDLK_c:
-					autoNext = !autoNext;
-					chromeRefresh = true;
-					break;
-				case SDLK_r:
-					autoRepeat = !autoRepeat;
-					chromeRefresh = true;
-					break;
-
-				case SDLK_TAB:
-					ToggleFileListFontSize(&draw, &filer, &fileListRefresh);
-					break;
-
-				case SDLK_MINUS:
-				case SDLK_KP_MINUS:
-					player.SetMainVolume(player.mainVolume() - kVolumeKeyStep);
-					break;
-				case SDLK_EQUALS:
-				case SDLK_PLUS:
-				case SDLK_KP_PLUS:
-				// JP 配列の「+」は Shift+「;」なので、SDL には SDLK_SEMICOLON で
-				// 届く（US 配列の「+」は Shift+「=」で SDLK_EQUALS）。
-				// 「;」そのものは他に割り当てが無いので、修飾なしでも受ける。
-				case SDLK_SEMICOLON:
-					player.SetMainVolume(player.mainVolume() + kVolumeKeyStep);
-					break;
-
-				// チャンネルの一括マスク。旧 mxv は Ctrl+0 / Alt+0 / Ctrl+Alt+0。
-				case SDLK_0:
-					if (ev.key.keysym.mod & KMOD_CTRL) {
-						player.ToggleChannelGroup(mxv2::Player::kChannelMaskAll);
-					} else if (ev.key.keysym.mod & KMOD_SHIFT) {
-						player.ToggleChannelGroup(mxv2::Player::kChannelMaskPcm);
-					} else {
-						player.ToggleChannelGroup(mxv2::Player::kChannelMaskFm);
-					}
-					break;
-
-				default:
-					// 1-8 で FM の ch.1-8、Shift を足すと PCM の ch.P-W。
-					// 旧 mxv は Ctrl+1-8 / Alt+1-8 だったが、mxv2 は修飾無しの
-					// 1-8 を先に FM へ割り当ててあるので、PCM を Shift 側にした。
-					if (key >= SDLK_1 && key <= SDLK_8) {
-						const int base = (ev.key.keysym.mod & KMOD_SHIFT) ? 8 : 0;
-						player.ToggleChannel(base + (int)(key - SDLK_1));
-					}
-					break;
-			}
+			HandleKeyDown(ev.key, targets);
 		}
 
 		// 落とされたものを開く。イベントを汲み終えてからにするのは、
@@ -2184,39 +1034,8 @@ int main(int argc, char **argv) {
 		// 設定 UI はここで組み立てる。配色を変えると 640x480 の
 		// オフスクリーンを作り直すので、下の描画より先に回す。
 		// キー操作でも変わる項目は、UI を開く前に拾っておく。
-		unsigned newDirt = 0;
-		if (settings.fileListFontSize != draw.fileListFontSize()) {
-			settings.fileListFontSize = draw.fileListFontSize();
-			newDirt |= mxv2::Settings::kFieldFontSize;
-		}
-		if (settings.masterVolume != player.masterVolume()) {
-			settings.masterVolume = player.masterVolume();
-			newDirt |= mxv2::Settings::kFieldVolume;
-		}
-		if (settings.lastDir != filer.currentRef()) {
-			settings.lastDir = filer.currentRef();
-			newDirt |= mxv2::Settings::kFieldLastDir;
-		}
-		// CONT / REPEAT はキー・マウス・メニューのどこからでも変わるので、
-		// 切り替えた場所ごとに書くのではなく、ここで見比べて拾う
-		// （文字の大きさや音量と同じ扱い）。
-		if (settings.autoNext != autoNext || settings.autoRepeat != autoRepeat) {
-			settings.autoNext = autoNext;
-			settings.autoRepeat = autoRepeat;
-			newDirt |= mxv2::Settings::kFieldContRepeat;
-		}
-		if (settings.savePosition) {
-			int wx = 0, wy = 0, ww = 0, wh = 0;
-			screen.GetWindowRect(&wx, &wy, &ww, &wh);
-			if (wx != settings.windowX || wy != settings.windowY ||
-			    ww != settings.windowW || wh != settings.windowH) {
-				settings.windowX = wx;
-				settings.windowY = wy;
-				settings.windowW = ww;
-				settings.windowH = wh;
-				newDirt |= mxv2::Settings::kFieldWindowPos;
-			}
-		}
+		unsigned newDirt = CollectDirtyFields(&settings, &draw, &player, &filer, &screen, autoNext,
+		                                       autoRepeat);
 		ui.SetOrientationState(orientEnabled, orientNow);
 		ui.Build(&settings, &draw, &player, &filer, &screen);
 
@@ -2370,35 +1189,8 @@ int main(int argc, char **argv) {
 	// 変わっていない項目は触らないので、-nofade のようなコマンドラインの
 	// 一時指定が residue として ini に残ることはない。
 	{
-		if (settings.fileListFontSize != draw.fileListFontSize()) {
-			settings.fileListFontSize = draw.fileListFontSize();
-			dirtyFields |= mxv2::Settings::kFieldFontSize;
-		}
-		if (settings.masterVolume != player.masterVolume()) {
-			settings.masterVolume = player.masterVolume();
-			dirtyFields |= mxv2::Settings::kFieldVolume;
-		}
-		if (settings.lastDir != filer.currentRef()) {
-			settings.lastDir = filer.currentRef();
-			dirtyFields |= mxv2::Settings::kFieldLastDir;
-		}
-		if (settings.autoNext != autoNext || settings.autoRepeat != autoRepeat) {
-			settings.autoNext = autoNext;
-			settings.autoRepeat = autoRepeat;
-			dirtyFields |= mxv2::Settings::kFieldContRepeat;
-		}
-		if (settings.savePosition) {
-			int wx = 0, wy = 0, ww = 0, wh = 0;
-			screen.GetWindowRect(&wx, &wy, &ww, &wh);
-			if (wx != settings.windowX || wy != settings.windowY ||
-			    ww != settings.windowW || wh != settings.windowH) {
-				settings.windowX = wx;
-				settings.windowY = wy;
-				settings.windowW = ww;
-				settings.windowH = wh;
-				dirtyFields |= mxv2::Settings::kFieldWindowPos;
-			}
-		}
+		dirtyFields |= CollectDirtyFields(&settings, &draw, &player, &filer, &screen, autoNext,
+		                                  autoRepeat);
 		if (!settings.SaveFields(settingsPath, dirtyFields)) {
 			printf("warning  : %s\n",
 			       mxv2::MsgF("Log.SettingsSaveFailed", settingsPath).c_str());

@@ -154,6 +154,10 @@ endif()
 # ---------------------------------------------------------------------------
 set(MXV2_SOURCES
 	src/main.cpp
+	src/appsetup.cpp
+	src/cmdline.cpp
+	src/keybind.cpp
+	src/playctl.cpp
 	src/assetpath.cpp
 	src/bitmap.cpp
 	src/bmpfile.cpp
@@ -175,6 +179,14 @@ set(MXV2_SOURCES
 	src/screen.cpp
 	src/settings.cpp
 	src/settingsui.cpp
+	src/settingsui_settings.cpp
+	src/settingsui_colors.cpp
+	src/settingsui_filesystems.cpp
+	src/settingsui_bookmarks.cpp
+	src/settingsui_pdx.cpp
+	src/settingsui_folder.cpp
+	src/settingsui_menu.cpp
+	src/settingsui_info.cpp
 	src/skin.cpp
 	src/songloader.cpp
 	src/statuswatch.cpp
@@ -184,7 +196,11 @@ set(MXV2_SOURCES
 	src/tutorial.cpp
 	src/vfs.cpp
 	src/visualizer.cpp
+	src/appsetup.h
 	src/assetpath.h
+	src/cmdline.h
+	src/keybind.h
+	src/playctl.h
 	src/bitmap.h
 	src/bmpfile.h
 	src/colors.h
@@ -208,6 +224,7 @@ set(MXV2_SOURCES
 	src/screen.h
 	src/settings.h
 	src/settingsui.h
+	src/settingsui_internal.h
 	src/skin.h
 	src/songloader.h
 	src/statuswatch.h
