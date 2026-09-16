@@ -102,7 +102,13 @@ struct Settings {
 	static const int kLatencyMsMax = 500;
 
 	// [Path]
-	std::string pdxPath;  // PDX の追加探索先（1 つ。複数は -pdxpath で足す）
+	// PDX の探索先。MDX と同じフォルダで見つからなかったときに、この並び順で
+	// 探す（ref。ファイルシステムをまたいでよい）。ini は [Path] PdxCount と
+	// Pdx<n>。以前の [Path] PDX（1 本だけ）は読み込み時に 1 件目として
+	// 取り込み、次の保存で新しい形へ書き換える。2026-09-16、ユーザーの指示
+	// （それまでは 1 本だけで、複数は -pdxpath で足していた）。
+	std::vector<std::string> pdxPaths;
+	static const int kMaxPdxPaths = 64;
 
 	// [FileSystem]
 	// ファイラーのルート（ファイルシステムの選択）に並べる順。中身は
@@ -145,7 +151,7 @@ struct Settings {
 		kFieldLoops = 1 << 6,
 		kFieldFadeout = 1 << 7,
 		kFieldVolume = 1 << 8,
-		kFieldPdxPath = 1 << 9,
+		kFieldPdxPaths = 1 << 9,
 		kFieldWindowPos = 1 << 10,
 		kFieldLatency = 1 << 11,
 		kFieldFileSystems = 1 << 12,

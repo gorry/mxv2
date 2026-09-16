@@ -41,8 +41,9 @@ bool IsMdxFileName(const std::string &name);
 bool IsMdxFile(const Vfs &vfs, const std::string &ref);
 
 // MDX を読み込み、MXDRV へ渡せる形に整える。
-//   pdxSearchDirs: MDX と同じディレクトリで見つからなかったときに探す場所
-//                  （ref。ファイルシステムをまたいでもよい）。
+//   pdxSearchDirs: MDX と同じディレクトリとその FS のルートの pdx/ で
+//                  見つからなかったときに探す場所（ref。この並び順で探す。
+//                  ファイルシステムをまたいでもよい）。
 // PDX が見つからなくても MDX 自体が読めていれば true を返す（FM のみで鳴る）。
 // 失敗時は err にメッセージ (UTF-8) を入れる。
 bool LoadMdxSong(const Vfs &vfs,

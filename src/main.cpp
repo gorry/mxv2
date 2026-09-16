@@ -576,12 +576,12 @@ struct PlayContext {
 	SongLoad *load;
 };
 
-// PDX の探索先。設定の 1 つと -pdxpath の指定を合わせたもの。
+// PDX の探索先。-pdxpath の指定と設定の一覧を合わせたもの（この順）。
 // 入力は裸のパスでも ref でもよいので、ここで ref へ揃える。
 std::vector<std::string> PdxSearchDirs(const mxv2::Vfs &vfs, const Options &opt,
                                        const mxv2::Settings &st) {
 	std::vector<std::string> in = opt.pdxSearchDirs;
-	if (!st.pdxPath.empty()) in.push_back(st.pdxPath);
+	in.insert(in.end(), st.pdxPaths.begin(), st.pdxPaths.end());
 
 	std::vector<std::string> dirs;
 	for (size_t i = 0; i < in.size(); i++) {

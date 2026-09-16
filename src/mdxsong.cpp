@@ -64,9 +64,10 @@ bool FindAndReadPdx(const Vfs &vfs,
 	}
 #endif
 
-	// 探す順は「MDX と同じ場所 -> その FS のルートの pdx/ -> pdxpath」。
-	// 真ん中は同梱アセットやユーザーフォルダのように「持ち物一式が 1 つの
-	// 根の下にある」FS 向けで、ローカル FS では飛ばす（vfs.h の hasPdxDir）。
+	// 探す順は「MDX と同じ場所 -> その FS のルートの pdx/ -> 探索先の一覧
+	// （-pdxpath、設定の並び順）」。真ん中は同梱アセットやユーザーフォルダの
+	// ように「持ち物一式が 1 つの根の下にある」FS 向けで、ローカル FS では
+	// 飛ばす（vfs.h の hasPdxDir）。
 	std::vector<std::string> dirs;
 	dirs.push_back(mdxDir);
 	if (!pdxDir.empty()) dirs.push_back(pdxDir);

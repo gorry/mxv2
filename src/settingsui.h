@@ -188,6 +188,7 @@ public:
 		if (fsConfirmOpen_) { fsCloseConfirm_ = true; return true; }
 		// ブックマークも同じ作り。Shift+M の確認だけは単独で開く。
 		if (bmRemoveOpen_) { bmCloseRemove_ = true; return true; }
+		if (pdxRemoveOpen_) { pdxCloseRemove_ = true; return true; }
 		if (bmToggleOpen_) { bmCloseToggle_ = true; return true; }
 		if (quitOpen_) { quitClose_ = true; return true; }
 		if (showAbout_) { showAbout_ = false; return true; }
@@ -197,6 +198,7 @@ public:
 		if (showStartup_) { showStartup_ = false; return true; }
 		if (showFileSystems_) { showFileSystems_ = false; return true; }
 		if (showBookmarks_) { showBookmarks_ = false; return true; }
+		if (showPdxPaths_) { showPdxPaths_ = false; return true; }
 		if (showFolder_) { showFolder_ = false; return true; }
 		if (showColors_) { showColors_ = false; return true; }
 		if (visible_) { visible_ = false; return true; }
@@ -417,9 +419,6 @@ private:
 	void SelectLocale(Settings *settings, const std::string &name);
 	void ApplyLocale();
 
-	// PDX パスの入力欄。std::string を直接は編集できないので固定長で持つ。
-	char pdxPathBuf_[512];
-
 	// ユーザーが触った項目。TakeChangedFields() で取り出す。
 	unsigned changedFields_;
 
@@ -431,7 +430,7 @@ private:
 	// 間は別のものを開けない（先にそれを閉じてもらう）。
 	bool busy() const {
 		return visible_ || showColors_ || showAbout_ || showFolder_ || showHelp_ ||
-		       showFileSystems_ || showBookmarks_ || showStartup_;
+		       showFileSystems_ || showBookmarks_ || showPdxPaths_ || showStartup_;
 	}
 
 	// 操作方法のダイアログ。
@@ -472,7 +471,7 @@ private:
 
 	// フォルダを選ぶダイアログ。選んだ結果の行き先は 2 つある。
 	//   kFolderTargetFiler … ファイラーを動かす (L キー / メニュー)
-	//   kFolderTargetPdx   … PDX の探索先に入れる (設定ウィンドウの [参照...])
+	//   kFolderTargetPdx   … PDX の探索先に足す ([PDX の探索先] の [追加…])
 	//   kFolderTargetBookmark … ブックマークに足す ([ブックマークの設定] の [追加])
 	enum FolderTarget {
 		kFolderTargetFiler = 0,
@@ -489,6 +488,7 @@ private:
 	// 開き直す。どちらへ戻るかは folderTarget_ で分かる。
 	bool folderReturnToSettings_;
 	bool folderReturnToBookmarks_;
+	bool folderReturnToPdx_;
 	bool folderOpenPending_;
 	// 子フォルダの一覧だけ作り直す（入力欄には触らない）。**読むのは
 	// 別スレッド**なので、中身が入るのはあとのフレーム (PollFolderDir)。
@@ -593,6 +593,22 @@ private:
 	bool bmOpenRemove_;        // 次のフレームで削除確認を開く
 	bool bmRemoveOpen_;        // いま開いている（ESC の判断に使う）
 	bool bmCloseRemove_;       // ESC で閉じてほしい
+	// PDX の探索先の設定。設定ウィンドウの [編集…] から開く。作りはブックマークの
+	// 設定と同じ（一覧・[上へ][下へ][追加…][削除]、削除は入れ子の確認）で、
+	// [開く] は無い。モーダル同士は入れ子にしないので、設定ウィンドウが閉じきって
+	// から開き（pdxOpenPending_）、閉じたら設定ウィンドウを開き直す
+	// （pdxReturnToSettings_。[追加…] のフォルダ選択の往復をまたいでも保つ）。
+	// 2026-09-16、ユーザーの指示（それまでは設定ウィンドウの打ち込み欄 1 本）。
+	void BuildPdxPathsWindow(Settings *settings, Filer *filer);
+	void BuildPdxRemoveWindow(Settings *settings);
+	bool showPdxPaths_;
+	bool pdxOpenPending_;      // 設定ウィンドウが閉じたら開く
+	bool pdxReturnToSettings_; // 閉じたら設定ウィンドウを開き直す
+	int pdxSelected_;          // 一覧で選んでいる行。空のときは -1
+	std::string pdxError_;
+	bool pdxOpenRemove_;       // 次のフレームで削除確認を開く
+	bool pdxRemoveOpen_;       // いま開いている（ESC の判断に使う）
+	bool pdxCloseRemove_;      // ESC で閉じてほしい
 	bool bmOpenToggle_;        // 次のフレームで Shift+M の確認を開く
 	bool bmToggleOpen_;
 	bool bmCloseToggle_;

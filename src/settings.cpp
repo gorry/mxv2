@@ -125,7 +125,25 @@ bool Settings::Load(const std::string &path) {
 	if (latencyMs < kLatencyMsMin) latencyMs = kLatencyMsMin;
 	if (latencyMs > kLatencyMsMax) latencyMs = kLatencyMsMax;
 
-	pdxPath = ini.GetString("Path", "PDX", pdxPath);
+	// PDX の探索先。[Path] PdxCount があればその並び、無ければ旧形式の
+	// [Path] PDX（1 本）を 1 件目にする（次の保存で新形式へ書き換わる）。
+	if (ini.Has("Path", "PdxCount")) {
+		pdxPaths.clear();
+		int count = ini.GetInt("Path", "PdxCount", 0);
+		if (count > kMaxPdxPaths) count = kMaxPdxPaths;
+		for (int i = 1; i <= count; i++) {
+			char key[32];
+			snprintf(key, sizeof(key), "Pdx%d", i);
+			const std::string v = ini.GetString("Path", key, std::string());
+			if (!v.empty()) pdxPaths.push_back(v);
+		}
+	} else {
+		const std::string legacy = ini.GetString("Path", "PDX", std::string());
+		if (!legacy.empty()) {
+			pdxPaths.clear();
+			pdxPaths.push_back(legacy);
+		}
+	}
 
 	// 中身の妥当性（知らないファイルシステム、削除できないものの欠落）は
 	// VFS 側で見る。ここは書いてある順に並べるだけ。
@@ -199,7 +217,24 @@ bool Settings::Save(const std::string &path) const {
 	ini.SetInt("Play", "LatencyAuto", latencyAuto ? 1 : 0);
 	ini.SetInt("Play", "Latency", latencyMs);
 
-	ini.SetString("Path", "PDX", pdxPath);
+	{
+		int count = (int)pdxPaths.size();
+		if (count > kMaxPdxPaths) count = kMaxPdxPaths;
+		ini.SetInt("Path", "PdxCount", count);
+		for (int i = 1; i <= count; i++) {
+			char key[32];
+			snprintf(key, sizeof(key), "Pdx%d", i);
+			ini.SetString("Path", key, pdxPaths[i - 1]);
+		}
+		// Count を超えた古い Pdx<n> は消す（FS<n> と同じ理由）。
+		for (int i = count + 1; i <= kMaxPdxPaths; i++) {
+			char key[32];
+			snprintf(key, sizeof(key), "Pdx%d", i);
+			ini.Remove("Path", key);
+		}
+		// 旧形式の [Path] PDX は取り込み済みなので消す。
+		ini.Remove("Path", "PDX");
+	}
 
 	{
 		int count = (int)fileSystems.size();
@@ -280,7 +315,7 @@ bool Settings::SaveFields(const std::string &path, unsigned fields) const {
 		out.latencyAuto = latencyAuto;
 		out.latencyMs = latencyMs;
 	}
-	if (fields & kFieldPdxPath) out.pdxPath = pdxPath;
+	if (fields & kFieldPdxPaths) out.pdxPaths = pdxPaths;
 	if (fields & kFieldFileSystems) out.fileSystems = fileSystems;
 	if (fields & kFieldBookmarks) out.bookmarks = bookmarks;
 	if (fields & kFieldWindowPos) {

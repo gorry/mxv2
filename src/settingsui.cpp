@@ -122,6 +122,8 @@ const char *kFsRemoveTitle;
 const char *kBookmarksTitle;
 const char *kBmRemoveTitle;
 const char *kBmToggleTitle;
+const char *kPdxPathsTitle;
+const char *kPdxRemoveTitle;
 const char *kAboutTitle;
 const char *kStartupTitle;
 const char *kAddFsTitle;
@@ -151,6 +153,8 @@ void InitTitles() {
 	// 見出しはファイルシステムの削除確認と同じなので、別のポップアップとして
 	// 扱ってもらうために "###" で id を分ける。
 	kBmRemoveTitle = TitleWithId("Dialog.BookmarkRemove", "###mxv2bmremove");
+	kPdxPathsTitle = Msg("Dialog.PdxPaths");
+	kPdxRemoveTitle = TitleWithId("Dialog.PdxRemove", "###mxv2pdxremove");
 	// Shift+M の確認。ダイアログを開かずにメイン画面から直に出す。
 	kBmToggleTitle = TitleWithId("Dialog.BookmarkToggle", "###mxv2bmtoggle");
 	kAboutTitle = Msg("Dialog.About");
@@ -465,6 +469,13 @@ SettingsUi::SettingsUi()
       bmOpenRemove_(false),
       bmRemoveOpen_(false),
       bmCloseRemove_(false),
+      showPdxPaths_(false),
+      pdxOpenPending_(false),
+      pdxReturnToSettings_(false),
+      pdxSelected_(0),
+      pdxOpenRemove_(false),
+      pdxRemoveOpen_(false),
+      pdxCloseRemove_(false),
       bmOpenToggle_(false),
       bmJumpPending_(false),
       bmToggleOpen_(false),
@@ -486,6 +497,7 @@ SettingsUi::SettingsUi()
       folderTarget_(kFolderTargetFiler),
       folderReturnToSettings_(false),
       folderReturnToBookmarks_(false),
+      folderReturnToPdx_(false),
       folderOpenPending_(false),
       songLoader_(0),
       folderLister_(new DirLister()),
@@ -493,7 +505,6 @@ SettingsUi::SettingsUi()
       folderTicks_(0),
       folderHasPrev_(false),
       openedModal_(0) {
-	pdxPathBuf_[0] = '\0';
 	folderPathBuf_[0] = '\0';
 	addFsPathBuf_[0] = '\0';
 	skinNameBuf_[0] = '\0';
@@ -1000,23 +1011,30 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 		visible_ = true;  // 新しい題名で開き直す
 	}
 
-	// 設定ウィンドウの [参照...] / ブックマークの設定の [追加] から来た往復。
+	// ブックマークの設定 / PDX の探索先の [追加…] から来た往復。
 	// ImGui のポップアップは同じ階層で掛け替えられないので、呼び出し元が
 	// 閉じきってからフォルダ選択を開く。
 	if (folderOpenPending_ && !ImGui::IsPopupOpen(kSettingsTitle) &&
-	    !ImGui::IsPopupOpen(kBookmarksTitle)) {
+	    !ImGui::IsPopupOpen(kBookmarksTitle) && !ImGui::IsPopupOpen(kPdxPathsTitle)) {
 		folderOpenPending_ = false;
-		// PDX なら探索先が入っていればそこから、無ければファイラーの今の場所から。
-		// ブックマークはファイラーの今の場所から。
+		// PDX なら一覧で選んでいた探索先から（読めなければファイラーの今の
+		// 場所から）。ブックマークはファイラーの今の場所から。
 		std::string start = filer->currentRef();
-		if (folderTarget_ == kFolderTargetPdx && vfs_ != 0 && pdxPathBuf_[0] != '\0') {
+		if (folderTarget_ == kFolderTargetPdx && vfs_ != 0 && pdxSelected_ >= 0 &&
+		    pdxSelected_ < (int)settings->pdxPaths.size()) {
 			std::string ref;
-			if (vfs_->Resolve(pdxPathBuf_, filer->currentRef(), &ref) && vfs_->IsDir(ref)) {
+			if (vfs_->Resolve(settings->pdxPaths[pdxSelected_], filer->currentRef(), &ref) &&
+			    vfs_->IsDir(ref)) {
 				start = ref;
 			}
 		}
 		SetFolderDir(start);
 		showFolder_ = true;
+	}
+	// 設定ウィンドウの [編集…] から。同じ理由で、設定ウィンドウが閉じきってから。
+	if (pdxOpenPending_ && !ImGui::IsPopupOpen(kSettingsTitle)) {
+		pdxOpenPending_ = false;
+		showPdxPaths_ = true;
 	}
 	BuildFolderWindow(settings, filer);
 	PollSafPicked(filer);
@@ -1027,6 +1045,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 		JumpToBookmarkRef(settings, bmJumpRef_);
 	}
 	BuildBookmarksWindow(settings, filer);
+	BuildPdxPathsWindow(settings, filer);
 	BuildBookmarkToggleWindow(settings, filer);
 	BuildQuitWindow();
 	BuildStartupWindow();
@@ -1040,6 +1059,19 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	    !ImGui::IsPopupOpen(folderTitle())) {
 		folderReturnToBookmarks_ = false;
 		showBookmarks_ = true;
+	}
+	if (folderReturnToPdx_ && !showFolder_ && !folderOpenPending_ &&
+	    !ImGui::IsPopupOpen(folderTitle())) {
+		folderReturnToPdx_ = false;
+		showPdxPaths_ = true;
+	}
+	// [PDX の探索先] を閉じたら設定ウィンドウへ戻る。[追加…] のフォルダ選択へ
+	// 出ている間（と、そこから戻ってくる途中）は戻らない。
+	if (pdxReturnToSettings_ && !showPdxPaths_ && !pdxOpenPending_ && !showFolder_ &&
+	    !folderOpenPending_ && !folderReturnToPdx_ && !ImGui::IsPopupOpen(kPdxPathsTitle) &&
+	    !ImGui::IsPopupOpen(folderTitle())) {
+		pdxReturnToSettings_ = false;
+		visible_ = true;
 	}
 
 	// ここから下は設定ウィンドウ。モーダルなので、開いている間はメイン画面も
@@ -1392,30 +1424,22 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 			             .c_str());
 		}
 
-		if (pdxPathBuf_[0] == '\0' && !settings->pdxPath.empty()) {
-			snprintf(pdxPathBuf_, sizeof(pdxPathBuf_), "%s", settings->pdxPath.c_str());
-		}
-		// 打ち込みでも、[参照...] で L キーと同じフォルダ選択からでも指定できる。
-		// ラベルは上の行に出す。横に並べると入力欄と参照ボタンが入らない
-		// （スキンの下限は横 480px）。
+		// PDX の探索先は一覧なので、別のダイアログ [PDX の探索先] で管理する
+		// （ブックマークの設定と同じ作り。2026-09-16、ユーザーの指示。それまでは
+		// 1 本だけを打ち込み欄と [参照…] で指定していた）。ここは件数と [編集…]
+		// だけ。モーダル同士は入れ子にせず、設定ウィンドウを閉じてから開き、
+		// 閉じたらまた開く（Build() の pdxOpenPending_ / pdxReturnToSettings_）。
 		ImGui::TextUnformatted(Msg("Settings.PdxPath"));
-		{
-			const ImGuiStyle &style = ImGui::GetStyle();
-			const float browseW =
-			    ImGui::CalcTextSize(Msg("Button.Browse")).x + style.FramePadding.x * 2.0f;
-			ImGui::SetNextItemWidth(-(browseW + style.ItemSpacing.x));
-		}
-		if (ImGui::InputText("##pdxpath", pdxPathBuf_, sizeof(pdxPathBuf_))) {
-			settings->pdxPath = pdxPathBuf_;
-			changedFields_ |= Settings::kFieldPdxPath;
-		}
 		ImGui::SameLine();
-		if (ImGui::Button(Msg("Button.Browse"))) {
-			// モーダル同士は入れ子にせず、いったん設定ウィンドウを閉じてから
-			// フォルダ選択を出す。戻ってきたらまた開く。
-			folderTarget_ = kFolderTargetPdx;
-			folderReturnToSettings_ = true;
-			folderOpenPending_ = true;
+		ImGui::TextDisabled("%s", MsgF("Settings.PdxPathCount",
+		                                MsgNum("%d", (int)settings->pdxPaths.size()))
+		                               .c_str());
+		ImGui::SameLine();
+		if (ImGui::Button(Msg("Button.Edit"))) {
+			pdxSelected_ = 0;
+			pdxError_.clear();
+			pdxOpenPending_ = true;
+			pdxReturnToSettings_ = true;
 			visible_ = false;
 		}
 		GroupTrailingSpace();
@@ -2356,6 +2380,148 @@ void SettingsUi::BuildBookmarkRemoveWindow(Settings *settings) {
 	ImGui::EndPopup();
 }
 
+// PDX の探索先の設定。設定ウィンドウの [編集…] から。ブックマークの設定と
+// 同じ作りで、[開く] が無いだけ。並び順がそのまま探す順（MDX と同じフォルダの
+// 次に、上から順）。
+void SettingsUi::BuildPdxPathsWindow(Settings *settings, Filer *filer) {
+	if (!SyncModal(kPdxPathsTitle, &showPdxPaths_)) return;
+
+	CenterNextWindow(placeCond());
+	ImGui::SetNextWindowSize(DialogSize(460.0f, 360.0f), placeCond());
+
+	if (!ImGui::BeginPopupModal(kPdxPathsTitle, &showPdxPaths_,
+	                            ImGuiWindowFlags_NoCollapse |
+	                                ImGuiWindowFlags_NoSavedSettings)) {
+		return;
+	}
+	if (vfs_ == 0) {
+		ImGui::TextUnformatted(Msg("FileSystems.Empty"));
+		ImGui::EndPopup();
+		return;
+	}
+
+	std::vector<std::string> &list = settings->pdxPaths;
+	const int count = (int)list.size();
+	if (pdxSelected_ >= count) pdxSelected_ = count - 1;
+	if (pdxSelected_ < 0 && count > 0) pdxSelected_ = 0;
+
+	{
+		const float foot = ImGui::GetFrameHeightWithSpacing() * 2.0f +
+		                   ImGui::GetTextLineHeightWithSpacing();
+		ImGui::BeginChild("##pdxlist", ImVec2(0, -foot), ImGuiChildFlags_Borders);
+		if (count == 0) ImGui::TextDisabled("%s", Msg("PdxPath.Empty"));
+		for (int i = 0; i < count; i++) {
+			char label[512];
+			snprintf(label, sizeof(label), "%s##pdx%d", vfs_->DisplayPath(list[i]).c_str(), i);
+			if (ImGui::Selectable(label, i == pdxSelected_) && !dragMoved_) {
+				pdxSelected_ = i;
+				pdxError_.clear();
+			}
+			// 表示は見やすさ優先で DisplayPath なので、生の ref はここで見せる。
+			if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", list[i].c_str());
+		}
+		DragToScroll(&dragScroll_, &dragMoved_, false, true);
+		ImGui::EndChild();
+	}
+
+	if (pdxError_.empty()) {
+		TextNote(Msg("PdxPath.Hint"));
+	} else {
+		TextError(pdxError_.c_str());
+	}
+
+	// [上へ] [下へ]。端まで来たら押せなくする。
+	ImGui::BeginDisabled(pdxSelected_ <= 0);
+	if (ImGui::Button(Msg("Button.Up"))) {
+		std::swap(list[pdxSelected_], list[pdxSelected_ - 1]);
+		pdxSelected_--;
+		changedFields_ |= Settings::kFieldPdxPaths;
+	}
+	ImGui::EndDisabled();
+	ImGui::SameLine();
+	ImGui::BeginDisabled(pdxSelected_ < 0 || pdxSelected_ >= count - 1);
+	if (ImGui::Button(Msg("Button.Down"))) {
+		std::swap(list[pdxSelected_], list[pdxSelected_ + 1]);
+		pdxSelected_++;
+		changedFields_ |= Settings::kFieldPdxPaths;
+	}
+	ImGui::EndDisabled();
+
+	// [追加…] はフォルダ選択ダイアログを経由して、選んだフォルダを選択位置へ
+	// 挿し込む（ブックマークの設定と同じ往復）。開始位置は選んでいる探索先
+	// （Build() の folderOpenPending_ のところ）。
+	(void)filer;
+	const bool full = (count >= Settings::kMaxPdxPaths);
+	ImGui::SameLine();
+	ImGui::BeginDisabled(full);
+	if (ImGui::Button(Msg("Button.AddPdxPath"))) {
+		pdxError_.clear();
+		folderTarget_ = kFolderTargetPdx;
+		folderReturnToPdx_ = true;
+		folderOpenPending_ = true;
+		showPdxPaths_ = false;
+	}
+	ImGui::EndDisabled();
+	if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+		ImGui::SetTooltip("%s", full ? Msg("PdxPath.AddFull") : Msg("PdxPath.AddBrowse"));
+	}
+
+	ImGui::SameLine();
+	ImGui::BeginDisabled(pdxSelected_ < 0);
+	if (ImGui::Button(Msg("Button.Remove"))) {
+		pdxError_.clear();
+		pdxOpenRemove_ = true;
+	}
+	ImGui::EndDisabled();
+
+	BuildPdxRemoveWindow(settings);
+
+	ImGui::EndPopup();
+}
+
+// 「本当に削除するか」。PDX の探索先の中に入れ子で開く。
+void SettingsUi::BuildPdxRemoveWindow(Settings *settings) {
+	if (pdxOpenRemove_) {
+		pdxOpenRemove_ = false;
+		ImGui::OpenPopup(kPdxRemoveTitle);
+	}
+
+	pdxRemoveOpen_ = ImGui::IsPopupOpen(kPdxRemoveTitle);
+	if (!pdxRemoveOpen_) {
+		pdxCloseRemove_ = false;
+		return;
+	}
+
+	CenterNextWindow(placeCond());
+	if (!ImGui::BeginPopupModal(kPdxRemoveTitle, NULL,
+	                            ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
+	                                ImGuiWindowFlags_AlwaysAutoResize)) {
+		return;
+	}
+
+	std::vector<std::string> &list = settings->pdxPaths;
+	const bool valid = (pdxSelected_ >= 0 && pdxSelected_ < (int)list.size());
+	ConfirmText(MsgF("PdxPath.RemoveConfirm",
+	                 (valid && vfs_ != 0) ? vfs_->DisplayPath(list[pdxSelected_])
+	                                      : std::string())
+	                .c_str());
+	ImGui::Separator();
+	if (ImGui::Button(Msg("Button.Remove"))) {
+		if (valid) {
+			list.erase(list.begin() + pdxSelected_);
+			if (pdxSelected_ >= (int)list.size()) pdxSelected_ = (int)list.size() - 1;
+			changedFields_ |= Settings::kFieldPdxPaths;
+		}
+		ImGui::CloseCurrentPopup();
+	}
+	ImGui::SameLine();
+	if (ImGui::Button(Msg("Button.Cancel")) || pdxCloseRemove_) {
+		pdxCloseRemove_ = false;
+		ImGui::CloseCurrentPopup();
+	}
+	ImGui::EndPopup();
+}
+
 // Shift+M（とコンテキストメニュー）の確認。カレントフォルダが控えてあれば
 // 削除、無ければ末尾へ追加する。メイン画面から直に出すので、他のダイアログの
 // 入れ子ではなく単独のモーダルとして開く。
@@ -2841,12 +3007,22 @@ void SettingsUi::BuildFolderWindow(Settings *settings, Filer *filer) {
 		if (!ok || (!ref.empty() && !known && !vfs_->IsDir(ref))) {
 			folderError_ = Msg("Folder.NotFound");
 		} else if (folderTarget_ == kFolderTargetPdx) {
-			if (ref.empty()) {
-				folderError_ = Msg("Folder.NotFound");
+			// PDX の探索先に足す。ルート（ファイルシステムの選択）と "Bookmarks>"
+			// 自身、入れてある場所は入れられない。挿す位置は [PDX の探索先] で
+			// 選んでいた行（無ければ末尾）。
+			std::vector<std::string> &list = settings->pdxPaths;
+			if (!CanBookmark(ref)) {
+				folderError_ = Msg("PdxPath.AddRoot");
+			} else if (FindBookmark(list, ref) >= 0) {
+				folderError_ = MsgF("PdxPath.AddDuplicate", vfs_->DisplayPath(ref));
+			} else if ((int)list.size() >= Settings::kMaxPdxPaths) {
+				folderError_ = Msg("PdxPath.AddFull");
 			} else {
-				settings->pdxPath = ref;
-				snprintf(pdxPathBuf_, sizeof(pdxPathBuf_), "%s", ref.c_str());
-				changedFields_ |= Settings::kFieldPdxPath;
+				const int count = (int)list.size();
+				const int at = (pdxSelected_ >= 0 && pdxSelected_ <= count) ? pdxSelected_ : count;
+				list.insert(list.begin() + at, ref);
+				pdxSelected_ = at;
+				changedFields_ |= Settings::kFieldPdxPaths;
 				showFolder_ = false;
 			}
 		} else if (folderTarget_ == kFolderTargetBookmark) {
