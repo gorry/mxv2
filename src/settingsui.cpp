@@ -349,6 +349,7 @@ SettingsUi::SettingsUi()
       localeChanged_(false),
       pendingZoom_(0),
       zoomApplyAtMs_(0),
+      zoomStepRequest_(0),
       changedFields_(0),
       openContextMenu_(false),
       contextMenuOpen_(false),
@@ -669,6 +670,10 @@ ImVec2 SettingsUi::DialogSize(float w, float h) const {
 void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Filer *filer,
                        Screen *screen) {
 	if (!ready_) return;
+
+	// キー (Ctrl +/-) で頼まれた倍率の増減。設定ダイアログの [表示倍率] を
+	// 触ったのと同じ扱いにしたいので、待たせる前にここで settings へ入れる。
+	ApplyZoomStep(settings);
 
 	// 待たせていたウィンドウ倍率をここで適用する。フレームの先頭でやるので、
 	// この後の倍率の計算とマウス座標の直しは新しい大きさで揃う。

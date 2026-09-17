@@ -40,6 +40,23 @@ float FramesToMs(int frames, const Player *player) {
 
 }  // namespace
 
+// キー (Ctrl +/-) から頼まれた倍率の増減を入れる。1 段は keybind.cpp の
+// kZoomKeyStep で、端は Screen::kZoomMin / kZoomMax で止まる。窓へ掛けるのは
+// ダイアログと同じく kZoomApplyDelayMs だけ待ってから（押しっぱなしで
+// リピートしても、手が止まってから 1 回だけ作り直す）。
+void SettingsUi::ApplyZoomStep(Settings *settings) {
+	if (zoomStepRequest_ == 0) return;
+	int zoom = settings->zoomPercent + zoomStepRequest_;
+	zoomStepRequest_ = 0;
+	if (zoom < Screen::kZoomMin) zoom = Screen::kZoomMin;
+	if (zoom > Screen::kZoomMax) zoom = Screen::kZoomMax;
+	if (zoom == settings->zoomPercent) return;
+	settings->zoomPercent = zoom;
+	changedFields_ |= Settings::kFieldZoom;
+	pendingZoom_ = zoom;
+	zoomApplyAtMs_ = SDL_GetTicks() + kZoomApplyDelayMs;
+}
+
 void SettingsUi::ScanSkins() {
 	std::vector<std::string> refs;
 	paths_.ListSkinRefs(&refs);

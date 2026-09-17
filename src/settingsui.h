@@ -284,6 +284,12 @@ public:
 	void Build(Settings *settings, DrawScreen *draw, Player *player, Filer *filer,
 	           Screen *screen);
 
+	// キーから表示倍率を 1 段変える（Ctrl と +/-）。実際の計算と適用は
+	// 次の Build()（設定ダイアログの [表示倍率] とまったく同じ経路を通る
+	// ので、少し待ってから窓へ掛かり、ini にも保存される）。
+	// **フルスクリーン中に呼ばないこと**（keybind.cpp 側で弾いている）。
+	void RequestZoomStep(int step) { zoomStepRequest_ += step; }
+
 	// このフレームでユーザーが触った項目 (Settings::Field のビット和)。
 	// 保存ボタンは無く「触った時点で保存する」ので、メインループがこれを
 	// 拾って ini へ書き戻す。読んだら 0 に戻る。
@@ -330,6 +336,9 @@ private:
 	// 支度とダイアログの呼び出しを済ませてから呼ぶ。
 	void BuildSettingsWindow(Settings *settings, DrawScreen *draw, Player *player, Filer *filer,
 	                         Screen *screen);
+	// RequestZoomStep() で頼まれた増減を settings へ入れる。Build() の頭から
+	// 1 回だけ呼ぶ（settingsui_settings.cpp。倍率まわりを 1 か所に集める）。
+	void ApplyZoomStep(Settings *settings);
 
 	// ダイアログを出す位置と大きさに使う ImGuiCond。ふつうは Appearing
 	// （開いたときだけ中央に出し、あとは掴んで動かせる）。倍率が変わった
@@ -390,6 +399,9 @@ private:
 	// 行き来してしまう。
 	int pendingZoom_;         // 0 = 適用待ちなし
 	uint32_t zoomApplyAtMs_;  // 0 = 適用待ちなし
+	// キー (Ctrl +/-) から頼まれた増減 (%)。0 = 頼まれていない。
+	// 押しっぱなしのリピートで何回来ても、次の Build() でまとめて足す。
+	int zoomStepRequest_;
 
 	AssetPaths paths_;
 	Vfs *vfs_;

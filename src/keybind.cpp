@@ -26,6 +26,17 @@ const uint32_t kSeekFastStepMs = 30 * 1000;
 // 40 回。旧 mxv はバー 1 画素ぶん (64 段) 動かしていたので、それに近い刻み。
 const int kVolumeKeyStep = 5;
 
+// Ctrl + [+] / [-] 1 回で動かす表示倍率 (%)。設定ダイアログの [表示倍率] の
+// -/+ ボタンと同じ刻みにしてある。
+const int kZoomKeyStep = 25;
+
+// 表示倍率を 1 段変える。**フルスクリーンの間は効かない**——窓の大きさは
+// 画面で決まるので、倍率を変えても何も起きないため（2026-09-18、ユーザーの指示）。
+void NudgeZoom(const InputTargets &t, int step) {
+	if (t.ctx->screen->fullScreen()) return;
+	t.ui->RequestZoomStep(step);
+}
+
 }  // namespace
 
 // マウス・タッチの操作 (MouseInput::Handle) が返した要求を実行する。
@@ -247,6 +258,11 @@ void HandleKeyDown(const SDL_KeyboardEvent &ev, const InputTargets &t) {
 
 		case SDLK_MINUS:
 		case SDLK_KP_MINUS:
+			// Ctrl 付きは表示倍率の縮小。素のままは音量。
+			if (ev.keysym.mod & KMOD_CTRL) {
+				NudgeZoom(t, -kZoomKeyStep);
+				break;
+			}
 			t.player->SetMainVolume(t.player->mainVolume() - kVolumeKeyStep);
 			break;
 		case SDLK_EQUALS:
@@ -256,6 +272,11 @@ void HandleKeyDown(const SDL_KeyboardEvent &ev, const InputTargets &t) {
 		// 届く（US 配列の「+」は Shift+「=」で SDLK_EQUALS）。
 		// 「;」そのものは他に割り当てが無いので、修飾なしでも受ける。
 		case SDLK_SEMICOLON:
+			// Ctrl 付きは表示倍率の拡大。素のままは音量。
+			if (ev.keysym.mod & KMOD_CTRL) {
+				NudgeZoom(t, kZoomKeyStep);
+				break;
+			}
 			t.player->SetMainVolume(t.player->mainVolume() + kVolumeKeyStep);
 			break;
 
