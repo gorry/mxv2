@@ -82,7 +82,15 @@ unsigned CollectDirtyFields(mxv2::Settings *settings, mxv2::DrawScreen *draw,
 		settings->autoRepeat = autoRepeat;
 		dirt |= mxv2::Settings::kFieldContRepeat;
 	}
-	if (settings->savePosition) {
+	// フルスクリーンは [Screen] FullScreen に覚える。Alt+Enter でも設定
+	// ダイアログでも、最後の状態がそのまま次の起動になる。
+	if (mxv2::Screen::CanFullScreen() && settings->fullScreen != screen->fullScreen()) {
+		settings->fullScreen = screen->fullScreen();
+		dirt |= mxv2::Settings::kFieldFullScreen;
+	}
+	// 窓の位置と大きさは、フルスクリーンの間は見ない（画面いっぱいの形を
+	// 覚えてしまい、次の起動で窓がその大きさになる）。
+	if (settings->savePosition && !screen->fullScreen()) {
 		int wx = 0, wy = 0, ww = 0, wh = 0;
 		screen->GetWindowRect(&wx, &wy, &ww, &wh);
 		if (wx != settings->windowX || wy != settings->windowY || ww != settings->windowW ||
@@ -431,6 +439,12 @@ int main(int argc, char **argv) {
 			const int w = (settings.windowW > minW) ? settings.windowW : minW;
 			const int h = (settings.windowH > minH) ? settings.windowH : minH;
 			SDL_SetWindowSize(screen.window(), w, h);
+		}
+		// 前回フルスクリーンで終えていたら、その状態で始める（-fullscreen も
+		// ここを通る）。**窓の大きさを戻したあとに掛ける**ことで、SDL が
+		// 「フルスクリーンをやめたときの大きさ」として前回の窓を覚える。
+		if (settings.fullScreen && mxv2::Screen::CanFullScreen()) {
+			screen.SetFullScreen(true);
 		}
 		screen.SetScaleMode(
 		    mxv2::Screen::ScaleModeFromName(settings.scaleFilter, mxv2::Screen::kScaleSharp));

@@ -9,6 +9,7 @@
 #include "mouse.h"
 #include "player.h"
 #include "playctl.h"
+#include "screen.h"
 #include "settingsui.h"
 
 namespace mxv2 {
@@ -171,6 +172,13 @@ void HandleKeyDown(const SDL_KeyboardEvent &ev, const InputTargets &t) {
 
 		case SDLK_RETURN:
 		case SDLK_KP_ENTER:
+			// Alt+Enter はフルスクリーンの切り替え（デスクトップだけ）。
+			// 窓そのものの操作なので、ここだけ Screen を直に触る。
+			if ((ev.keysym.mod & KMOD_ALT) != 0 && mxv2::Screen::CanFullScreen()) {
+				mxv2::Screen *screen = t.ctx->screen;
+				screen->SetFullScreen(!screen->fullScreen());
+				break;
+			}
 			OpenCursor(*t.ctx, t.filer, t.ui);
 			break;
 		case SDLK_BACKSPACE:

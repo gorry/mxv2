@@ -403,9 +403,33 @@ bool Screen::IsMobile() {
 #endif
 }
 
+bool Screen::CanFullScreen() {
+#if defined(__ANDROID__) || defined(__IPHONEOS__) || defined(__EMSCRIPTEN__)
+	return false;
+#else
+	return true;
+#endif
+}
+
+bool Screen::fullScreen() const {
+	if (window_ == 0) return false;
+	return (SDL_GetWindowFlags(window_) & SDL_WINDOW_FULLSCREEN_DESKTOP) != 0;
+}
+
+bool Screen::SetFullScreen(bool on) {
+	if (window_ == 0 || !CanFullScreen()) return false;
+	if (fullScreen() == on) return true;
+	// **SDL_WINDOW_FULLSCREEN は使わない。** あちらは画面の表示モードごと
+	// 切り替えるので、戻したときに他のウィンドウの配置まで崩れる。
+	// こちらはデスクトップの解像度のまま窓を広げるだけ。
+	return SDL_SetWindowFullscreen(window_, on ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0) == 0;
+}
+
 bool Screen::Resize(int width, int height, std::string *err) {
 	if (!SetCanvasSize(width, height, err)) return false;
-	if (window_ != 0 && CanResizeWindow()) {
+	// フルスクリーンの間は窓の大きさを触らない（SDL が覚えている
+	// 「戻したときの大きさ」を壊してしまう）。
+	if (window_ != 0 && CanResizeWindow() && !fullScreen()) {
 		SDL_SetWindowSize(window_, width_ * zoom_ / 100, height_ * zoom_ / 100);
 	}
 	return true;
@@ -443,7 +467,9 @@ void Screen::SetZoom(int zoomPercent) {
 	if (zoomPercent < kZoomMin) zoomPercent = kZoomMin;
 	if (zoomPercent > kZoomMax) zoomPercent = kZoomMax;
 	zoom_ = zoomPercent;
-	if (window_ == 0 || !CanResizeWindow()) return;
+	// フルスクリーンの間は窓の大きさが画面で決まるので、表示倍率は効かない
+	// （戻したときに前の窓の大きさへ戻る）。
+	if (window_ == 0 || !CanResizeWindow() || fullScreen()) return;
 	SDL_SetWindowSize(window_, width_ * zoom_ / 100, height_ * zoom_ / 100);
 }
 

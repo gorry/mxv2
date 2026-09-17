@@ -61,6 +61,12 @@ struct Settings {
 	// 拡大時の補間方法。"nearest" / "linear" / "sharp"。
 	// 実際の値との変換は Screen::ScaleModeFromName / ScaleModeName。
 	std::string scaleFilter;
+	// フルスクリーン表示（デスクトップだけ。Screen::CanFullScreen）。
+	// Alt+Enter でも設定ダイアログでも、最後の状態をここへ写して次の起動へ
+	// 持ち越す。ini は [Screen] FullScreen。**-fullscreen は起動時の値を
+	// 上書きするだけで、そのままでは ini に残らない**（-nofade などと同じ。
+	// 書かれるのは kFieldFullScreen が立ったときだけ）。
+	bool fullScreen;
 	// 指で操作する端末向けに、ダイアログの押せるところを広げるか。
 	// kTouchAuto なら Screen::TouchPreferred() に従う（Android は有効）。
 	int touchUi;
@@ -165,6 +171,7 @@ struct Settings {
 		kFieldOrientSkin = 1 << 19,
 		kFieldOrientMode = 1 << 20,
 		kFieldTutorial = 1 << 21,
+		kFieldFullScreen = 1 << 22,
 	};
 
 	Settings();

@@ -233,6 +233,19 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 			zoomApplyAtMs_ = SDL_GetTicks() + kZoomApplyDelayMs;
 		}
 
+		// フルスクリーン表示（デスクトップだけ）。窓の大きさが変わるだけ
+		// なので即時に掛けてよく、キャンバスは次のフレームで窓に合わせて
+		// 作り直される（main の SyncCanvasToWindow）。
+		if (Screen::CanFullScreen()) {
+			bool full = screen->fullScreen();
+			if (ImGui::Checkbox(Msg("Settings.FullScreen"), &full)) {
+				screen->SetFullScreen(full);
+				// 掛けられなかったときのために、旗ではなく実際の状態を写す。
+				settings->fullScreen = screen->fullScreen();
+				changedFields_ |= Settings::kFieldFullScreen;
+			}
+		}
+
 		// 拡大時の補間方法。ウィンドウの大きさは変わらないので即時に反映してよい。
 		{
 			struct Item {

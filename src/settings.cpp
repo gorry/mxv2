@@ -55,6 +55,7 @@ Settings::Settings()
       zoomPercent(0),
       legacyScale(0),
       scaleFilter("sharp"),
+      fullScreen(false),
       touchUi(kTouchAuto),
       fileListFontSize(0),
       folderFirst(false),
@@ -101,6 +102,7 @@ bool Settings::Load(const std::string &path) {
 	zoomPercent = ini.GetInt("Screen", "Zoom", zoomPercent);
 	legacyScale = ini.GetInt("Screen", "Scale", 0);
 	scaleFilter = ini.GetString("Screen", "Filter", scaleFilter);
+	fullScreen = ini.GetInt("Screen", "FullScreen", fullScreen ? 1 : 0) != 0;
 	touchUi = ini.GetInt("Screen", "TouchUI", touchUi);
 	if (touchUi < kTouchAuto || touchUi > kTouchOff) touchUi = kTouchAuto;
 
@@ -201,6 +203,7 @@ bool Settings::Save(const std::string &path) const {
 	ini.SetString("Screen", "Orientation", OrientationModeName(orientationMode));
 	ini.SetInt("Screen", "Zoom", zoomPercent);
 	ini.SetString("Screen", "Filter", scaleFilter);
+	ini.SetInt("Screen", "FullScreen", fullScreen ? 1 : 0);
 	ini.SetInt("Screen", "TouchUI", touchUi);
 
 	ini.SetInt("Filer", "FontSize", fileListFontSize ? 1 : 0);
@@ -298,6 +301,7 @@ bool Settings::SaveFields(const std::string &path, unsigned fields) const {
 	if (fields & kFieldOrientMode) out.orientationMode = orientationMode;
 	if (fields & kFieldZoom) out.zoomPercent = zoomPercent;
 	if (fields & kFieldFilter) out.scaleFilter = scaleFilter;
+	if (fields & kFieldFullScreen) out.fullScreen = fullScreen;
 	if (fields & kFieldTouchUi) out.touchUi = touchUi;
 	if (fields & kFieldFontSize) out.fileListFontSize = fileListFontSize;
 	if (fields & kFieldFolderFirst) out.folderFirst = folderFirst;

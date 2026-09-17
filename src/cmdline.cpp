@@ -223,6 +223,22 @@ bool ParseArgs(int argc, char **argv, Options *opt, mxv2::Settings *st) {
 			opt->tutorial = true;
 		} else if (strcmp(a, "-folderfirst") == 0) {
 			st->folderFirst = true;
+		} else if (strcmp(a, "-fullscreen") == 0) {
+			// この起動の始まりかたを決める。**ini には残さない**
+			// （-nofade と同じで、SaveFields が触らないかぎり書かれない。
+			// Alt+Enter や設定ダイアログで切り替えたときだけ記録される）。
+			//
+			// 引数 <0|1> は省略でき、省いたときは 1（フルスクリーンで始める）。
+			// 0 を渡せば、ini が 1 でもこの起動だけ窓で始められる。
+			// **次の引数が "0" か "1" のときだけ食べる**ので、
+			// `-fullscreen <曲.mdx>` のような並びは今までどおり通る
+			// （"0" / "1" という名前のファイルを渡したいときだけ、
+			// "./0" のように書き分けること）。
+			st->fullScreen = true;
+			if (i + 1 < argc &&
+			    (strcmp(argv[i + 1], "0") == 0 || strcmp(argv[i + 1], "1") == 0)) {
+				st->fullScreen = (argv[++i][0] == '1');
+			}
 		} else if (strcmp(a, "-zoom") == 0 && i + 1 < argc) {
 			st->zoomPercent = atoi(argv[++i]);
 		} else if (strcmp(a, "-loops") == 0 && i + 1 < argc) {
