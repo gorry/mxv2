@@ -133,9 +133,11 @@ struct Settings {
 	bool bookmarksDefaulted;
 
 	// [Position] 復元用。savePosition が false なら使わない。
-	// 大きさも覚える。ウィンドウを伸ばすとファイラーの行数が変わるので
-	// （fullscreen.md）、位置だけ戻して大きさを戻さないと形が変わってしまう。
-	// 0 以下なら「覚えていない」で、スキンの宣言サイズ x 表示倍率から始める。
+	// **覚えるのは位置だけで、大きさは覚えない**（2026-09-18、ユーザーの判断）。
+	// 起動時の窓は必ず「スキンの宣言サイズ x 表示倍率」にスナップする。
+	// windowW/H は保存経路（SaveFields の kFieldWindowPos）が写さないので
+	// ふつうは 0 のままで、ini に手で書いたときだけ「その大きさ以上で開く」
+	// 指定として効く（main.cpp）。
 	bool savePosition;
 	int windowX, windowY;
 	int windowW, windowH;
