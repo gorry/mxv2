@@ -1,6 +1,8 @@
 # ◇mxv2
 mxv2 - MDX player
 
+<img src="https://github.com/user-attachments/assets/4809b783-a81c-4f7d-9bed-c16f64db0be1" align="right" width="300" alt="スクリーンショット">
+
 ## これはなに？
 X68000 の音楽データ (MDXファイル) を鳴らして、その様子を眺めるアプリです。
 
