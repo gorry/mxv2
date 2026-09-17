@@ -31,6 +31,7 @@
 #include "player.h"
 #include "screen.h"
 #include "settings.h"
+#include "singleinstance.h"
 #include "tutorial.h"
 #include "settingsui.h"
 #include "skin.h"
@@ -56,6 +57,24 @@ const uint32_t kSettingsSaveDelayMs = 400;
 // 装置とデコードスレッドが進めるので、ここでやるのは曲送りと通知の更新だけ。
 // 曲の終わりに気付くのがこの間隔ぶん遅れうるので、あまり長くはしない。
 const int kBackgroundTickMs = 100;
+
+// 外から渡されたもの（ドラッグ＆ドロップ / 2 つめの mxv2）を開く。
+//
+// **チュートリアル中は受け取らない**（2026-09-18、ユーザーの指示）。案内は
+// 画面の状態を見て進むので、途中で曲や場所が変わると筋が合わなくなる。
+// 受け取らなかったことはログに 1 行出すだけで、**あとで開き直したりはしない**。
+// 2 つめから渡されたときに窓を前面へ出すのは受け取った時点で済んでいるので、
+// ここは捨てるだけでよい（落とされたぶんは、そもそも前面に居る）。
+void OpenHandedPath(const PlayContext &ctx, mxv2::Filer *filer, bool tutorialActive,
+                    const std::string &path) {
+	if (path.empty()) return;
+	if (tutorialActive) {
+		printf("%s\n", mxv2::MsgF("Log.TutorialIgnored", path).c_str());
+		fflush(stdout);  // リダイレクト時は全バッファなので押し出す
+		return;
+	}
+	OpenDropped(ctx, filer, path);
+}
 
 // キー・マウス・メニューのどこからでも変わる項目（文字の大きさ・音量・
 // 今の場所・CONT / REPEAT・窓の位置）を設定と見比べて、変わっていれば
@@ -205,6 +224,25 @@ int main(int argc, char **argv) {
 	if (!ParseArgs(argc, argv, &opt, &settings)) {
 		PrintUsage(argc > 0 ? argv[0] : "mxv2");
 		return EXIT_FAILURE;
+	}
+
+	// **多重起動しない**（旧 mxv と同じ。singleinstance.h）。すでに動いて
+	// いる mxv2 があれば、開くものをそちらへ渡してこの起動は終わる。前面へ
+	// 出すのは受け取った側の仕事。SDL も VFS もまだ作っていないここで
+	// 済ませるので、2 つめは音を出さずに消える。
+	// **-multi のときは素通り**（デバッグ用。2 つ並べて見比べたいとき）。
+	if (!opt.multiInstance) {
+		std::string handoff = opt.target;
+		// 相手のカレントディレクトリはこちらと違うので、native なパスは
+		// 絶対パスにしてから渡す（"assets:" のような ref はそのまま）。
+		std::string scheme, rest;
+		if (!handoff.empty() && !mxv2::Vfs::SplitRef(handoff, &scheme, &rest)) {
+			handoff = mxv2::AbsolutePath(handoff);
+		}
+		if (mxv2::singleinstance::HandOffToExisting(handoff)) {
+			printf("%s\n", mxv2::Msg("Log.HandedOff"));
+			return EXIT_SUCCESS;
+		}
 	}
 
 	// 使い方を出すだけのときに邪魔をしないよう、ここまで来てから出す。
@@ -473,6 +511,10 @@ int main(int argc, char **argv) {
 		// ここまでの見た目を決めてから窓を出す。**Open() は隠して作る**ので、
 		// これを呼ばないと画面に何も出ない（screen.h の Open のコメント）。
 		screen.Show();
+
+		// 2 つめの mxv2 からの依頼を受け取れるようにする（多重起動の抑止）。
+		// 窓の handle を渡すのは、依頼が来たときに前面へ出すため。
+		mxv2::singleinstance::Start(screen.nativeWindowHandle());
 		screen.SetScaleMode(
 		    mxv2::Screen::ScaleModeFromName(settings.scaleFilter, mxv2::Screen::kScaleSharp));
 		// 綴りが違っていたら解決後の名前で書き直す。
@@ -940,7 +982,18 @@ int main(int argc, char **argv) {
 			const std::string path = dropPath;
 			dropSeen = false;
 			dropPath.clear();
-			OpenDropped(ctx, &filer, path);
+			OpenHandedPath(ctx, &filer, tutorial.active(), path);
+		}
+
+		// 2 つめの mxv2 が渡してきたもの。**落とされたのと同じ扱い**で開く
+		// （曲なら演奏してそのフォルダへ、フォルダならそこへ移る）。窓を
+		// 前面へ出すのは受け取った時点で済んでいる。渡すものが無い起動
+		// （引数なしの 2 つめ）のときは空で届くので、開くものは無い。
+		{
+			std::string handed;
+			while (mxv2::singleinstance::Poll(&handed)) {
+				OpenHandedPath(ctx, &filer, tutorial.active(), handed);
+			}
 		}
 
 		// 言語が入れ替わったフレーム。カタログから引いた文言を**こちらで
@@ -1225,6 +1278,8 @@ int main(int argc, char **argv) {
 
 	// 通知を消す。終了の理由（× / [終了] / -quit）によらずここを通る。
 	mxv2::nowplaying::Shutdown();
+	// 多重起動の受け口を畳む（これで次の起動が「1 つめ」になれる）。
+	mxv2::singleinstance::Shutdown();
 
 	// 変更はその場で書いているが、待ち時間の途中で終わった分をここで流す。
 	// 変わっていない項目は触らないので、-nofade のようなコマンドラインの

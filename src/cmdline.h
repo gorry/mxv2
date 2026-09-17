@@ -58,6 +58,10 @@ struct Options {
 	// -tutorial。見終えていてもチュートリアルを出す（**デバッグ用**。
 	// 終わっても ini の Done は触らない）。
 	bool tutorial;
+	// -multi。多重起動の抑止をしない（**デバッグ用**）。既定では、すでに
+	// 動いている mxv2 があれば開くものをそちらへ渡して終わる（旧 mxv と
+	// 同じ。singleinstance.h）。2 つ並べて見比べたいときだけ外す。
+	bool multiInstance;
 
 	Options()
 	    : latencyMs(0),
@@ -67,7 +71,8 @@ struct Options {
 	      orient(-1),
 	      orientLock(0),
 	      skinSet(false),
-	      tutorial(false) {}
+	      tutorial(false),
+	      multiInstance(false) {}
 };
 
 void PrintUsage(const char *argv0);

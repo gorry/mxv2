@@ -221,6 +221,8 @@ bool ParseArgs(int argc, char **argv, Options *opt, mxv2::Settings *st) {
 			opt->quitOnEnd = true;
 		} else if (strcmp(a, "-tutorial") == 0) {
 			opt->tutorial = true;
+		} else if (strcmp(a, "-multi") == 0) {
+			opt->multiInstance = true;
 		} else if (strcmp(a, "-folderfirst") == 0) {
 			st->folderFirst = true;
 		} else if (strcmp(a, "-fullscreen") == 0) {

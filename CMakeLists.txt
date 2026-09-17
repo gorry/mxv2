@@ -187,6 +187,7 @@ set(MXV2_SOURCES
 	src/settingsui_folder.cpp
 	src/settingsui_menu.cpp
 	src/settingsui_info.cpp
+	src/singleinstance.cpp
 	src/skin.cpp
 	src/songloader.cpp
 	src/statuswatch.cpp
@@ -225,6 +226,7 @@ set(MXV2_SOURCES
 	src/settings.h
 	src/settingsui.h
 	src/settingsui_internal.h
+	src/singleinstance.h
 	src/skin.h
 	src/songloader.h
 	src/statuswatch.h
