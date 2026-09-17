@@ -233,6 +233,21 @@ void OpenDropped(const PlayContext &ctx, mxv2::Filer *filer, const std::string &
 // **バックグラウンド（描かないとき）でも呼ぶ**ので、描画とは切り離してある。
 // frame は表示位置 (Player::visualFrame)。終わってすぐには送らず、余韻
 // (lingerFrames) のぶん鳴らしきってから次へ行く。
+//
+// **優先順位は CONT > REPEAT**（旧 mxv の mxv.cpp、WM_TIMER / IDT_DISPLAY と
+// 同じ。2026-09-18 にユーザーの指摘で直した。それまでは REPEAT を先に見ていて、
+// 両方点けると CONT が効かなかった）。旧 mxv での 4 通りは:
+//
+//   CONT  REPEAT  動作
+//   ----  ------  --------------------------------------------------
+//   OFF   OFF     止まる
+//   OFF   ON      同じ曲をもう一度
+//   ON    OFF     次の曲へ。一覧の終わりまで来たら止まる
+//   ON    ON      次の曲へ。**終わりまで来たら先頭へ戻ってもう一周**
+//
+// つまり REPEAT は「CONT が点いているときは一覧全体の繰り返し」を意味する。
+// 先頭へ戻るところは旧 mxv と同じく「カーソルを 0（".." の行）に置いてから
+// 次の MDX を探す」——つまり一覧の最初の曲から。
 void PollSongEnd(const PlayContext &ctx, mxv2::Filer *filer, uint64_t frame,
                  uint64_t lingerFrames, bool autoNext, bool autoRepeat, bool quitWhenDone,
                  uint64_t *endFrame, bool *quit) {
@@ -248,11 +263,27 @@ void PollSongEnd(const PlayContext &ctx, mxv2::Filer *filer, uint64_t frame,
 
 	*ctx.endSeen = false;
 	std::string path;
-	if (autoRepeat && !ctx.currentPath->empty()) {
+	if (autoNext) {
+		// CONT が優先。まず次の曲を探す。
+		if (filer->NextMdx(&path)) {
+			StartPlay(ctx, path);
+			return;
+		}
+		// 一覧の終わりまで来た。REPEAT も点いていれば先頭へ戻ってもう一周する。
+		if (autoRepeat) {
+			filer->SetCursor(0);
+			if (filer->NextMdx(&path)) {
+				StartPlay(ctx, path);
+				return;
+			}
+		}
+	} else if (autoRepeat && !ctx.currentPath->empty()) {
+		// CONT が消えていれば、同じ曲をもう一度。
 		StartPlay(ctx, *ctx.currentPath);
-	} else if (autoNext && filer->NextMdx(&path)) {
-		StartPlay(ctx, path);
-	} else if (quitWhenDone) {
+		return;
+	}
+
+	if (quitWhenDone) {
 		*quit = true;
 	} else {
 		// 終わったら停止状態にする。[■] を押したときとまったく同じ扱いで、
