@@ -287,7 +287,8 @@ public:
 	// キーから表示倍率を 1 段変える（Ctrl と +/-）。実際の計算と適用は
 	// 次の Build()（設定ダイアログの [表示倍率] とまったく同じ経路を通る
 	// ので、少し待ってから窓へ掛かり、ini にも保存される）。
-	// **フルスクリーン中に呼ばないこと**（keybind.cpp 側で弾いている）。
+	// **フルスクリーン・最大化の間は呼ばないこと**
+	// （keybind.cpp が Screen::windowSizeLocked() で弾いている）。
 	void RequestZoomStep(int step) { zoomStepRequest_ += step; }
 
 	// このフレームでユーザーが触った項目 (Settings::Field のビット和)。

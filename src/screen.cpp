@@ -416,6 +416,11 @@ bool Screen::fullScreen() const {
 	return (SDL_GetWindowFlags(window_) & SDL_WINDOW_FULLSCREEN_DESKTOP) != 0;
 }
 
+bool Screen::maximized() const {
+	if (window_ == 0) return false;
+	return (SDL_GetWindowFlags(window_) & SDL_WINDOW_MAXIMIZED) != 0;
+}
+
 bool Screen::SetFullScreen(bool on) {
 	if (window_ == 0 || !CanFullScreen()) return false;
 	if (fullScreen() == on) return true;
@@ -427,9 +432,10 @@ bool Screen::SetFullScreen(bool on) {
 
 bool Screen::Resize(int width, int height, std::string *err) {
 	if (!SetCanvasSize(width, height, err)) return false;
-	// フルスクリーンの間は窓の大きさを触らない（SDL が覚えている
-	// 「戻したときの大きさ」を壊してしまう）。
-	if (window_ != 0 && CanResizeWindow() && !fullScreen()) {
+	// フルスクリーン・最大化の間は窓の大きさを触らない（SDL が覚えている
+	// 「戻したときの大きさ」を壊すし、最大化も解けてしまう）。キャンバスは
+	// どのみち窓に追いかけて作り直される（SyncCanvasToWindow）。
+	if (window_ != 0 && CanResizeWindow() && !windowSizeLocked()) {
 		SDL_SetWindowSize(window_, width_ * zoom_ / 100, height_ * zoom_ / 100);
 	}
 	return true;
@@ -467,9 +473,9 @@ void Screen::SetZoom(int zoomPercent) {
 	if (zoomPercent < kZoomMin) zoomPercent = kZoomMin;
 	if (zoomPercent > kZoomMax) zoomPercent = kZoomMax;
 	zoom_ = zoomPercent;
-	// フルスクリーンの間は窓の大きさが画面で決まるので、表示倍率は効かない
-	// （戻したときに前の窓の大きさへ戻る）。
-	if (window_ == 0 || !CanResizeWindow() || fullScreen()) return;
+	// フルスクリーン・最大化の間は窓の大きさを OS 側が決めているので、
+	// 倍率を窓へ掛けない（戻したときは前の窓の大きさへ戻る）。
+	if (window_ == 0 || !CanResizeWindow() || windowSizeLocked()) return;
 	SDL_SetWindowSize(window_, width_ * zoom_ / 100, height_ * zoom_ / 100);
 }
 

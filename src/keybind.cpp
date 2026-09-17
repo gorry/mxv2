@@ -30,10 +30,11 @@ const int kVolumeKeyStep = 5;
 // -/+ ボタンと同じ刻みにしてある。
 const int kZoomKeyStep = 25;
 
-// 表示倍率を 1 段変える。**フルスクリーンの間は効かない**——窓の大きさは
-// 画面で決まるので、倍率を変えても何も起きないため（2026-09-18、ユーザーの指示）。
+// 表示倍率を 1 段変える。**フルスクリーンと最大化の間は効かない**——窓の
+// 大きさを OS 側が決めているので、倍率を変えても何も起きないため
+// （2026-09-18、ユーザーの指示）。
 void NudgeZoom(const InputTargets &t, int step) {
-	if (t.ctx->screen->fullScreen()) return;
+	if (t.ctx->screen->windowSizeLocked()) return;
 	t.ui->RequestZoomStep(step);
 }
 

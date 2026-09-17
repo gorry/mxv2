@@ -212,6 +212,13 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 	}
 
 	if (GroupHeader(Msg("Settings.Screen"))) {
+		// 窓の大きさを OS 側が決めている間（最大化・フルスクリーン）は、
+		// 倍率を変えても掛けようがないのでグレーにする（2026-09-18、
+		// ユーザーの指示）。旗は毎フレーム見るので、題名バーのボタンで
+		// 最大化した／元に戻したのにも、開いたまま追いつく。
+		const bool zoomLocked = screen->windowSizeLocked();
+		ImGui::BeginDisabled(zoomLocked);
+
 		// 表示倍率 (%)。100 でドット等倍。
 		// 押している間・入力中に適用してはいけない。ウィンドウが大きくなると
 		// このコントロール自身の座標も変わるので、同じ場所を押しているだけで
@@ -249,6 +256,9 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 			pendingZoom_ = settings->zoomPercent;
 			zoomApplyAtMs_ = SDL_GetTicks() + kZoomApplyDelayMs;
 		}
+		ImGui::EndDisabled();
+		// なぜ触れないのかを添える（グレーなだけだと理由が分からない）。
+		if (zoomLocked) TextNote(Msg("Settings.ZoomLocked"));
 
 		// フルスクリーン表示（デスクトップだけ）。窓の大きさが変わるだけ
 		// なので即時に掛けてよく、キャンバスは次のフレームで窓に合わせて
