@@ -20,6 +20,23 @@ namespace {
 const float kDpiMin = 40.0f;
 const float kDpiMax = 1000.0f;
 
+// 点 (x,y) と矩形の距離の 2 乗。矩形の中なら 0。どのディスプレイへ
+// 寄せるかを決めるのに使う（座標は画面の画素なので 2 乗しても int で足りる）。
+int RectDistanceSq(const SDL_Rect &r, int x, int y) {
+	int dx = 0, dy = 0;
+	if (x < r.x) {
+		dx = r.x - x;
+	} else if (x > r.x + r.w - 1) {
+		dx = x - (r.x + r.w - 1);
+	}
+	if (y < r.y) {
+		dy = r.y - y;
+	} else if (y > r.y + r.h - 1) {
+		dy = y - (r.y + r.h - 1);
+	}
+	return dx * dx + dy * dy;
+}
+
 }  // namespace
 
 Screen::Screen()
@@ -146,9 +163,13 @@ bool Screen::Open(const std::string &title, int width, int height, int zoomPerce
 	width_ = width;
 	height_ = height;
 
+	// **隠して作る**（screen.h の Open のコメント）。覚えていた位置や最大化は
+	// 窓ができてからでないと掛けられないので、掛け終えてから Show() で出す。
+	// 窓の置き場所が無いモバイルでは隠さない（そのまま画面に出る）。
+	Uint32 windowFlags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
+	if (CanResizeWindow()) windowFlags |= SDL_WINDOW_HIDDEN;
 	window_ = SDL_CreateWindow(title.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-	                           width_ * zoom_ / 100, height_ * zoom_ / 100,
-	                           SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+	                           width_ * zoom_ / 100, height_ * zoom_ / 100, windowFlags);
 	if (window_ == 0) {
 		*err = MsgF("Error.CreateWindow", SDL_GetError());
 		return false;
@@ -219,6 +240,13 @@ void Screen::Close() {
 
 void Screen::SetTitle(const std::string &title) {
 	if (window_ != 0) SDL_SetWindowTitle(window_, title.c_str());
+}
+
+void Screen::Show() {
+	if (window_ == 0) return;
+	// フルスクリーンや最小化は SDL が「出すとき」に掛け直してくれるので、
+	// ここは素直に出すだけでよい。
+	SDL_ShowWindow(window_);
 }
 
 void Screen::Clear(uint32_t argb) {
@@ -416,6 +444,21 @@ bool Screen::fullScreen() const {
 	return (SDL_GetWindowFlags(window_) & SDL_WINDOW_FULLSCREEN_DESKTOP) != 0;
 }
 
+bool Screen::minimized() const {
+	if (window_ == 0) return false;
+	return (SDL_GetWindowFlags(window_) & SDL_WINDOW_MINIMIZED) != 0;
+}
+
+void Screen::Minimize() {
+	if (window_ == 0 || !CanResizeWindow()) return;
+	SDL_MinimizeWindow(window_);
+}
+
+void Screen::Maximize() {
+	if (window_ == 0 || !CanResizeWindow()) return;
+	SDL_MaximizeWindow(window_);
+}
+
 bool Screen::maximized() const {
 	if (window_ == 0) return false;
 	return (SDL_GetWindowFlags(window_) & SDL_WINDOW_MAXIMIZED) != 0;
@@ -599,6 +642,56 @@ void Screen::GetWindowRect(int *x, int *y, int *w, int *h) const {
 
 void Screen::SetWindowPos(int x, int y) {
 	if (window_ == 0) return;
+	SDL_SetWindowPosition(window_, x, y);
+}
+
+void Screen::SetWindowPosClamped(int x, int y) {
+	if (window_ == 0) return;
+
+	int w = 0, h = 0;
+	SDL_GetWindowSize(window_, &w, &h);
+
+	// 一番近いディスプレイを選ぶ。保存したときと画面の並びが変わっていても、
+	// どこか 1 つには必ず収まる。
+	const int count = SDL_GetNumVideoDisplays();
+	int best = -1;
+	int bestDist = 0;
+	for (int i = 0; i < count; i++) {
+		SDL_Rect b;
+		if (SDL_GetDisplayBounds(i, &b) != 0) continue;
+		const int d = RectDistanceSq(b, x, y);
+		if (best < 0 || d < bestDist) {
+			best = i;
+			bestDist = d;
+		}
+	}
+	if (best < 0) {
+		SDL_SetWindowPosition(window_, x, y);
+		return;
+	}
+
+	// タスクバーなどを除いた範囲。取れない環境では画面全体で我慢する。
+	SDL_Rect area;
+	if (SDL_GetDisplayUsableBounds(best, &area) != 0 &&
+		SDL_GetDisplayBounds(best, &area) != 0) {
+		SDL_SetWindowPosition(window_, x, y);
+		return;
+	}
+
+	// SDL の窓の座標はクライアント領域の左上なので、**枠と題名バーのぶんを
+	// 別に見る**。これを忘れると、上端へ寄せたときに題名バーが画面の外へ出る。
+	int top = 0, left = 0, bottom = 0, right = 0;
+	if (SDL_GetWindowBordersSize(window_, &top, &left, &bottom, &right) != 0) {
+		top = left = bottom = right = 0;
+	}
+
+	// 右下からはみ出していたら押し戻し、そのうえで左上を優先する
+	// （窓が画面より大きいときは、下や右が切れるほうがまし）。
+	if (x + w + right > area.x + area.w) x = area.x + area.w - w - right;
+	if (y + h + bottom > area.y + area.h) y = area.y + area.h - h - bottom;
+	if (x - left < area.x) x = area.x + left;
+	if (y - top < area.y) y = area.y + top;
+
 	SDL_SetWindowPosition(window_, x, y);
 }
 

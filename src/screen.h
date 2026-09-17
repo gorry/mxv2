@@ -24,6 +24,11 @@ public:
 	Screen();
 	~Screen();
 
+	// **窓は隠れた状態で作られる。** 覚えていた位置・大きさ・最大化などを
+	// 掛け終えてから Show() を呼ぶこと——先に出してしまうと、既定の位置
+	// （画面の中央）に一度現れてから動くのが見えてしまう。
+	// モバイルは窓＝画面で置き場所も無いので、そのまま出る（Show() は無害）。
+	//
 	// width x height はスキンが決める論理サイズ (旧 mxv は 640x480)。
 	// zoomPercent は表示倍率 (100 = ドット等倍)。ウィンドウの大きさは
 	// 実ピクセルで width * zoomPercent / 100 になる。
@@ -109,6 +114,10 @@ public:
 
 	void SetTitle(const std::string &title);
 
+	// 隠して作った窓を出す。Open() のあと、位置と状態を掛け終えてから
+	// 1 度だけ呼ぶ。すでに出ていれば何もしない。
+	void Show();
+
 	// オフスクリーンバッファ。ARGB8888、1 行あたり width() ピクセル。
 	uint32_t *pixels() { return pixels_.empty() ? 0 : &pixels_[0]; }
 	const uint32_t *pixels() const { return pixels_.empty() ? 0 : &pixels_[0]; }
@@ -180,6 +189,15 @@ public:
 	// 戻されたとき（Windows の Win+D など）も食い違わない。
 	bool fullScreen() const;
 
+	// 窓が最小化（アイコン化）されているか。旧 mxv の [Position] Iconic と
+	// 同じで、終了時の状態を覚えて次の起動でも最小化で始めるために使う。
+	bool minimized() const;
+	// 最小化する（覚えていた状態で始めるとき）。窓の大きさを決められない
+	// プラットフォーム（モバイル）では何もしない。
+	void Minimize();
+	// 最大化する（同じく、覚えていた状態で始めるとき）。
+	void Maximize();
+
 	// 窓が最大化されているか。こちらも SDL の窓の旗をそのまま見る
 	// （最大化・元に戻すは題名バーのボタンや OS の操作で起きるので、
 	// アプリ側に記録を持たない）。
@@ -224,6 +242,13 @@ public:
 	// ウィンドウ位置と大きさ。設定の保存・復元に使う。
 	void GetWindowRect(int *x, int *y, int *w, int *h) const;
 	void SetWindowPos(int x, int y);
+
+	// 覚えていた位置へ戻す。**画面からはみ出さないところまで寄せてから**
+	// 置く（旧 mxv も復元時に画面内へ寄せていた）。モニタ構成が変わると
+	// 保存した位置がどのディスプレイにも無いことがあるので、
+	// **一番近いディスプレイの「使える範囲」**（タスクバーなどを除いた矩形）
+	// に収める。題名バーが画面の上へ隠れないよう、枠のぶんも見る。
+	void SetWindowPosClamped(int x, int y);
 
 	SDL_Window *window() { return window_; }
 

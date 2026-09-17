@@ -69,11 +69,12 @@ Settings::Settings()
       latencyAuto(true),
       latencyMs(0),
       bookmarksDefaulted(true),
-      savePosition(true),
       windowX(-1),
       windowY(-1),
       windowW(0),
       windowH(0),
+      windowIconic(false),
+      windowMaximized(false),
       tutorialDone(false) {
 	// 初回起動のブックマーク（bookmark.md）。ini に [Bookmark] があれば
 	// Load() が置き換える。
@@ -178,11 +179,13 @@ bool Settings::Load(const std::string &path) {
 		}
 	}
 
-	savePosition = ini.GetInt("Position", "Save", savePosition ? 1 : 0) != 0;
+	// [Position] Save は廃止した（2026-09-18）。読み捨てる。
 	windowX = ini.GetInt("Position", "X", windowX);
 	windowY = ini.GetInt("Position", "Y", windowY);
 	windowW = ini.GetInt("Position", "Width", windowW);
 	windowH = ini.GetInt("Position", "Height", windowH);
+	windowIconic = ini.GetInt("Position", "Iconic", windowIconic ? 1 : 0) != 0;
+	windowMaximized = ini.GetInt("Position", "Maximized", windowMaximized ? 1 : 0) != 0;
 
 	tutorialDone = ini.GetInt("Tutorial", "Done", tutorialDone ? 1 : 0) != 0;
 
@@ -274,11 +277,15 @@ bool Settings::Save(const std::string &path) const {
 		}
 	}
 
-	ini.SetInt("Position", "Save", savePosition ? 1 : 0);
+	// 廃止した [Position] Save を消す（Ini は知らないキーを残すので、
+	// 置いておくと「切ったつもりなのに効かない」もとになる）。
+	ini.Remove("Position", "Save");
 	ini.SetInt("Position", "X", windowX);
 	ini.SetInt("Position", "Y", windowY);
 	ini.SetInt("Position", "Width", windowW);
 	ini.SetInt("Position", "Height", windowH);
+	ini.SetInt("Position", "Iconic", windowIconic ? 1 : 0);
+	ini.SetInt("Position", "Maximized", windowMaximized ? 1 : 0);
 
 	ini.SetInt("Tutorial", "Done", tutorialDone ? 1 : 0);
 
@@ -325,6 +332,8 @@ bool Settings::SaveFields(const std::string &path, unsigned fields) const {
 	if (fields & kFieldWindowPos) {
 		out.windowX = windowX;
 		out.windowY = windowY;
+		out.windowIconic = windowIconic;
+		out.windowMaximized = windowMaximized;
 	}
 	if (fields & kFieldTutorial) out.tutorialDone = tutorialDone;
 	return out.Save(path);

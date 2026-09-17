@@ -88,9 +88,23 @@ unsigned CollectDirtyFields(mxv2::Settings *settings, mxv2::DrawScreen *draw,
 		settings->fullScreen = screen->fullScreen();
 		dirt |= mxv2::Settings::kFieldFullScreen;
 	}
-	// 窓の位置と大きさは、フルスクリーンの間は見ない（画面いっぱいの形を
-	// 覚えてしまい、次の起動で窓がその大きさになる）。
-	if (settings->savePosition && !screen->fullScreen()) {
+	// 最小化したまま終えたかを覚える（旧 mxv の [Position] Iconic）。
+	if (settings->windowIconic != screen->minimized()) {
+		settings->windowIconic = screen->minimized();
+		dirt |= mxv2::Settings::kFieldWindowPos;
+	}
+	// 最大化したまま終えたかを覚える。**最小化中とフルスクリーン中は見ない**
+	// ——どちらも SDL の最大化の旗が落ちるので、そのまま写すと
+	// 「最大化したまま最小化して終了」で最大化を忘れてしまう。
+	if (!screen->minimized() && !screen->fullScreen() &&
+		settings->windowMaximized != screen->maximized()) {
+		settings->windowMaximized = screen->maximized();
+		dirt |= mxv2::Settings::kFieldWindowPos;
+	}
+	// 窓の位置と大きさは**普通の窓のときだけ**見る。フルスクリーン・最大化は
+	// 画面いっぱいの形を、最小化は (-32000,-32000) を覚えてしまうし、
+	// 最大化をやめたときに戻る場所は「その前の普通の窓」であってほしい。
+	if (!screen->fullScreen() && !screen->minimized() && !screen->maximized()) {
 		int wx = 0, wy = 0, ww = 0, wh = 0;
 		screen->GetWindowRect(&wx, &wy, &ww, &wh);
 		if (wx != settings->windowX || wy != settings->windowY || ww != settings->windowW ||
@@ -423,8 +437,10 @@ int main(int argc, char **argv) {
 			SDL_Quit();
 			return EXIT_FAILURE;
 		}
-		if (settings.savePosition && settings.windowX >= 0 && settings.windowY >= 0) {
-			screen.SetWindowPos(settings.windowX, settings.windowY);
+		// 前回の位置に戻す。0 未満は「まだ覚えていない」（初回起動）。
+		// モニタ構成が変わっていても画面の外へ出ないよう、寄せてから置く。
+		if (settings.windowX >= 0 && settings.windowY >= 0) {
+			screen.SetWindowPosClamped(settings.windowX, settings.windowY);
 		}
 		// 前回の大きさに戻す。**縮める方向には戻さない**（表示倍率が
 		// 100% を割るとキャンバスが潰れるので、宣言サイズ x 表示倍率を
@@ -432,20 +448,31 @@ int main(int argc, char **argv) {
 		// **窓の大きさを決められるプラットフォームだけ**（Android では窓＝画面で、
 		// SDL_SetWindowSize を呼ぶと SDL 側の記録だけがずれる。Screen の
 		// CanResizeWindow のコメント）。
-		if (mxv2::Screen::CanResizeWindow() && settings.savePosition &&
-		    settings.windowW > 0 && settings.windowH > 0) {
+		if (mxv2::Screen::CanResizeWindow() && settings.windowW > 0 &&
+		    settings.windowH > 0) {
 			const int minW = skin.screenW * settings.zoomPercent / 100;
 			const int minH = skin.screenH * settings.zoomPercent / 100;
 			const int w = (settings.windowW > minW) ? settings.windowW : minW;
 			const int h = (settings.windowH > minH) ? settings.windowH : minH;
 			SDL_SetWindowSize(screen.window(), w, h);
 		}
+		// 前回最大化で終えていたら、最大化で始める（[Position] Maximized）。
+		// 位置と大きさを決めたあとに掛けるので、元に戻すと覚えていた窓になる。
+		if (settings.windowMaximized) screen.Maximize();
 		// 前回フルスクリーンで終えていたら、その状態で始める（-fullscreen も
 		// ここを通る）。**窓の大きさを戻したあとに掛ける**ことで、SDL が
 		// 「フルスクリーンをやめたときの大きさ」として前回の窓を覚える。
 		if (settings.fullScreen && mxv2::Screen::CanFullScreen()) {
 			screen.SetFullScreen(true);
 		}
+		// 前回最小化で終えていたら、最小化で始める（旧 mxv の
+		// [Position] Iconic）。**位置と大きさを決めたあとに掛ける**ことで、
+		// 元に戻したときに覚えていた窓になる。
+		if (settings.windowIconic) screen.Minimize();
+
+		// ここまでの見た目を決めてから窓を出す。**Open() は隠して作る**ので、
+		// これを呼ばないと画面に何も出ない（screen.h の Open のコメント）。
+		screen.Show();
 		screen.SetScaleMode(
 		    mxv2::Screen::ScaleModeFromName(settings.scaleFilter, mxv2::Screen::kScaleSharp));
 		// 綴りが違っていたら解決後の名前で書き直す。

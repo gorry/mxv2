@@ -132,15 +132,28 @@ struct Settings {
 	// ini には書かない）。
 	bool bookmarksDefaulted;
 
-	// [Position] 復元用。savePosition が false なら使わない。
+	// [Position] 復元用。**窓の位置はいつでも覚える**——2026-09-18 まであった
+	// [Position] Save（記憶するかどうかの切り替え）は、UI が無く ini を手で
+	// 書くしかなかったうえ、0 になっていると理由も分からず位置が戻らないので、
+	// ユーザーの指示で廃止した（ini に残っている Save= は次の保存で消える）。
+	// 0 未満なら「まだ覚えていない」で、その回は OS 任せの位置に出る。
+	//
 	// **覚えるのは位置だけで、大きさは覚えない**（2026-09-18、ユーザーの判断）。
 	// 起動時の窓は必ず「スキンの宣言サイズ x 表示倍率」にスナップする。
 	// windowW/H は保存経路（SaveFields の kFieldWindowPos）が写さないので
 	// ふつうは 0 のままで、ini に手で書いたときだけ「その大きさ以上で開く」
 	// 指定として効く（main.cpp）。
-	bool savePosition;
 	int windowX, windowY;
 	int windowW, windowH;
+	// 最小化したまま終えたか（[Position] Iconic）。立っていれば次の起動も
+	// 最小化で始める。旧 mxv にあった作法で、2026-09-18 に移植した。
+	bool windowIconic;
+	// 最大化したまま終えたか（[Position] Maximized）。同じく次の起動へ
+	// 持ち越す（2026-09-18、ユーザーの指示。最小化を覚えるなら最大化も、
+	// という揃え）。**最小化中は更新しない**——最小化すると SDL の最大化の
+	// 旗が落ちるので、そのまま写すと「最大化したまま最小化して終了」で
+	// 最大化を忘れてしまう。
+	bool windowMaximized;
 
 	// [Tutorial] Done。初回起動のチュートリアルを見終えた（またはスキップ
 	// した）。無ければ次の起動で出す（tutorial.md）。
