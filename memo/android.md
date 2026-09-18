@@ -838,3 +838,189 @@ MSM8952・3GB・**armeabi-v7a**・Android 8.0（API 26）。画面を消すと�
   `PARTIAL_WAKE_LOCK 'mxv2:playback'`
 - メディアキーの [停止] → サービスも通知も消える
 - 前面へ戻すと画面が正しく描き直される（スクリーンショットで確認）
+
+## *.mdx を叩いたら mxv2 で開く（2026-09-18、ユーザーの指示）
+
+ファイルマネージャなどからの `ACTION_VIEW` を受けるようにした。
+**仕様と決めごとは `memo/readme.md` の「外から MDX を渡される（Android）」**に
+まとめてある。ここには実装の場所と、実機で確かめたことだけを置く。
+
+- `AndroidManifest.xml` … `MainActivity` に `VIEW` のフィルタを 2 つ
+  （`*/*` を名乗るものと、型を名乗らないもの）。見分けはパスの末尾だけ。
+- `OpenIntentBridge.java` … 起動時の引数 (`argumentsFor`)、動作中に届いた
+  ぶんの溜め込み (`onNewIntent` / `poll`)、許可済みツリーとの突き合わせ
+  (`resolveInTree`)、ピッカーの初期位置 (`parentDocUri`)、画面に出す名前
+  (`displayName`)、アプリのフォルダへの写し (`copyToDir`)。
+- `SafBridge.pickTreeAt()` … ピッカーを**ドキュメント URI の場所**から開く
+  （`pickTree` はツリー URI 版。中身は共通の `open()`）。
+- `src/openintent.*` … その JNI の窓口と、ref への組み立て。
+- `settingsui_filesystems.cpp` … [渡されたファイル] のダイアログ
+  (`BuildHandedWindow`) と、ピッカーから戻ったあとの始末
+  (`FinishHandedAfterPick`)。答えは `kRequestOpenHanded` で main へ返る。
+- `main.cpp` … 起動時（`opt.target` が URI なら許可の中か見る）と
+  メインループ（`Poll()` と待ち行列 `handedUris`）。開くのは今までどおり
+  `OpenHandedPath()`。
+
+実機（Pixel 7a / Android 14）で確かめたこと:
+
+- `cmd package query-activities` … `file:///…/PHOENIX.mdx`、
+  `content://…/primary%3ADownload%2Fa.b.c.MDX`（ドットが複数）とも
+  `net.gorry.mxv2.MainActivity` が出る。`.pdx` では出ない。
+- **許可のあるツリーの中**（`primary:MXDRV/mdx` をマウント済み）の
+  `…/arsys/Star_Cruiser/stc01.mdx` を渡す → **尋ねずに**
+  `play : saf:content://…/tree/primary%3AMXDRV%2Fmdx/arsys/Star_Cruiser/stc01.mdx`。
+  **インテントの許可は使っていない**ので、`am start` に
+  `--grant-read-uri-permission` が無くても読める。
+- **許可の外**（`/sdcard/Download/mxv2test/am_field.mdx`）→ [渡されたファイル]
+  が出る。[フォルダを許可する…] → ピッカーが**いきなり `mxv2test` の中**を
+  開く（`EXTRA_INITIAL_URI` が効いている）→ [このフォルダを使用] → [許可] →
+  `play : saf:…/tree/primary%3ADownload%2Fmxv2test/am_field.mdx` で
+  **PDX も鳴った**（「PDX が見つかりません」が出ない）。ファイラーも
+  `SAF>mxv2test` に移り、4 曲の曲名が並ぶ。
+- ピッカーで**戻るキー**を押すと、DocumentsUI は 1 つ上のフォルダへ移る
+  （ボリュームの根までいくと「このフォルダは使用できません」）。もう一度
+  押すと閉じ、mxv2 は**もう一度尋ねる**。
+- [このまま演奏する] → `渡されたファイルを userdir:inbox/f_trial.mdx へ
+  写しました` → 演奏。`PDX (f_trial.pdx) が見つかりません` が出る（仕様）。
+- [キャンセル] → 何も起きず、演奏中の曲もそのまま。
+- **`am start` で試すときの注意**: `-n` を付けないと `*/*` を受ける他のアプリと
+  並んで [開く方法を選択] が出る。また **`--grant-read-uri-permission` を
+  付けないと写す道が使えない**（`content://` を読む許可が無いので
+  「渡されたファイルを読み取れません」になる。本物のファイルマネージャは
+  許可を付けて渡してくる）。
+
+### 許可済みのフォルダなのにダイアログが出た（2026-09-18、ユーザーの報告・修正済み）
+
+`SAF>mdx`（実体は `Download/mdx`）を許可してあるのに、ファイルマネージャから
+その中の `am_field.mdx` を開くと [渡されたファイル] が出た。
+
+**原因**: 最初の実装は「渡された URI のドキュメント ID が、持続許可のある
+ツリーのドキュメント ID の前方一致か」でしか見ていなかった。ユーザーの
+ファイルマネージャ (File Manager+) が渡してくるのは**自前の FileProvider** の
+
+```
+content://com.alphainventor.filemanager.fileprovider/root/storage/emulated/0/Download/mdx/ArctanX/am_field.mdx
+```
+
+で、そもそもドキュメント URI ですらない（`DocumentsContract.isDocumentUri`
+が false）。**提供元が違えばドキュメント ID では突き合わせられない。**
+
+**直し方**: 実パスでも照合する段を足した（`realPath()` と `pathFromDocId()`）。
+ツリーの `primary:Download/mdx` も `/storage/emulated/0/Download/mdx` に直して
+前方一致を見る。実パスの取り方は 4 段構え（ドキュメント ID → `_data` →
+`relative_path` + 表示名 → URI のパスの `/storage/…`）。**当てずっぽうが
+混ざるが、外れはネイティブ側の `Vfs::Exists()` で落ちて尋ねる道へ回るだけ**
+なので安全側に倒れる。
+
+**この手の話は URI を見ないと始まらない**ので、渡された URI を
+`handed   : <URI>` として必ずログに出すようにした（起動時とメインループの両方）。
+
+実機で確かめ直したこと:
+
+- File Manager+ から `Download/mdx/ArctanX/am_field.mdx` を [アプリで開く] →
+  **尋ねずに** `play : saf:…/tree/primary%3ADownload%2Fmdx/ArctanX/am_field.mdx`。
+  PDX も鳴る。
+- MediaStore の URI (`content://media/external/file/<id>`) でも同じ結果。
+- **許可の外**（`/sdcard/Download/f_trial.mdx`）は今までどおりダイアログが出る。
+- `am start` では**他アプリの provider の URI に許可を付けられない**
+  （`--grant-read-uri-permission` が SecurityException になる）。File Manager+ の
+  URI 形式を試すときは、アプリを実際に操作するしかない。
+
+### 許可はあるが一覧から外してあると空振りした（2026-09-18、ユーザーの報告・修正済み）
+
+`Download/mdx` の**OS の許可は残したまま** [ファイルシステムの設定] から
+外した状態で、その中の MDX をファイルマネージャから開くと**何も起きなかった**。
+
+**原因**: `ResolveInTree()` が `Vfs::Exists("saf:<ツリー>/<相対>")` で
+「読めるか」を見ていた。マウントしていないツリーの ref は
+`Vfs::FindForRef()` が**同じ id の最初のマウント**（別の SAF フォルダ）へ
+割り当ててしまい、`SafFileSystem::Normalize()` が「根の外なので根へ寄せる」で
+**別フォルダの根**を返す。根は実在するので `Exists()` が true になり、
+「マウント済みのツリーの中にある」と誤判定していた。開く段では
+`Vfs::Resolve()` が base（ファイラーの今の場所）と繋いでしまい、
+
+```
+saf:…/tree/primary%3AMXDRV%2Fmdx/content:/…/tree/primary%3ADownload%2Fmdx/ArctanX/am_field.mdx
+```
+
+という ref になって `MDX ファイルを読み込めません` で終わっていた。
+
+**直し方**: 2 つ。
+
+1. `ResolveInTree()` は **`Vfs::FindByMountRef()` でそのツリーのマウントを
+   名指しで探す**（`Vfs::Exists()` を使わない）。無ければ素直に false。
+2. **OS の許可が残っていれば、尋ねずに一覧へ戻して開く**
+   （`SettingsUi::MountGrantedTree()`）。[削除] は OS の許可までは捨てないので、
+   「許可は出ているのに一覧に無い」状態はふつうに起きる。戻したことは
+   ログに 1 行出る（`{0} をファイルシステムの一覧に戻しました`）。
+
+**`Vfs::FindForRef()` の「どのマウントの持ち物でもない ref はとりあえず最初の
+ものへ」は、場所を持つ FS (`saf:` / `dir:`) では危ない**（別の場所の ref が
+黙って別マウントに化ける）。ここでは openintent 側で避けたが、ブックマークや
+`LastDir` が外したマウントを指しているときも同じことが起きる。直すなら
+「場所を持つ FS は Contains() に合致しなければ 0」だが、**読めない ref を
+捨てる処理（ブックマークの読み込み）に波及する**ので、そのときは一緒に考えること。
+
+実機で確かめたこと（Pixel 7a）:
+
+- 一覧から外した状態で File Manager+ から `Download/mdx/ArctanX/am_field.mdx`
+  → `info : mdx をファイルシステムの一覧に戻しました (許可は残っていました)` →
+  `play : saf:…/tree/primary%3ADownload%2Fmdx/ArctanX/am_field.mdx`。PDX も鳴る。
+  `mxv2.ini` の `[FileSystem]` にも戻っている。
+- **許可の無いフォルダ**（`/sdcard/Download/f_trial.mdx`）は今までどおり
+  [渡されたファイル] が出る。
+
+### SAF マウントの削除で許可も取り消せるようにした（2026-09-18、ユーザーの指示）
+
+[ファイルシステムの設定] の [削除] は**マウントを外すだけ**で、OS の持続許可は
+残っていた。削除の確認に **[このフォルダへのアクセス許可も取り消す]**
+（既定は入）を足し、入っていれば `SafBridge.releaseTree()` →
+`releasePersistableUriPermission()` まで行う。SAF のときだけ出す。
+
+実機（Pixel 7a）で通しで確認:
+
+1. `Download/mdx` を [削除]（チェック入）→ `info : mdx へのアクセス許可を
+   取り消しました`。`dumpsys activity permissions` から当該の持続許可が消えた。
+2. その状態でファイルマネージャから `Download/mdx/ArctanX/am_field.mdx` を開く
+   → **[渡されたファイル] が出る**（許可も一覧も無いので、正しい）。
+3. [フォルダを許可する…] → **ピッカーが `Download/mdx/ArctanX` を開く**
+   （ファイルのあるフォルダ）→ [このフォルダを使用] → [許可] →
+   `play : saf:…/tree/primary%3ADownload%2Fmdx%2FArctanX/am_field.mdx`、PDX も鳴る。
+4. その ArctanX を [削除]（チェック入）→ 許可も消え、`persisted=0x0` になった
+   （**タスクが生きている間は非持続の許可が dumpsys に残る**ので、
+   持続かどうかは `persisted=` で見ること）。
+5. [追加…] から `Download/mdx` を選び直して元の状態に戻した。
+
+**ピッカーの初期位置**（`EXTRA_INITIAL_URI`）は、**ドキュメント URI でない
+提供元でも効くようにした**。`parentDocUri()` が実パスから
+`primary:Download/mdx/ArctanX` のようなドキュメント ID を組み立て、
+ExternalStorageProvider のドキュメント URI にして渡す。これが無いと、
+File Manager+ や MediaStore の URI ではピッカーが前回の場所から開く。
+
+### 「ini にマウントはあるが OS の許可が無い」状態からの復帰（2026-09-18、確認）
+
+再インストールやクラウドからの ini 復元で起きる状態（`accessible()` が false）。
+作り方は「[削除] で許可も取り消す → アプリを止めて ini に `FS<n>=saf:…` を
+書き戻す → 起動」。起動すると [起動時の警告] に
+「… へのアクセス許可が失われています」と [許可を取り直す…] が出る。
+
+実機（Pixel 7a）で**2 通りとも復帰して演奏できることを確認**:
+
+- **A: [許可を取り直す…]**（起動時の警告 / [ファイルシステムの設定]）→
+  ピッカーがそのフォルダを開く → [許可] → 警告が
+  「… へのアクセス許可を取り直しました。」に変わり、一覧の
+  「(アクセス許可なし)」も消える → そのフォルダの MDX を演奏できた。
+- **B: 外から MDX を渡す**（VIEW インテント）→ [渡されたファイル] が出る
+  （許可が無いので当然）→ [フォルダを許可する…] → 許可 →
+  `play : saf:…/tree/primary%3ADownload%2Fmxv2test/am_field.mdx`、PDX も鳴る。
+  **一覧は増えない**（既にある行が生き返るだけ）。
+
+**起動時の警告が出ているときは、渡されたものはその後ろで待つ**
+（`handedUris` は `ui.anyDialogOpen()` の間は捌かない）。警告を閉じると
+[渡されたファイル] が出る。
+
+このとき直したこと: ピッカーで**すでに一覧にある場所**を選び直したら、
+`ApplyPickedTree()` が `Reconnect()` して（外れていればマウントし直して）戻る。
+以前は `Vfs::Add` が重複で失敗して `fsError_`（「その場所はすでにあります」）を
+立てるだけだったので、**次に [ファイルシステムの設定] を開いたときに古い誤りの
+文言が出た**（演奏そのものは `FinishHandedAfterPick` が繋いでいた）。

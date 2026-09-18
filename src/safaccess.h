@@ -34,9 +34,18 @@ bool SafAvailable();
 // 同じフォルダを選びやすくする。Android 8 以降でだけ効く）。
 bool SafPickTree(const std::string &initialTreeUri = std::string());
 
+// 同じ選択画面を、**ドキュメント URI で指した場所**から見せる。外から渡された
+// MDX（openintent.h）の親フォルダを最初に出すため。initialDocUri が空なら
+// ピッカーの既定の場所から。
+bool SafPickTreeAtDoc(const std::string &initialDocUri);
+
 // 選び終わっていれば true を返し、*uri にツリーの URI を入れる。
 // 取り消されたときも true で、*uri は空になる。まだなら false。
 bool SafPollPicked(std::string *uri);
+
+// ツリーへのアクセス許可を返上する（[削除] で「許可も取り消す」を選んだとき）。
+// 返上できたら true。Android 以外では何もしない。
+bool SafReleaseTree(const std::string &treeUri);
 
 // ツリーの URI を根にするファイルシステムを作る。SAF が使えない環境では 0。
 // **権限が切れていても作る**（accessible() が false のマウントになる。

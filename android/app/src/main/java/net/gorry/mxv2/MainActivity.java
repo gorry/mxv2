@@ -22,6 +22,9 @@ public class MainActivity extends SDLActivity {
 		PlaybackBridge.setActivity(this);
 		// 端末の向きの固定の窓口（src/orientlock.cpp）。
 		OrientationBridge.setActivity(this);
+		// ファイルマネージャなどから MDX を渡されたときの窓口
+		// （src/openintent.cpp）。
+		OpenIntentBridge.setActivity(this);
 		super.onCreate(savedInstanceState);
 		requestNotificationPermission();
 	}
@@ -47,17 +50,35 @@ public class MainActivity extends SDLActivity {
 	}
 
 	/**
+	 * 動いている最中に MDX を渡されたとき（ファイルマネージャなどからの
+	 * ACTION_VIEW）。launchMode は singleInstance なので、2 つめのプロセスは
+	 * 作られず、代わりにここへ届く。
+	 *
+	 * **開くのはネイティブのメインループ**（src/openintent.cpp の Poll）。
+	 * ここでは覚えるだけにして、UI スレッドを待たせない。
+	 */
+	@Override
+	protected void onNewIntent(android.content.Intent intent) {
+		super.onNewIntent(intent);
+		// 以後の getIntent() が新しいほうを返すようにしておく
+		// （画面が作り直されたときに古い曲を開き直さないため）。
+		setIntent(intent);
+		OpenIntentBridge.onNewIntent(intent);
+	}
+
+	/**
 	 * mxv2 のコマンドライン引数。端末には「コマンドライン」が無いので、
 	 * インテントの extra "args" から受け取れるようにしてある。
 	 *
 	 *   adb shell am start -n net.gorry.mxv2/.MainActivity --esa args "-skin,Default"
 	 *
+	 * ACTION_VIEW で開かれたとき（*.mdx を叩いたとき）は、その URI が
+	 * **最後の引数**として足される（OpenIntentBridge.argumentsFor）。
 	 * ふつうに起動したときは何も渡らない（引数無しで起動したのと同じ）。
 	 */
 	@Override
 	protected String[] getArguments() {
-		String[] args = getIntent().getStringArrayExtra("args");
-		return args != null ? args : new String[0];
+		return OpenIntentBridge.argumentsFor(getIntent());
 	}
 
 	@Override

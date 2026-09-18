@@ -62,6 +62,18 @@ public class SafBridge {
 	 * 同じフォルダを選びやすくする。Android 8 (API 26) 以降でだけ効く）。
 	 */
 	public static boolean pickTree(final String initialTreeUri) {
+		return open(initialTreeUri, true);
+	}
+
+	/**
+	 * 最初に見せる場所を**ドキュメント URI で**渡して開く。
+	 * 外から渡された MDX の親フォルダを見せるため（OpenIntentBridge.parentDocUri）。
+	 */
+	public static boolean pickTreeAt(final String initialDocUri) {
+		return open(initialDocUri, false);
+	}
+
+	private static boolean open(final String initialUri, final boolean isTree) {
 		final Activity a = sActivity;
 		if (a == null) return false;
 		synchronized (SafBridge.class) {
@@ -72,12 +84,14 @@ public class SafBridge {
 				Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
 				i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION |
 				           Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
-				if (initialTreeUri != null && initialTreeUri.length() > 0 &&
+				if (initialUri != null && initialUri.length() > 0 &&
 				    android.os.Build.VERSION.SDK_INT >= 26) {
 					try {
-						Uri tree = Uri.parse(initialTreeUri);
-						Uri doc = DocumentsContract.buildDocumentUriUsingTree(
-						    tree, DocumentsContract.getTreeDocumentId(tree));
+						Uri doc = Uri.parse(initialUri);
+						if (isTree) {
+							doc = DocumentsContract.buildDocumentUriUsingTree(
+							    doc, DocumentsContract.getTreeDocumentId(doc));
+						}
 						i.putExtra(DocumentsContract.EXTRA_INITIAL_URI, doc);
 					} catch (Exception e) {
 						Log.w(TAG, "EXTRA_INITIAL_URI ignored", e);
@@ -145,6 +159,27 @@ public class SafBridge {
 			Log.e(TAG, "getPersistedUriPermissions failed", e);
 		}
 		return false;
+	}
+
+	/**
+	 * ツリーへのアクセス許可を返上する（[ファイルシステムの設定] の [削除] で
+	 * 「許可も取り消す」を選んだとき）。返上できたら true。
+	 *
+	 * **持続許可を捨てるだけ**で、フォルダの中身には触らない。次にそこを
+	 * 開くときは、もう一度ピッカーでフォルダを選んでもらうことになる。
+	 */
+	public static boolean releaseTree(String treeUri) {
+		final Activity a = sActivity;
+		if (a == null || treeUri == null) return false;
+		try {
+			a.getContentResolver().releasePersistableUriPermission(
+			    Uri.parse(treeUri), Intent.FLAG_GRANT_READ_URI_PERMISSION);
+			forget(treeUri);
+			return true;
+		} catch (Exception e) {
+			Log.w(TAG, "releasePersistableUriPermission failed: " + treeUri, e);
+			return false;
+		}
 	}
 
 	/** ツリーの根の表示名（一覧に出す名前）。取れなければ null。 */

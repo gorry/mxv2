@@ -116,6 +116,7 @@ const char *kAboutTitle;
 const char *kStartupTitle;
 const char *kAddFsTitle;
 const char *kQuitTitle;
+const char *kHandedTitle;
 
 // 題名を作る。id 付きのものは文字列を静的に持ってから返す。
 const char *TitleWithId(const char *key, const char *id) {
@@ -149,6 +150,7 @@ void InitTitles() {
 	kStartupTitle = Msg("Dialog.Startup");
 	kAddFsTitle = Msg("Dialog.AddFs");
 	kQuitTitle = Msg("Dialog.Quit");
+	kHandedTitle = Msg("Dialog.Handed");
 }
 
 // 言語を入れ替えたあと、題名を新しいカタログから取り直す。古いほうの番地は
@@ -258,6 +260,15 @@ void ConfirmText(const char *text) {
 	const float max = io.DisplaySize.x - style.WindowPadding.x * 2.0f;
 	if (w > max) w = max;
 	TextWrappedKinsoku(text, w);
+}
+
+// その下に添える注記。**幅は本文と同じにする**（TextNote はウィンドウ幅まで
+// 伸ばすので、AlwaysAutoResize のダイアログでは出た瞬間だけ横に長くなり、
+// 中央へ置いたつもりが画面の端に張り付く）。
+void ConfirmNote(const char *text) {
+	ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
+	ConfirmText(text);
+	ImGui::PopStyleColor();
 }
 
 // 横に並べる。ただし次に置くものが残り幅に入らないなら、並べずに次の行へ
@@ -392,6 +403,10 @@ SettingsUi::SettingsUi()
       quitClose_(false),
       bmCloseToggle_(false),
       fsSelected_(0),
+      fsRemoveRevoke_(true),
+      handedAsk_(false),
+      handedOpen_(false),
+      handedClose_(false),
       safPicking_(false),
       safRegrantFromFiler_(false),
       addFsOpen_(false),
@@ -817,6 +832,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	BuildPdxPathsWindow(settings, filer);
 	BuildBookmarkToggleWindow(settings, filer);
 	BuildQuitWindow();
+	BuildHandedWindow(filer);
 	BuildStartupWindow();
 	BuildHelpWindow();
 	if (folderReturnToSettings_ && !showFolder_ && !folderOpenPending_ &&

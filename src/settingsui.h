@@ -194,6 +194,8 @@ public:
 		if (pdxRemoveOpen_) { pdxCloseRemove_ = true; return true; }
 		if (bmToggleOpen_) { bmCloseToggle_ = true; return true; }
 		if (quitOpen_) { quitClose_ = true; return true; }
+		// 渡された MDX の「どちらで開くか」。閉じたら何も開かない。
+		if (handedOpen_) { handedClose_ = true; return true; }
 		if (showAbout_) { showAbout_ = false; return true; }
 		if (showHelp_) { showHelp_ = false; return true; }
 		// ファイルシステムの追加はその設定ダイアログの中に入れ子で開く。
@@ -260,6 +262,7 @@ public:
 		kRequestNone = 0,
 		kRequestSetFolder,    // ファイラーを requestedFolder() へ移す
 		kRequestQuit,
+		kRequestOpenHanded,   // requestedHanded() を「落とされた」のと同じ扱いで開く
 	};
 	Request TakeRequest() {
 		const Request r = request_;
@@ -269,6 +272,26 @@ public:
 
 	// kRequestSetFolder の行き先。
 	const std::string &requestedFolder() const { return requestedFolder_; }
+	// kRequestOpenHanded の開くもの (ref)。
+	const std::string &requestedHanded() const { return handedRef_; }
+
+	// 外から渡された MDX（openintent.h）が、許可のあるフォルダの外にあった。
+	// **どちらで開くかを尋ねる**（2026-09-18、ユーザーの指示）:
+	//   [フォルダを許可する…] … SAF のピッカーでそのフォルダの許可を取り、
+	//     マウントしてから開く。**同じフォルダの PDX も鳴る**。
+	//   [このまま演奏する]   … ユーザーフォルダへ写して開く。すぐ鳴るが
+	//     **PDX は付いてこない**。
+	// どちらかが決まると TakeRequest() が kRequestOpenHanded を返す。
+	// name は画面に出すファイル名。
+	void OpenHandedChoice(const std::string &uri, const std::string &name) {
+		if (busy() || handedBusy()) return;
+		handedUri_ = uri;
+		handedName_ = name;
+		handedAsk_ = true;
+	}
+	// 尋ねている最中（ピッカーの結果待ちを含む）。次に渡されたものは
+	// これが収まるまで待たせる。
+	bool handedBusy() const { return handedAsk_ || handedOpen_ || !safHandedUri_.empty(); }
 
 	// チュートリアル (tutorial.cpp) が吹き出しを描くのに要るもの。
 	// ダイアログの字の倍率、「指で操作する」の判定結果、メニューの開閉。
@@ -277,7 +300,9 @@ public:
 	bool contextMenuOpen() const { return contextMenuOpen_; }
 	// 何かしら開いているか（ダイアログ・メニュー・終了の確認）。
 	// チュートリアルは起動時の警告を閉じてから始めるので、その見張りに使う。
-	bool anyDialogOpen() const { return busy() || contextMenuOpen_ || quitOpen_; }
+	bool anyDialogOpen() const {
+		return busy() || contextMenuOpen_ || quitOpen_ || handedOpen_;
+	}
 
 	// 1 フレーム分の UI を組み立てる。設定の変更はその場で反映する。
 	// 非表示のときも ImGui のフレームは回す必要があるので毎フレーム呼ぶ。
@@ -563,6 +588,27 @@ private:
 	// （ファイラーのフォルダ選択は ref を選ぶための別物）。
 	void BuildAddFsWindow(Filer *filer);
 	void PollSafPicked(Filer *filer);
+	// 選び終わったツリーをマウントに反映する（PollSafPicked の本体）。
+	void ApplyPickedTree(Filer *filer, const std::string &uri, const std::string &regrant,
+	                     bool fromFiler, bool handed);
+	// 外から渡された MDX の「どちらで開くか」。OpenHandedChoice を見ること。
+	void BuildHandedWindow(Filer *filer);
+	// OS の許可は残っているのに一覧から外れているツリーなら、一覧へ戻して
+	// ref を作る（尋ねない）。戻せなければ false。
+	bool MountGrantedTree(Filer *filer, const std::string &uri, std::string *ref);
+	// ピッカーから戻ったあとの始末（許可が取れていれば saf: で、
+	// 取り消されたらもう一度尋ねる）。
+	void FinishHandedAfterPick(bool cancelled);
+	// 写して開く（[このまま演奏する] と、許可を取っても見つからなかったとき）。
+	void OpenHandedByCopy();
+	std::string handedUri_;   // 尋ねている相手（渡された URI）
+	std::string handedName_;  // 画面に出す名前
+	std::string handedRef_;   // kRequestOpenHanded の開くもの
+	bool handedAsk_;          // 次のフレームで開く
+	bool handedOpen_;         // いま開いている（ESC の判断に使う）
+	bool handedClose_;        // ESC で閉じてほしい
+	// ピッカーの結果を待っている渡された URI（空なら [追加…] などの普通の選択）。
+	std::string safHandedUri_;
 	bool safPicking_;  // SAF の選択画面を出していて、結果を待っている
 	// [許可を取り直す…] で出した選択画面なら、取り直す相手の mountRef。
 	// 空なら [追加…]（新しくマウントする）。
@@ -578,6 +624,10 @@ private:
 	bool pendingBrowse_;
 	std::string browseStart_;
 
+	// 削除の確認で「OS のアクセス許可も取り消す」を選んでいるか（SAF のとき
+	// だけ出す）。[削除] はマウントを外すだけで許可は残るので、残すと
+	// 「一覧に無いのに許可はある」状態になる（openintent.h の自動マウント）。
+	bool fsRemoveRevoke_;
 	bool fsOpenConfirm_;     // 次のフレームで確認を開く
 	bool fsConfirmOpen_;     // いま開いている（ESC の判断に使う）
 	bool fsCloseConfirm_;    // ESC で閉じてほしい

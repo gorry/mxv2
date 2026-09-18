@@ -28,7 +28,9 @@
 #include "gamepad.h"
 #include "mouse.h"
 #include "nowplaying.h"
+#include "openintent.h"
 #include "player.h"
+#include "safaccess.h"
 #include "screen.h"
 #include "settings.h"
 #include "singleinstance.h"
@@ -280,6 +282,23 @@ int main(int argc, char **argv) {
 	std::string startFile;  // ref
 	// 行き先が決まったか。空の ref（ファイルシステムの選択）も決まったうち。
 	bool startFound = false;
+	// Android: ファイルマネージャなどから渡されたものは **URI** で届く
+	// （openintent.h）。すでに許可のあるフォルダの中なら、そのまま開く場所と
+	// して使える。外なら**窓が出てから尋ねる**ので、ここでは預かるだけにする
+	// （ダイアログを出すには UI が要る。許可を取るか、写して鳴らすか）。
+	std::string startHandedUri;
+	if (!opt.target.empty() && mxv2::openintent::IsUri(opt.target)) {
+		// 渡された URI はそのまま 1 行出す（メインループの handed と同じ理由。
+		// 提供元によって形がまちまちなので、これが唯一の手掛かりになる）。
+		printf("handed   : %s\n", opt.target.c_str());
+		std::string handed;
+		if (mxv2::openintent::ResolveInTree(vfs, opt.target, &handed)) {
+			opt.target = handed;
+		} else {
+			startHandedUri = opt.target;
+			opt.target.clear();
+		}
+	}
 	if (!opt.target.empty()) {
 		std::string ref;
 		if (!vfs.Resolve(opt.target, std::string(), &ref) || ref.empty()) {
@@ -709,7 +728,11 @@ int main(int argc, char **argv) {
 	// 知っている人）。-tutorial は Done を無視して出すが、終わっても Done を
 	// 書かない。実際に始めるのは起動時の警告を閉じてから（メインループの中）。
 	mxv2::Tutorial tutorial;
-	bool tutorialPending = opt.tutorial || (!settings.tutorialDone && startFile.empty());
+	// 渡されたものを預かっているときは、曲を指定して起動したのと同じ扱い
+	// （チュートリアル中は受け取らないので、始めると取りこぼす）。
+	bool tutorialPending =
+	    opt.tutorial ||
+	    (!settings.tutorialDone && startFile.empty() && startHandedUri.empty());
 
 	// -quit は「演奏し終えたら終わる」デバッグ用の指定。**明示したときだけ**
 	// 効くので、曲を渡して起動したかどうかは見ない（渡さずに指定したときは、
@@ -722,6 +745,11 @@ int main(int argc, char **argv) {
 	std::string dropPath;
 	bool dropSeen = false;
 	bool dropGroup = false;
+
+	// 外から渡された MDX（Android の VIEW インテント。openintent.h）の待ち行列。
+	// 起動のときに預かったぶんを先頭に置く（窓が出てから尋ねるため）。
+	std::vector<std::string> handedUris;
+	if (!startHandedUri.empty()) handedUris.push_back(startHandedUri);
 
 	while (!quit) {
 		// 画面の向きが変わったらスキンを取り替える（screen_orientation.md）。
@@ -996,6 +1024,42 @@ int main(int argc, char **argv) {
 			}
 		}
 
+		// Android で、ファイルマネージャなどから渡された MDX（openintent.h）。
+		// **届くのは URI** なので ref へ直してから、落とされたのと同じ扱いで
+		// 開く。前面へ出すのは OS の仕事。
+		{
+			std::string uri;
+			while (mxv2::openintent::Poll(&uri)) handedUris.push_back(uri);
+		}
+		// 1 つずつ片付ける。尋ねている最中（と他のダイアログが出ている間）は
+		// 待たせる ——「どちらで開くか」を重ねて出さないため。
+		if (!handedUris.empty() && !ui.anyDialogOpen() && !ui.handedBusy()) {
+			const std::string uri = handedUris.front();
+			handedUris.erase(handedUris.begin());
+			// **渡された URI をそのまま 1 行出す。** 提供元によって形が
+			// まちまち（ExternalStorageProvider / MediaStore / 自前の
+			// FileProvider）で、許可の中と判断できなかったときの手掛かりに
+			// なるのはこれしかない。
+			printf("handed   : %s\n", uri.c_str());
+			fflush(stdout);
+			std::string ref;
+			if (tutorial.active()) {
+				// チュートリアル中は受け取らない（ログに 1 行）。**直す前に**
+				// 断るので、写すことも許可を尋ねることもない。
+				OpenHandedPath(ctx, &filer, true, uri);
+			} else if (mxv2::openintent::ResolveInTree(vfs, uri, &ref)) {
+				// すでに許可のあるフォルダの中。PDX も読める。
+				OpenHandedPath(ctx, &filer, false, ref);
+			} else if (mxv2::SafAvailable()) {
+				// 外にある。**どちらで開くかを尋ねる**（settingsui の
+				// [渡されたファイル]。答えは kRequestOpenHanded で返ってくる）。
+				ui.OpenHandedChoice(uri, mxv2::openintent::DisplayName(uri));
+			} else if (mxv2::openintent::CopyToUserDir(vfs, uri, &ref)) {
+				// 許可の仕組みが無い環境。写すしかない。
+				OpenHandedPath(ctx, &filer, false, ref);
+			}
+		}
+
 		// 言語が入れ替わったフレーム。カタログから引いた文言を**こちらで
 		// 持っている**ところを取り直す（SettingsUi は自分のぶんを直している）。
 		if (ui.TakeLocaleChanged()) {
@@ -1212,6 +1276,10 @@ int main(int argc, char **argv) {
 				break;
 			case mxv2::SettingsUi::kRequestQuit:
 				quit = true;
+				break;
+			// 「どちらで開くか」の答え（渡された MDX。openintent.h）。
+			case mxv2::SettingsUi::kRequestOpenHanded:
+				OpenHandedPath(ctx, &filer, tutorial.active(), ui.requestedHanded());
 				break;
 			default:
 				break;

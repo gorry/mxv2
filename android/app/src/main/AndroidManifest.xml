@@ -40,6 +40,63 @@
 				<action android:name="android.intent.action.MAIN" />
 				<category android:name="android.intent.category.LAUNCHER" />
 			</intent-filter>
+
+			<!-- ファイルマネージャなどで *.mdx を叩いたとき。開く手順は
+			     src/openintent.cpp と OpenIntentBridge.java にある。
+
+			     **MDX に登録された MIME 型は無い**ので、見分けるのは
+			     パスの末尾だけ。提供元が名乗る型はまちまち
+			     (application/octet-stream / audio/* / 何も名乗らない) なので、
+			     型のほうは "*/*" で全部受ける。
+
+			     **pathPattern の ".*" は後戻りしない**実装（PatternMatcher の
+			     PATTERN_SIMPLE_GLOB）なので、途中に '.' があると ".*\\.mdx"
+			     では合わない。ドットの数だけ並べるのが Android の定番。
+			     pathSuffix は Android 12 (API 31) 以降でだけ効く（古い端末は
+			     知らない属性として読み飛ばす）。
+
+			     大文字小文字は区別されるので、.mdx と .MDX の両方を書く。 -->
+			<intent-filter android:label="@string/app_name">
+				<action android:name="android.intent.action.VIEW" />
+				<category android:name="android.intent.category.DEFAULT" />
+				<category android:name="android.intent.category.BROWSABLE" />
+				<data android:scheme="content" />
+				<data android:scheme="file" />
+				<data android:host="*" />
+				<data android:mimeType="*/*" />
+				<data android:pathSuffix=".mdx" />
+				<data android:pathSuffix=".MDX" />
+				<data android:pathPattern=".*\\.mdx" />
+				<data android:pathPattern=".*\\..*\\.mdx" />
+				<data android:pathPattern=".*\\..*\\..*\\.mdx" />
+				<data android:pathPattern=".*\\..*\\..*\\..*\\.mdx" />
+				<data android:pathPattern=".*\\.MDX" />
+				<data android:pathPattern=".*\\..*\\.MDX" />
+				<data android:pathPattern=".*\\..*\\..*\\.MDX" />
+				<data android:pathPattern=".*\\..*\\..*\\..*\\.MDX" />
+			</intent-filter>
+
+			<!-- 型を名乗らずに渡されたとき。**mimeType を書いたフィルタは
+			     型が null だと一致しない**ので、別に用意する（file:// で
+			     渡してくるものがこれ）。 -->
+			<intent-filter android:label="@string/app_name">
+				<action android:name="android.intent.action.VIEW" />
+				<category android:name="android.intent.category.DEFAULT" />
+				<category android:name="android.intent.category.BROWSABLE" />
+				<data android:scheme="content" />
+				<data android:scheme="file" />
+				<data android:host="*" />
+				<data android:pathSuffix=".mdx" />
+				<data android:pathSuffix=".MDX" />
+				<data android:pathPattern=".*\\.mdx" />
+				<data android:pathPattern=".*\\..*\\.mdx" />
+				<data android:pathPattern=".*\\..*\\..*\\.mdx" />
+				<data android:pathPattern=".*\\..*\\..*\\..*\\.mdx" />
+				<data android:pathPattern=".*\\.MDX" />
+				<data android:pathPattern=".*\\..*\\.MDX" />
+				<data android:pathPattern=".*\\..*\\..*\\.MDX" />
+				<data android:pathPattern=".*\\..*\\..*\\..*\\.MDX" />
+			</intent-filter>
 		</activity>
 
 		<!-- 演奏中の通知。実体は PlaybackService、窓口は PlaybackBridge。

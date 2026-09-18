@@ -17,6 +17,7 @@
 #include "settings.h"
 
 #include "filer.h"
+#include "openintent.h"
 #include "safaccess.h"
 #include "screen.h"
 #include "songloader.h"
@@ -232,6 +233,23 @@ void SettingsUi::PollSafPicked(Filer *filer) {
 	const bool fromFiler = safRegrantFromFiler_;
 	safRegrantRef_.clear();
 	safRegrantFromFiler_ = false;
+	// 外から渡された MDX のために出したピッカーか（openintent.h）。
+	const bool handed = !safHandedUri_.empty();
+	safHandedUri_.clear();
+	// 渡されたものの許可は**一覧の末尾**へ足す（設定ダイアログを開いて
+	// いないので、選んでいる行に挿し込む意味が無い）。
+	if (handed) fsSelected_ = -1;
+
+	ApplyPickedTree(filer, uri, regrant, fromFiler, handed);
+
+	// 許可が取れたフォルダの中から開き直す（取り消されたらもう一度尋ねる）。
+	if (handed) FinishHandedAfterPick(uri.empty());
+}
+
+// 選び終わったツリーをマウントに反映する。[追加…] と [許可を取り直す…]、
+// それに「渡された MDX のフォルダを許可する」の 3 つが通る。
+void SettingsUi::ApplyPickedTree(Filer *filer, const std::string &uri,
+                                 const std::string &regrant, bool fromFiler, bool handed) {
 	if (uri.empty()) {
 		// 取り消した。ファイラーから直に出したピッカーなら、設定ダイアログで
 		// 「許可が無い」ことを示しておく（何も起きないと分からない）。
@@ -266,6 +284,26 @@ void SettingsUi::PollSafPicked(Filer *filer) {
 		if (fromFiler) OpenFileSystemsFor(regrant);
 	}
 
+	// すでに一覧にある場所を選び直したときは、**許可を取り直したもの**として
+	// 扱う（一覧から外れていたらマウントもし直す）。ここを通るのは
+	// [追加…] で同じフォルダを選んだときと、渡された MDX のために許可を
+	// 取り直したとき（そのマウントは ini から作られていて許可だけ無い状態）。
+	{
+		FileSystem *exists = vfs_->FindByMountRef(std::string("saf:") + uri);
+		if (exists != 0) {
+			exists->Reconnect();
+			if (!vfs_->IsMounted(exists)) {
+				vfs_->Mount(exists);
+				changedFields_ |= Settings::kFieldFileSystems;
+			}
+			// 渡されたものの流れでは一覧を出していないので、誤りの文言は残さない
+			// （次に [ファイルシステムの設定] を開いたときに古い文が出る）。
+			if (!handed) fsError_ = MsgF("AddFs.Duplicate", exists->mountRef());
+			if (filer != 0) filer->Refresh();
+			return;
+		}
+	}
+
 	FileSystem *made = vfs_->CreateFromMountRef(std::string("saf:") + uri);
 	if (made == 0) {
 		fsError_ = Msg("AddFs.NotFound");
@@ -283,6 +321,153 @@ void SettingsUi::PollSafPicked(Filer *filer) {
 	fsSelected_ = at;
 	changedFields_ |= Settings::kFieldFileSystems;
 	if (filer != 0) filer->Refresh();
+}
+
+// ---------------------------------------------------------------------------
+// 外から渡された MDX が、許可のあるフォルダの外にあったとき（openintent.h）
+//
+// **どちらで開くかはユーザーが選ぶ**（2026-09-18、ユーザーの指示）。黙って
+// 写して鳴らすと、PDX を使う曲が半端に鳴って違和感が大きい。
+//   [フォルダを許可する…] … SAF のピッカーでそのフォルダの許可を取り、
+//     マウントしてから saf: で開く。**同じフォルダの PDX も鳴る**。
+//   [このまま演奏する]   … ユーザーフォルダへ写して開く。すぐ鳴るが
+//     **PDX は付いてこない**。
+//   [キャンセル] / ESC   … 何もしない。
+// ---------------------------------------------------------------------------
+void SettingsUi::BuildHandedWindow(Filer *filer) {
+	if (handedAsk_) {
+		handedAsk_ = false;
+		// **OS の許可が残っているフォルダなら尋ねない。** 一覧から外して
+		// あっても、ユーザーから見れば「許可済みのフォルダ」なので、黙って
+		// 一覧へ戻して開く（2026-09-18、ユーザーの報告）。
+		{
+			std::string ref;
+			if (MountGrantedTree(filer, handedUri_, &ref)) {
+				handedUri_.clear();
+				handedName_.clear();
+				handedRef_ = ref;
+				request_ = kRequestOpenHanded;
+				return;
+			}
+		}
+		ImGui::OpenPopup(kHandedTitle);
+	}
+
+	handedOpen_ = ImGui::IsPopupOpen(kHandedTitle);
+	if (!handedOpen_) {
+		handedClose_ = false;
+		return;
+	}
+
+	CenterNextWindow(placeCond());
+	if (!ImGui::BeginPopupModal(kHandedTitle, NULL,
+	                            ImGuiWindowFlags_NoCollapse |
+	                                ImGuiWindowFlags_NoSavedSettings |
+	                                ImGuiWindowFlags_AlwaysAutoResize)) {
+		return;
+	}
+
+	ConfirmText(MsgF("Handed.Question", handedName_).c_str());
+	ConfirmNote(Msg("Handed.Note"));
+	ImGui::Separator();
+
+	if (ImGui::Button(Msg("Button.HandedGrant"))) {
+		// ピッカーは**渡されたファイルのフォルダ**から見せる（親を辿れない
+		// 提供元なら既定の場所から）。出せないときは写して開く
+		// ——何も起きないよりは鳴るほうがよい。
+		if (!safPicking_ && SafAvailable() &&
+		    SafPickTreeAtDoc(openintent::ParentDocUri(handedUri_))) {
+			safPicking_ = true;
+			safHandedUri_ = handedUri_;
+			safRegrantRef_.clear();
+			safRegrantFromFiler_ = false;
+		} else {
+			OpenHandedByCopy();
+		}
+		ImGui::CloseCurrentPopup();
+	}
+	SameLineOrWrap(Msg("Button.HandedCopy"));
+	if (ImGui::Button(Msg("Button.HandedCopy"))) {
+		OpenHandedByCopy();
+		ImGui::CloseCurrentPopup();
+	}
+	SameLineOrWrap(Msg("Button.Cancel"));
+	if (ImGui::Button(Msg("Button.Cancel")) || handedClose_) {
+		handedClose_ = false;
+		handedUri_.clear();
+		handedName_.clear();
+		ImGui::CloseCurrentPopup();
+	}
+	ImGui::EndPopup();
+}
+
+// OS の許可（持続許可）が残っているツリーなら、ファイルシステムの一覧へ
+// 戻して（すでに在れば必要ならマウントし直して）ref を作る。
+//
+// **許可を取り直す必要は無い**（OS はもう許可している）ので、ピッカーは
+// 出さない。一覧から外れていたぶんは**末尾へ**足し、ini にも書き戻す。
+bool SettingsUi::MountGrantedTree(Filer *filer, const std::string &uri, std::string *ref) {
+	ref->clear();
+	if (vfs_ == 0 || uri.empty()) return false;
+
+	std::string tree, rel;
+	if (!openintent::GrantedTree(uri, &tree, &rel)) return false;
+	const std::string mountRef = std::string("saf:") + tree;
+
+	FileSystem *fs = vfs_->FindByMountRef(mountRef);
+	if (fs == 0) {
+		fs = vfs_->CreateFromMountRef(mountRef);
+		if (fs == 0) return false;
+		QuiesceVfsReaders(filer);
+		if (!vfs_->Add(fs)) {
+			delete fs;
+			return false;
+		}
+	}
+	if (!vfs_->IsMounted(fs)) {
+		if (!vfs_->Mount(fs)) return false;
+		changedFields_ |= Settings::kFieldFileSystems;
+		if (filer != 0) filer->Refresh();
+		printf("info     : %s\n", MsgF("Log.HandedMounted", fs->label()).c_str());
+		fflush(stdout);
+	}
+	return openintent::ResolveInTree(*vfs_, uri, ref);
+}
+
+// ピッカーから戻ったあと。許可が取れていれば saf: の ref で開く。
+void SettingsUi::FinishHandedAfterPick(bool cancelled) {
+	if (handedUri_.empty()) return;
+	if (cancelled) {
+		// **もう一度尋ねる。** 黙って引き下がると、叩いた曲が鳴らない理由が
+		// 分からない（ここで [このまま演奏する] を選び直せる）。
+		handedAsk_ = true;
+		return;
+	}
+	if (vfs_ == 0) return;
+
+	std::string ref;
+	if (openintent::ResolveInTree(*vfs_, handedUri_, &ref)) {
+		handedUri_.clear();
+		handedName_.clear();
+		handedRef_ = ref;
+		request_ = kRequestOpenHanded;
+		return;
+	}
+	// 許可は取れたが、その中に見つからなかった（別のフォルダを選んだ、
+	// またはドキュメント ID と表示名が食い違う提供元）。写して開く。
+	OpenHandedByCopy();
+}
+
+// 写して開く。読めない・写せないときは何も起きない（理由はログに出ている）。
+void SettingsUi::OpenHandedByCopy() {
+	if (vfs_ == 0 || handedUri_.empty()) return;
+	std::string ref;
+	const bool ok = openintent::CopyToUserDir(*vfs_, handedUri_, &ref);
+	handedUri_.clear();
+	handedName_.clear();
+	if (!ok) return;
+	handedRef_ = ref;
+	request_ = kRequestOpenHanded;
 }
 
 void SettingsUi::BuildAddFsWindow(Filer *filer) {
@@ -384,8 +569,31 @@ void SettingsUi::BuildFsRemoveWindow(Filer *filer) {
 	                                                                  : 0;
 	ConfirmText(MsgF("FileSystems.RemoveConfirm", sel != 0 ? sel->label() : std::string())
 	                .c_str());
+
+	// **SAF は OS の許可を別に持っている。** 一覧から外すだけだと許可は
+	// 残り、「一覧に無いのに許可はある」状態になる（そのときは外から MDX を
+	// 渡されると黙って一覧へ戻す。openintent.h）。取り消すかどうかを
+	// ここで尋ねる（2026-09-18、ユーザーの指示）。
+	const bool isSaf = (sel != 0 && SafAvailable() && CompareNoCase(sel->id(), "saf") == 0);
+	if (isSaf) {
+		ImGui::Checkbox(Msg("FileSystems.RemoveRevoke"), &fsRemoveRevoke_);
+		ConfirmNote(Msg(fsRemoveRevoke_ ? "FileSystems.RemoveRevokeNote"
+		                                : "FileSystems.RemoveKeepNote"));
+	}
+
 	ImGui::Separator();
 	if (ImGui::Button(Msg("Button.Remove"))) {
+		// 許可の返上は**実体を捨てる前に**（mountRef からツリーの URI を取る）。
+		if (isSaf && fsRemoveRevoke_) {
+			const std::string mountRef = sel->mountRef();
+			const std::string tree = mountRef.substr(mountRef.find(':') + 1);
+			if (SafReleaseTree(tree)) {
+				printf("info     : %s\n", MsgF("Log.SafReleased", sel->label()).c_str());
+			} else {
+				printf("warning  : %s\n", MsgF("Log.SafReleaseFailed", sel->label()).c_str());
+			}
+			fflush(stdout);
+		}
 		// 動的に足したファイルシステムは実体も捨てるので、フォルダと
 		// タイトルを読んでいるスレッドの手が離れるのを待ってからにする。
 		QuiesceVfsReaders(filer);

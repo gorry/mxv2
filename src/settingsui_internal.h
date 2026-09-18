@@ -71,6 +71,7 @@ extern const char *kAboutTitle;
 extern const char *kStartupTitle;
 extern const char *kAddFsTitle;
 extern const char *kQuitTitle;
+extern const char *kHandedTitle;
 
 // 題名を作る（1 度だけ）／言語を替えたあとに取り直す。
 void InitTitles();
@@ -86,8 +87,9 @@ void DragToScroll(bool *dragging, bool *moved, bool hasTitleBar, bool fromItems)
 void TextWrapColor(const ImVec4 &color, const char *text);
 void TextNote(const char *text);
 void TextError(const char *text);
-// 確認ダイアログの本文。
+// 確認ダイアログの本文と、その下に添える注記（薄い字。幅は本文と同じ）。
 void ConfirmText(const char *text);
+void ConfirmNote(const char *text);
 // 前の項目の右に label が入るなら SameLine、入らなければ改行。
 void SameLineOrWrap(const char *label);
 // 設定ウィンドウの見出し（畳める）と、その末尾の余白。

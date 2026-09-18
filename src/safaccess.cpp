@@ -34,6 +34,8 @@ struct SafJni {
 	jclass cls;
 	jmethodID available;
 	jmethodID pickTree;
+	jmethodID pickTreeAt;
+	jmethodID releaseTree;
 	jmethodID takeResult;
 	jmethodID hasPermission;
 	jmethodID rootName;
@@ -43,7 +45,7 @@ struct SafJni {
 	jmethodID forget;
 };
 
-SafJni g = { false, false, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+SafJni g = { false, false, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
 JNIEnv *Env() {
 	return (JNIEnv *)SDL_AndroidGetJNIEnv();
@@ -67,6 +69,8 @@ bool EnsureJni() {
 
 	g.available = env->GetStaticMethodID(g.cls, "available", "()Z");
 	g.pickTree = env->GetStaticMethodID(g.cls, "pickTree", "(Ljava/lang/String;)Z");
+	g.pickTreeAt = env->GetStaticMethodID(g.cls, "pickTreeAt", "(Ljava/lang/String;)Z");
+	g.releaseTree = env->GetStaticMethodID(g.cls, "releaseTree", "(Ljava/lang/String;)Z");
 	g.takeResult = env->GetStaticMethodID(g.cls, "takeResult", "()Ljava/lang/String;");
 	g.hasPermission = env->GetStaticMethodID(g.cls, "hasPermission", "(Ljava/lang/String;)Z");
 	g.rootName = env->GetStaticMethodID(g.cls, "rootName",
@@ -77,8 +81,9 @@ bool EnsureJni() {
 	g.stat = env->GetStaticMethodID(g.cls, "stat", "(Ljava/lang/String;Ljava/lang/String;)I");
 	g.forget = env->GetStaticMethodID(g.cls, "forget", "(Ljava/lang/String;)V");
 
-	g.ok = (g.available != 0 && g.pickTree != 0 && g.takeResult != 0 && g.hasPermission != 0 &&
-	        g.rootName != 0 && g.list != 0 && g.read != 0 && g.stat != 0 && g.forget != 0);
+	g.ok = (g.available != 0 && g.pickTree != 0 && g.pickTreeAt != 0 && g.takeResult != 0 &&
+	        g.hasPermission != 0 && g.releaseTree != 0 && g.rootName != 0 && g.list != 0 &&
+	        g.read != 0 && g.stat != 0 && g.forget != 0);
 	if (!g.ok) {
 		env->ExceptionClear();
 		printf("warning  : SafBridge methods not found (SAF disabled)\n");
@@ -469,6 +474,34 @@ bool SafPickTree(const std::string &initialTreeUri) {
 	return r != JNI_FALSE;
 }
 
+bool SafPickTreeAtDoc(const std::string &initialDocUri) {
+	if (!EnsureJni()) return false;
+	JNIEnv *env = Env();
+	if (env == 0) return false;
+	jstring jinit = initialDocUri.empty() ? 0 : ToJava(env, initialDocUri);
+	const jboolean r = env->CallStaticBooleanMethod(g.cls, g.pickTreeAt, jinit);
+	if (jinit != 0) env->DeleteLocalRef(jinit);
+	if (env->ExceptionCheck()) {
+		env->ExceptionClear();
+		return false;
+	}
+	return r != JNI_FALSE;
+}
+
+bool SafReleaseTree(const std::string &treeUri) {
+	if (treeUri.empty() || !EnsureJni()) return false;
+	JNIEnv *env = Env();
+	if (env == 0) return false;
+	jstring jtree = ToJava(env, treeUri);
+	const jboolean r = env->CallStaticBooleanMethod(g.cls, g.releaseTree, jtree);
+	env->DeleteLocalRef(jtree);
+	if (env->ExceptionCheck()) {
+		env->ExceptionClear();
+		return false;
+	}
+	return r != JNI_FALSE;
+}
+
 bool SafPollPicked(std::string *uri) {
 	uri->clear();
 	if (!EnsureJni()) return false;
@@ -509,6 +542,16 @@ bool SafAvailable() {
 
 bool SafPickTree(const std::string &initialTreeUri) {
 	(void)initialTreeUri;
+	return false;
+}
+
+bool SafPickTreeAtDoc(const std::string &initialDocUri) {
+	(void)initialDocUri;
+	return false;
+}
+
+bool SafReleaseTree(const std::string &treeUri) {
+	(void)treeUri;
 	return false;
 }
 
