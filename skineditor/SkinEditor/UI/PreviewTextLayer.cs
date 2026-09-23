@@ -8,10 +8,13 @@
 // ラスタライズは本体が stb_truetype、こちらは GDI+。**画素は一致しない**
 // （字送りとアンチエイリアスの出方が違う）。「大きさがほぼ合っていればよい」
 // という前提で、字の高さだけ本体と揃うように em サイズを計算している:
-//   本体: stbtt_ScaleForPixelHeight(cellHeight) …「ascent-descent が
-//         cellHeight に収まる倍率」で、baseline = ascent * scale
-//   ここ: emSize = cellHeight * emHeight / (ascent + descent)
-// どちらも「ascent+descent が行の高さになる」ので、同じ大きさの字になる。
+//   本体: 実際に描かれる範囲 (textAsc - textDesc) が cellHeight に収まる倍率
+//         （src/textrender.cpp の MeasureTextExtent）。hhea の ascent/descent は
+//         行間のぶん余裕があり、そのまま使うと字が 7 割ほどに縮む
+//   ここ: 同じ考え方で、**見本を焼いてインクの上下を実測**し、その高さが
+//         cellHeight になる em サイズにする（GDI+ からフォントの字形の
+//         範囲は引けないので測る）。測れなければ ascent+descent へ退避
+// どちらも「実際に描かれる上下が行の高さになる」ので、同じ大きさの字になる。
 
 using System.Drawing;
 using System.Drawing.Text;
@@ -21,9 +24,18 @@ namespace SkinEditor.UI;
 
 public sealed class PreviewTextLayer : IDisposable
 {
+    // インクの実測に使う見本。上下に出っ張る字（約物・下付き・濁点）を入れる。
+    // **どの和文フォントにもある字だけにすること。** 無い字は GDI+ が別の
+    // フォントへ逃がす（または豆腐を出す）ので、測り値が他人のものになる。
+    // 半角カナや半角濁点は持たないフォントがあるので入れない。
+    private const string kInkProbe = "AQgjy|(){}[]0123 漢字あぁゐばンヴ「」、。〜";
+
     private PrivateFontCollection? _collection;
     private FontFamily? _family;
     private string? _loadedPath;
+    private bool _inkMeasured;
+    private float _inkTopPerEm;   // 描き出しからインク上端までの距離 / em
+    private float _inkSpanPerEm;  // インクの高さ / em（0 なら未測定）
 
     public bool Available => _family != null;
 
@@ -120,6 +132,17 @@ public sealed class PreviewTextLayer : IDisposable
             float lineSpacing = _family.GetLineSpacing(style);
             if (em <= 0 || ascent + descent <= 0) return null;
 
+            MeasureInk();
+            if (_inkSpanPerEm > 0f)
+            {
+                // 実際に描かれる上下が cellHeight ぴったりになる大きさ。
+                float inkEm = cellHeight / _inkSpanPerEm;
+                if (inkEm < 1f) inkEm = 1f;
+                // インクの上端が行の上端に来るよう、描き出しを上へ戻す。
+                topPad = _inkTopPerEm * inkEm;
+                return new Font(_family, inkEm, style, GraphicsUnit.Pixel);
+            }
+
             float emSize = cellHeight * em / (ascent + descent);
             if (emSize < 1f) emSize = 1f;
             topPad = (lineSpacing - (ascent + descent)) * emSize / em / 2f;
@@ -131,12 +154,64 @@ public sealed class PreviewTextLayer : IDisposable
         }
     }
 
+    // 見本を大きく焼いて、インクの上下が描き出し位置からどれだけ離れているかを
+    // em に対する比で覚える（本体の MeasureTextExtent に相当）。フォント 1 つに
+    // つき 1 回。測れなければ 0 のままにして、呼び出し側が旧来の式へ退避する。
+    private void MeasureInk()
+    {
+        if (_inkMeasured) return;
+        _inkMeasured = true;
+        if (_family == null) return;
+
+        try
+        {
+            const float probeEm = 128f;
+            using var font = new Font(_family, probeEm, FontStyle.Regular, GraphicsUnit.Pixel);
+            int w = (int)(probeEm * 24f);
+            int h = (int)(probeEm * 3f);
+            using var bmp = new Bitmap(w, h, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+            using (var g = Graphics.FromImage(bmp))
+            {
+                g.Clear(Color.Black);
+                g.TextRenderingHint = TextRenderingHint.AntiAlias;
+                g.DrawString(kInkProbe, font, Brushes.White, 0f, probeEm,
+                    StringFormat.GenericTypographic);
+            }
+
+            int top = -1, bottom = -1;
+            for (int y = 0; y < h; y++)
+            {
+                bool ink = false;
+                for (int x = 0; x < w; x++)
+                {
+                    if (bmp.GetPixel(x, y).R > 24) { ink = true; break; }
+                }
+                if (!ink) continue;
+                if (top < 0) top = y;
+                bottom = y;
+            }
+            if (top < 0 || bottom <= top) return;
+
+            // 描き出しは y = probeEm。そこからの距離を em 比で持つ。
+            _inkTopPerEm = (top - probeEm) / probeEm;
+            _inkSpanPerEm = (bottom + 1 - top) / probeEm;
+        }
+        catch
+        {
+            _inkTopPerEm = 0f;
+            _inkSpanPerEm = 0f;
+        }
+    }
+
     private void Release()
     {
         _family?.Dispose();
         _family = null;
         _collection?.Dispose();
         _collection = null;
+        _inkMeasured = false;
+        _inkTopPerEm = 0f;
+        _inkSpanPerEm = 0f;
     }
 
     public void Dispose() => Release();

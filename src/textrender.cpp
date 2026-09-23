@@ -105,7 +105,16 @@ uint32_t NextCodepoint(const std::string &s, size_t *pos) {
 class StbTextRenderer : public TextRenderer {
 public:
 	StbTextRenderer()
-	    : ready_(false), sizeKey_(-1), scale_(0.0f), baseline_(0), current_(0) {
+	    : ready_(false),
+	      ascent_(0),
+	      descent_(0),
+	      lineGap_(0),
+	      textAsc_(0),
+	      textDesc_(0),
+	      sizeKey_(-1),
+	      scale_(0.0f),
+	      baseline_(0),
+	      current_(0) {
 		memset(&font_, 0, sizeof(font_));
 	}
 
@@ -120,6 +129,7 @@ public:
 		if (!stbtt_InitFont(&font_, &data_[0], offset)) return false;
 
 		stbtt_GetFontVMetrics(&font_, &ascent_, &descent_, &lineGap_);
+		MeasureTextExtent();
 		ready_ = true;
 		return true;
 	}
@@ -194,6 +204,66 @@ private:
 		SizeCache() : scale(0.0f), baseline(0) {}
 	};
 
+	// 「1 行の高さ」に字を収めるときの上下 (font unit)。
+	//
+	// hhea の ascent / descent は行間のぶん余裕を持たせてあり、同梱フォントは
+	// 1.395em ある。これをそのまま行の高さに収める (stbtt_ScaleForPixelHeight)
+	// と、字は行の高さの 7 割ほどにしかならない。倍率が低い＝出力画素が
+	// 小さいときはこれが効いてきて、10px の行だと漢字が 7px 角になり、
+	// どの画素も塗り切られずに中間調へ沈む（線が細くつぶれて見える）。
+	// そこで **実際に描かれる範囲** を測って、それを行の高さに合わせる。
+	//
+	// 上下に出っ張るのは約物・記号・濁点・ラテン文字の下付きなので、よく出る
+	// 範囲を見れば足りる（漢字のインクはかな・約物の内側に収まる）。差し替えの
+	// font.ttf にも自動で追従する。
+	//
+	// **フォントの宣言値 (OS/2 typo や hhea) を下限にしてはいけない。** M PLUS 1
+	// Code のように typo が hhea と同じ「行ボックス」を名乗るフォントがあり、
+	// それを下限にすると測った意味が消えて元の大きさに戻ってしまう。宣言値は
+	// **1 文字も測れなかったときの退避**と、**広げすぎの歯止め**にだけ使う。
+	void MeasureTextExtent() {
+		static const struct {
+			int lo, hi;
+		} kRanges[] = {
+		    {0x0020, 0x007e},  // ASCII
+		    {0x3000, 0x30ff},  // 約物・ひらがな・カタカナ
+		    {0xff01, 0xff9f},  // 全角英数・半角カナ
+		};
+
+		bool found = false;
+		int asc = 0, desc = 0;
+		for (size_t r = 0; r < sizeof(kRanges) / sizeof(kRanges[0]); r++) {
+			for (int cp = kRanges[r].lo; cp <= kRanges[r].hi; cp++) {
+				if (stbtt_FindGlyphIndex(&font_, cp) == 0) continue;
+				int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+				if (!stbtt_GetCodepointBox(&font_, cp, &x0, &y0, &x1, &y1)) continue;
+				if (x1 == x0 || y1 == y0) continue;  // 空白
+				if (!found || y1 > asc) asc = y1;
+				if (!found || y0 < desc) desc = y0;
+				found = true;
+			}
+		}
+
+		if (!found) {
+			// 1 文字も測れないフォント。宣言値に頼る。
+			int gap = 0;
+			if (!stbtt_GetFontVMetricsOS2(&font_, &asc, &desc, &gap) || asc - desc <= 0) {
+				asc = ascent_;
+				desc = descent_;
+			}
+		}
+
+		// hhea より広げはしない（壊れたフォントで字が小さくなりすぎないため）。
+		if (asc > ascent_) asc = ascent_;
+		if (desc < descent_) desc = descent_;
+		if (asc - desc <= 0) {
+			asc = ascent_;
+			desc = descent_;
+		}
+		textAsc_ = asc;
+		textDesc_ = desc;
+	}
+
 	void SetSize(float cellHeight) {
 		// 出力解像度に合わせると 17.5px のような半端な値になるので、
 		// 1/4 px の粒度でキャッシュを引く。
@@ -203,10 +273,9 @@ private:
 
 		SizeCache &sc = sizes_[key];
 		if (sc.scale == 0.0f) {
-			// 行の高さ (ascent - descent) が cellHeight に収まる倍率。
-			// GDI の lfHeight が「セル高」だったのと同じ考え方。
-			sc.scale = stbtt_ScaleForPixelHeight(&font_, key / 4.0f);
-			sc.baseline = (int)(ascent_ * sc.scale + 0.5f);
+			// 字の実際の上下 (textAsc_ - textDesc_) が cellHeight に収まる倍率。
+			sc.scale = (key / 4.0f) / (float)(textAsc_ - textDesc_);
+			sc.baseline = (int)(textAsc_ * sc.scale + 0.5f);
 		}
 		current_ = &sc;
 		scale_ = sc.scale;
@@ -262,7 +331,8 @@ private:
 	bool ready_;
 	std::vector<uint8_t> data_;
 	stbtt_fontinfo font_;
-	int ascent_, descent_, lineGap_;
+	int ascent_, descent_, lineGap_;  // hhea（行送りの都合で上下に余裕がある）
+	int textAsc_, textDesc_;          // 実際に描かれる上下。行の高さはこちらで割る
 
 	int sizeKey_;  // cellHeight を 1/4 px 単位にしたもの
 	float scale_;
