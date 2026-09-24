@@ -111,7 +111,7 @@ public class SkinDocumentTests
         var e = SkinDocument.Open(TestPaths.FindDevRoot(), "Phone").Effective;
 
         Assert.Equal(new[] { 128, 8 }, e.volVolumePos);
-        Assert.Equal(new[] { 16, 8 }, e.progTimePos);
+        Assert.Equal(new[] { 16, 10 }, e.progTimePos);
     }
 
     // Rect のキー名が読み書きでずれていないこと（WriteAll は「参照 → 無参照」で
