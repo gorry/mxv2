@@ -163,9 +163,7 @@ void SettingsUi::BuildFolderWindow(Settings *settings, Filer *filer) {
 	CenterNextWindow(placeCond());
 	ImGui::SetNextWindowSize(DialogSize(460.0f, 400.0f), placeCond());
 
-	if (!ImGui::BeginPopupModal(title, &showFolder_,
-	                            ImGuiWindowFlags_NoCollapse |
-	                                ImGuiWindowFlags_NoSavedSettings)) {
+	if (!ImGui::BeginPopupModal(title, &showFolder_, DialogFlags())) {
 		return;
 	}
 

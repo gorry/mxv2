@@ -151,9 +151,7 @@ void SettingsUi::BuildColorsWindow(Settings *settings, DrawScreen *draw, Player 
 	CenterNextWindow(placeCond());
 	ImGui::SetNextWindowSize(DialogSize(380.0f, 464.0f), placeCond());
 
-	if (ImGui::BeginPopupModal(kColorsTitle, &showColors_,
-	                           ImGuiWindowFlags_NoCollapse |
-	                               ImGuiWindowFlags_NoSavedSettings)) {
+	if (ImGui::BeginPopupModal(kColorsTitle, &showColors_, DialogFlags())) {
 		// 開いた直後は、保存先の名前を今のスキン名にしておく。書き込み先は
 		// 必ずユーザーフォルダなので "assets:" は外す（同梱スキンを編集して
 		// いるときは、同じ名前のユーザースキンが作られることになる）。
@@ -263,17 +261,56 @@ void SettingsUi::BuildColorsWindow(Settings *settings, DrawScreen *draw, Player 
 	}
 }
 
+namespace {
+
+// 配色設定の先頭の「見出し + 値」の行の見出し。値は x（見出しの列の右）から
+// 始める。値が入力欄でも文字でも高さが揃うように、字をフレームの中央へ下げる。
+void SaveRowLabel(const char *label, float x) {
+	ImGui::AlignTextToFramePadding();
+	ImGui::TextUnformatted(label);
+	ImGui::SameLine(x);
+}
+
+}  // namespace
+
 // 配色設定の先頭。保存先のスキン名と、保存・読み直しのボタン。
 //
 // 保存先はスキンの名前で指定する。今のスキンの名前のままなら上書き、
 // 別の名前にすれば「名前を付けて保存」で新しいスキンができる。
 // 同梱ぶんは読み取り専用なので、書き込み先は必ずユーザーフォルダ側。
+//
+// 並びは 1 行に 1 つ（2026-09-24、ユーザーの指示）:
+//   スキン名 [Phone]
+//   保存先   skin/Phone
+//   [保存] [読み直す]
+//   参照元   (なし)
+// 以前はボタンの右に保存先を並べていたが、320px 幅の携帯 (XS17) の縦画面で
+// 右が切れて読めなかった。見出しの列は 3 つのうち最も長いものに揃える。
 void SettingsUi::BuildSkinSaveRow(Settings *settings, DrawScreen *draw) {
-	ImGui::TextUnformatted(Msg("Colors.SkinName"));
-	ImGui::SameLine();
+	const char *const kLabels[] = {
+	    Msg("Colors.SkinName"), Msg("Colors.SaveTo"), Msg("Colors.BaseSkin"),
+	};
+	float labelW = 0.0f;
+	for (size_t i = 0; i < sizeof(kLabels) / sizeof(kLabels[0]); i++) {
+		labelW = std::max(labelW, ImGui::CalcTextSize(kLabels[i]).x);
+	}
+	const float valueX = labelW + ImGui::GetStyle().ItemSpacing.x * 2.0f;
+
+	SaveRowLabel(kLabels[0], valueX);
 	ImGui::SetNextItemWidth(-FLT_MIN);
 	const bool entered = ImGui::InputText("##skinname", skinNameBuf_, sizeof(skinNameBuf_),
 	                                      ImGuiInputTextFlags_EnterReturnsTrue);
+
+	// 保存先。書き込むのは skin/<名前>/colors.ini だが、行を短くするために
+	// フォルダまでを出し、完全なパスはツールチップに出す。
+	{
+		const std::string name = TrimSpaces(skinNameBuf_);
+		SaveRowLabel(kLabels[1], valueX);
+		ImGui::TextDisabled("skin/%s", name.c_str());
+		if (ImGui::IsItemHovered()) {
+			ImGui::SetTooltip("%s", JoinPath(paths_.UserSkinDir(name), kColorsFile).c_str());
+		}
+	}
 
 	if (ImGui::Button(Msg("Button.Save")) || entered) {
 		const std::string name = TrimSpaces(skinNameBuf_);
@@ -294,21 +331,12 @@ void SettingsUi::BuildSkinSaveRow(Settings *settings, DrawScreen *draw) {
 	if (ImGui::Button(Msg("Button.Reload"))) {
 		pendingSkin_ = settings->skinName;
 	}
-	ImGui::SameLine();
-	{
-		const std::string name = TrimSpaces(skinNameBuf_);
-		ImGui::TextDisabled("skin/%s/colors.ini", name.c_str());
-		if (ImGui::IsItemHovered()) {
-			ImGui::SetTooltip("%s", JoinPath(paths_.UserSkinDir(name), kColorsFile).c_str());
-		}
-	}
 
 	// 土台にしているスキン (layout.ini の [Skin] Base)。レイアウトと素材が
 	// どこから来ているかは、配色をいじるときに知りたいことが多い。
 	{
 		const std::string &base = draw->skin().baseRef();
-		ImGui::TextUnformatted(Msg("Colors.BaseSkin"));
-		ImGui::SameLine();
+		SaveRowLabel(kLabels[2], valueX);
 		if (base.empty()) {
 			ImGui::TextDisabled("%s", Msg("Colors.BaseNone"));
 		} else {
@@ -341,8 +369,7 @@ void SettingsUi::BuildOverwriteWindow(Settings *settings, DrawScreen *draw) {
 
 	CenterNextWindow(placeCond());
 	if (!ImGui::BeginPopupModal(kOverwriteTitle, NULL,
-	                            ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
-	                                ImGuiWindowFlags_AlwaysAutoResize)) {
+	                            DialogFlags() | ImGuiWindowFlags_AlwaysAutoResize)) {
 		return;
 	}
 

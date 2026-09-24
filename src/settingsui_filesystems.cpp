@@ -36,9 +36,7 @@ void SettingsUi::BuildFileSystemsWindow(Filer *filer) {
 	CenterNextWindow(placeCond());
 	ImGui::SetNextWindowSize(DialogSize(460.0f, 360.0f), placeCond());
 
-	if (!ImGui::BeginPopupModal(kFileSystemsTitle, &showFileSystems_,
-	                            ImGuiWindowFlags_NoCollapse |
-	                                ImGuiWindowFlags_NoSavedSettings)) {
+	if (!ImGui::BeginPopupModal(kFileSystemsTitle, &showFileSystems_, DialogFlags())) {
 		return;
 	}
 	if (vfs_ == 0) {
@@ -80,11 +78,9 @@ void SettingsUi::BuildFileSystemsWindow(Filer *filer) {
 		ImGui::EndChild();
 	}
 
-	if (fsError_.empty()) {
-		TextNote(Msg("FileSystems.FixedNote"));
-	} else {
-		TextError(fsError_.c_str());
-	}
+	// 「薄い項目は削除できない」の注記は 2026-09-24 に外した（ユーザーの
+	// 指示。狭い画面で行を食うわりに、[削除] が押せないことで分かる）。
+	if (!fsError_.empty()) TextError(fsError_.c_str());
 
 	const FileSystem *sel = (count > 0) ? vfs_->at(fsSelected_) : 0;
 
@@ -149,9 +145,12 @@ void SettingsUi::BuildFileSystemsWindow(Filer *filer) {
 	// 押せる。同じフォルダを選び直せば、そのマウントが読める状態に戻り、
 	// その先を指すブックマークもそのまま効く（PollSafPicked）。
 	// 2026-09-16、ユーザーの指示。
-	{
-		const bool canRegrant = (sel != 0) && !sel->accessible() && SafAvailable();
-		ImGui::SameLine();
+	//
+	// 2026-09-24 に行を分けた（ユーザーの指示）。何の許可かをラベルに足して
+	// 長くなったのと、320px 幅の携帯 (XS17) の縦画面で右端が切れていたため。
+	// SAF の無い環境（パソコンなど）では押せる場面が無いので出さない。
+	if (SafAvailable()) {
+		const bool canRegrant = (sel != 0) && !sel->accessible();
 		ImGui::BeginDisabled(!canRegrant);
 		if (ImGui::Button(Msg("Button.Regrant"))) {
 			fsError_.clear();
@@ -361,9 +360,7 @@ void SettingsUi::BuildHandedWindow(Filer *filer) {
 
 	CenterNextWindow(placeCond());
 	if (!ImGui::BeginPopupModal(kHandedTitle, NULL,
-	                            ImGuiWindowFlags_NoCollapse |
-	                                ImGuiWindowFlags_NoSavedSettings |
-	                                ImGuiWindowFlags_AlwaysAutoResize)) {
+	                            DialogFlags() | ImGuiWindowFlags_AlwaysAutoResize)) {
 		return;
 	}
 
@@ -487,9 +484,7 @@ void SettingsUi::BuildAddFsWindow(Filer *filer) {
 	CenterNextWindow(placeCond());
 	ImGui::SetNextWindowSize(DialogSize(460.0f, 0.0f), placeCond());
 	if (!ImGui::BeginPopupModal(kAddFsTitle, NULL,
-	                            ImGuiWindowFlags_NoCollapse |
-	                                ImGuiWindowFlags_NoSavedSettings |
-	                                ImGuiWindowFlags_AlwaysAutoResize)) {
+	                            DialogFlags() | ImGuiWindowFlags_AlwaysAutoResize)) {
 		return;
 	}
 
@@ -559,8 +554,7 @@ void SettingsUi::BuildFsRemoveWindow(Filer *filer) {
 
 	CenterNextWindow(placeCond());
 	if (!ImGui::BeginPopupModal(kFsRemoveTitle, NULL,
-	                            ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
-	                                ImGuiWindowFlags_AlwaysAutoResize)) {
+	                            DialogFlags() | ImGuiWindowFlags_AlwaysAutoResize)) {
 		return;
 	}
 

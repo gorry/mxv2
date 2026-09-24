@@ -121,9 +121,7 @@ void SettingsUi::BuildBookmarksWindow(Settings *settings, Filer *filer) {
 	CenterNextWindow(placeCond());
 	ImGui::SetNextWindowSize(DialogSize(460.0f, 360.0f), placeCond());
 
-	if (!ImGui::BeginPopupModal(kBookmarksTitle, &showBookmarks_,
-	                            ImGuiWindowFlags_NoCollapse |
-	                                ImGuiWindowFlags_NoSavedSettings)) {
+	if (!ImGui::BeginPopupModal(kBookmarksTitle, &showBookmarks_, DialogFlags())) {
 		return;
 	}
 	if (vfs_ == 0) {
@@ -244,8 +242,7 @@ void SettingsUi::BuildBookmarkRemoveWindow(Settings *settings) {
 
 	CenterNextWindow(placeCond());
 	if (!ImGui::BeginPopupModal(kBmRemoveTitle, NULL,
-	                            ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
-	                                ImGuiWindowFlags_AlwaysAutoResize)) {
+	                            DialogFlags() | ImGuiWindowFlags_AlwaysAutoResize)) {
 		return;
 	}
 
@@ -294,8 +291,7 @@ void SettingsUi::BuildBookmarkToggleWindow(Settings *settings, Filer *filer) {
 
 	CenterNextWindow(placeCond());
 	if (!ImGui::BeginPopupModal(kBmToggleTitle, NULL,
-	                            ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
-	                                ImGuiWindowFlags_AlwaysAutoResize)) {
+	                            DialogFlags() | ImGuiWindowFlags_AlwaysAutoResize)) {
 		return;
 	}
 

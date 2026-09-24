@@ -376,6 +376,7 @@ SettingsUi::SettingsUi()
       settingsClosed_(false),
       hasJapaneseFont_(false),
       styleScale_(0.0f),
+      styleDisplayH_(0.0f),
       touchUi_(false),
       touchMinPx_(0.0f),
       touchFontPx_(0.0f),
@@ -401,6 +402,7 @@ SettingsUi::SettingsUi()
       ctxAnimFrom_(-1),
       ctxAnimForward_(true),
       ctxAnimStartMs_(0),
+      ctxNoShortcut_(false),
       request_(kRequestNone),
       showAbout_(false),
       dragScroll_(false),
@@ -646,9 +648,18 @@ bool SettingsUi::wantCaptureKeyboard() const {
 //   ・一覧の行 (Selectable) の当たり判定 = 字の高さ + ItemSpacing.y
 //     （ImGui は行同士に隙間ができないよう、Selectable の箱を ItemSpacing.y の
 //     半分ずつ上下へ広げる。だから ItemSpacing.y を足すとそのまま行が太くなる）
-bool SettingsUi::ApplyScale(float scale, bool touch) {
-	if (scale == styleScale_ && touch == touchUi_) return false;
+//
+// 画面の縦が kTouchRowsMin 行ぶんに満たないときは、6mm を諦めて行を
+// 「画面の高さ ÷ kTouchRowsMin」まで詰め、字も kTouchFontRowRatio で
+// 頭打ちにする。メニューもダイアログも同じ物差しで縮むので、個別の手当ては
+// 要らない。
+bool SettingsUi::ApplyScale(float scale, bool touch, float displayH) {
+	// 画面の高さを見るのは指で操作するときだけ（パソコンで窓の大きさを
+	// 変えるたびに作り直さないように）。
+	const float h = touch ? displayH : 0.0f;
+	if (scale == styleScale_ && touch == touchUi_ && h == styleDisplayH_) return false;
 	styleScale_ = scale;
+	styleDisplayH_ = h;
 	touchUi_ = touch;
 
 	touchMinPx_ = 0.0f;
@@ -663,6 +674,11 @@ bool SettingsUi::ApplyScale(float scale, bool touch) {
 		// ImGui は実ピクセルで描くので、mm から出した値はそのまま使える。
 		touchMinPx_ = kTouchTargetMm * Screen::PixelsPerMm();
 		touchFontPx_ = kTouchFontMm * Screen::PixelsPerMm();
+		// 縦が足りない画面では行を詰める。
+		if (h > 0.0f && touchMinPx_ * kTouchRowsMin > h) touchMinPx_ = h / kTouchRowsMin;
+		if (touchFontPx_ > touchMinPx_ * kTouchFontRowRatio) {
+			touchFontPx_ = touchMinPx_ * kTouchFontRowRatio;
+		}
 		if (touchFontPx_ > kFontSizePx * fontScale) fontScale = touchFontPx_ / kFontSizePx;
 	}
 
@@ -709,6 +725,13 @@ ImVec2 SettingsUi::DialogSize(float w, float h) const {
 		s.y = io.DisplaySize.y;
 	}
 	return s;
+}
+
+ImGuiWindowFlags SettingsUi::DialogFlags() const {
+	ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
+	                         ImGuiWindowFlags_NoResize;
+	if (touchUi_) flags |= ImGuiWindowFlags_NoMove;
+	return flags;
 }
 
 // ---------------------------------------------------------------------------
@@ -763,7 +786,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	// ときだけ作り直す）。
 	bool touch = (settings->touchUi == Settings::kTouchOn);
 	if (settings->touchUi == Settings::kTouchAuto) touch = Screen::TouchPreferred();
-	const bool scaleChanged = ApplyScale(scale, touch);
+	const bool scaleChanged = ApplyScale(scale, touch, ImGui::GetIO().DisplaySize.y);
 	// 表示サイズが変わったフレーム（回転・リサイズ）は、開いている
 	// ダイアログを置き直す（placeCond）。
 	{

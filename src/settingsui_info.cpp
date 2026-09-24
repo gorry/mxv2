@@ -79,9 +79,7 @@ void SettingsUi::BuildStartupWindow() {
 	CenterNextWindow(placeCond());
 	ImGui::SetNextWindowSize(DialogSize(520.0f, 280.0f), placeCond());
 
-	if (!ImGui::BeginPopupModal(kStartupTitle, &showStartup_,
-	                            ImGuiWindowFlags_NoCollapse |
-	                                ImGuiWindowFlags_NoSavedSettings)) {
+	if (!ImGui::BeginPopupModal(kStartupTitle, &showStartup_, DialogFlags())) {
 		return;
 	}
 
@@ -154,9 +152,7 @@ void SettingsUi::BuildHelpWindow() {
 	CenterNextWindow(placeCond());
 	ImGui::SetNextWindowSize(DialogSize(560.0f, 460.0f), placeCond());
 
-	if (ImGui::BeginPopupModal(kHelpTitle, &showHelp_,
-	                           ImGuiWindowFlags_NoCollapse |
-	                               ImGuiWindowFlags_NoSavedSettings)) {
+	if (ImGui::BeginPopupModal(kHelpTitle, &showHelp_, DialogFlags())) {
 		ImGui::BeginChild("##help", ImVec2(0, 0), ImGuiChildFlags_None, ImGuiWindowFlags_None);
 
 		// キー名の桁を揃えて 2 段組で出す。空白で揃えないのは、同梱フォントが
@@ -235,10 +231,10 @@ void SettingsUi::BuildAboutWindow() {
 		// 480px なので、既定の 560px はそのままでは入らない。
 		CenterNextWindow(placeCond());
 		ImGui::SetNextWindowSize(DialogSize(560.0f, 420.0f), placeCond());
-		if (ImGui::BeginPopupModal(kAboutTitle, &showAbout_,
-		                           ImGuiWindowFlags_NoCollapse |
-		                               ImGuiWindowFlags_NoSavedSettings)) {
-			ImGui::TextUnformatted(aboutHeader_.c_str());
+		if (ImGui::BeginPopupModal(kAboutTitle, &showAbout_, DialogFlags())) {
+			// 見出し（名前・版・著作権の 2 行）は折り返す。320px 幅の携帯
+			// (XS17) の縦画面で右が切れていた（2026-09-24、ユーザーの指示）。
+			TextWrappedKinsoku(aboutHeader_.c_str());
 			// GitHub のページと、そこにある NOTICE をブラウザで開く。
 			if (ImGui::Button(Msg("About.OpenGitHub"))) OpenUrl(kProjectUrl);
 			SameLineOrWrap(Msg("About.OpenNotice"));

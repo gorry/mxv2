@@ -73,6 +73,7 @@ bool SettingsUi::CtxPageItem(const char *label, bool back) {
 
 bool SettingsUi::CtxMenuItem(const char *label, const char *shortcut, bool selected,
                              bool enabled) {
+	if (ctxNoShortcut_) shortcut = NULL;
 	if (!ImGui::MenuItem(label, shortcut, selected, enabled)) return false;
 	// ImGui の自動クローズは「自分がポップアップであるとき」だけ効く
 	// （Selectable の window->Flags & ImGuiWindowFlags_Popup）。ページの
@@ -316,6 +317,25 @@ void SettingsUi::BuildContextMenuItems(Settings *settings, DrawScreen *draw, Pla
 		ImGui::PopStyleVar();
 	}
 
+	// 短縮キーの列ごと画面の横に入りきらないページがあれば、列を外して
+	// 測り直す（ctxNoShortcut_）。ImGui はポップアップを画面の幅で
+	// 切り詰めるので、放っておくと右端の短縮キーが途中で切れる。測った幅は
+	// 切り詰める前の中身の幅なので、ここで比べられる。
+	if (!ctxNoShortcut_) {
+		const ImGuiStyle &style = ImGui::GetStyle();
+		const float availW = ImGui::GetIO().DisplaySize.x - style.DisplaySafeAreaPadding.x * 2.0f -
+		                     style.WindowPadding.x * 2.0f;
+		for (int i = 0; i < kCtxPageCount; i++) {
+			if (ctxPageSize_[i].x > availW) {
+				ctxNoShortcut_ = true;
+				// 列幅を決め直すので、決まるまでまた隠す。
+				for (int j = 0; j < kCtxPageCount; j++) ctxChildWarm_[j] = false;
+				popup->HiddenFramesCannotSkipItems = 1;
+				break;
+			}
+		}
+	}
+
 	// ポップアップの大きさを申告する。子が進めたぶんは捨てる。
 	popup->DC.CursorMaxPos = savedMax;
 	popup->DC.IdealMaxPos = savedIdeal;
@@ -323,7 +343,8 @@ void SettingsUi::BuildContextMenuItems(Settings *settings, DrawScreen *draw, Pla
 	ImGui::Dummy(size);
 }
 
-// 長押しの代わり。項目名が短いので横幅の下限 480px でも右に収まる。
+// 長押しの代わり。横幅 480px 程度までは短縮キーの列ごと収まる。それより
+// 狭い画面では列を外す（ctxNoShortcut_）。縦は ApplyScale が行を詰めて収める。
 void SettingsUi::BuildContextMenu(Settings *settings, DrawScreen *draw, Player *player,
                                   Filer *filer) {
 	// バナーを押したときはこちらから開ける（右クリックできない環境向け）。
@@ -340,6 +361,8 @@ void SettingsUi::BuildContextMenu(Settings *settings, DrawScreen *draw, Player *
 		ctxAnimFrom_ = -1;
 		// 子ウィンドウはポップアップと一緒に出直すので、列幅も決め直し。
 		for (int i = 0; i < kCtxPageCount; i++) ctxChildWarm_[i] = false;
+		// 短縮キーの列を出すかも開くたびに決め直す（回転で幅が変わる）。
+		ctxNoShortcut_ = false;
 	}
 
 	// どのウィンドウにも属さない場所での右クリック用の API を使う。
@@ -393,8 +416,7 @@ void SettingsUi::BuildQuitWindow() {
 
 	CenterNextWindow(placeCond());
 	if (!ImGui::BeginPopupModal(kQuitTitle, NULL,
-	                            ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
-	                                ImGuiWindowFlags_AlwaysAutoResize)) {
+	                            DialogFlags() | ImGuiWindowFlags_AlwaysAutoResize)) {
 		return;
 	}
 

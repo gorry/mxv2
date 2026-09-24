@@ -30,9 +30,7 @@ void SettingsUi::BuildPdxPathsWindow(Settings *settings, Filer *filer) {
 	CenterNextWindow(placeCond());
 	ImGui::SetNextWindowSize(DialogSize(460.0f, 360.0f), placeCond());
 
-	if (!ImGui::BeginPopupModal(kPdxPathsTitle, &showPdxPaths_,
-	                            ImGuiWindowFlags_NoCollapse |
-	                                ImGuiWindowFlags_NoSavedSettings)) {
+	if (!ImGui::BeginPopupModal(kPdxPathsTitle, &showPdxPaths_, DialogFlags())) {
 		return;
 	}
 	if (vfs_ == 0) {
@@ -135,8 +133,7 @@ void SettingsUi::BuildPdxRemoveWindow(Settings *settings) {
 
 	CenterNextWindow(placeCond());
 	if (!ImGui::BeginPopupModal(kPdxRemoveTitle, NULL,
-	                            ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
-	                                ImGuiWindowFlags_AlwaysAutoResize)) {
+	                            DialogFlags() | ImGuiWindowFlags_AlwaysAutoResize)) {
 		return;
 	}
 

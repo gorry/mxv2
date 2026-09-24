@@ -355,9 +355,10 @@ public:
 	bool hasJapaneseFont() const { return hasJapaneseFont_; }
 
 private:
-	// 倍率か「指で操作する」が変わったら true（ダイアログの大きさも
-	// 作り直すため）。
-	bool ApplyScale(float scale, bool touch);
+	// 倍率か「指で操作する」か画面の高さが変わったら true（ダイアログの
+	// 大きさも作り直すため）。画面の高さは行の高さを詰めるかどうかに使う
+	// （kTouchRowsMin）。
+	bool ApplyScale(float scale, bool touch, float displayH);
 	// [mxv2 の設定] の本体 (settingsui_settings.cpp)。Build() がフレームの
 	// 支度とダイアログの呼び出しを済ませてから呼ぶ。
 	void BuildSettingsWindow(Settings *settings, DrawScreen *draw, Player *player, Filer *filer,
@@ -367,7 +368,8 @@ private:
 	void ApplyZoomStep(Settings *settings);
 
 	// ダイアログを出す位置と大きさに使う ImGuiCond。ふつうは Appearing
-	// （開いたときだけ中央に出し、あとは掴んで動かせる）。倍率が変わった
+	// （開いたときだけ中央に出し、あとは掴んで動かせる。動かせるのはパソコン
+	// だけ——DialogFlags）。倍率が変わった
 	// フレームと**表示サイズが変わったフレーム（画面の回転・窓のリサイズ）**
 	// だけ Always にして、開いているダイアログを矩形ごと置き直す。
 	// ImGui はウィンドウの矩形をピクセルで覚えているので、放っておくと
@@ -381,6 +383,13 @@ private:
 	// 表示倍率と「指で操作する」ぶんを掛けてから画面に収まるまで詰める。
 	// h に 0 を渡すと高さは中身任せ（AlwaysAutoResize と組で使う）。
 	ImVec2 DialogSize(float w, float h) const;
+	// ダイアログ（BeginPopupModal）に渡す共通のフラグ。**すべてのダイアログが
+	// これを使うこと**（個別に足したいフラグは | で足す）。
+	// リサイズはどの環境でも無効。指で操作するとき（touchUi_）は移動も無効
+	// （2026-09-24、ユーザーの指示）。パソコンは移動だけ残す——[配色設定] で
+	// 色を詰めるとき、ダイアログをどかして元の画面と見比べるため
+	// （ModalWindowDimBg を透明にしてあるのも同じ理由）。
+	ImGuiWindowFlags DialogFlags() const;
 	// 画面を作り直す。ステータス欄は変化があったときしか描かないので、
 	// 作り直したあとは Player に積み直しを頼む。
 	void Rebuild(DrawScreen *draw, Player *player);
@@ -400,16 +409,19 @@ private:
 	// 終了まで持つ（FontDataOwnedByAtlas=false で 2 つの源に渡している）。
 	std::vector<uint8_t> fontData_;
 	float styleScale_;
+	float styleDisplayH_;  // ApplyScale が見た画面の高さ（実ピクセル）
 	ImGuiStyle baseStyle_;
 
 	// 指で操作する端末向けの余白。押せるところの高さが
 	// kTouchTargetMm を下回らないように FramePadding.y と ItemSpacing.y を
 	// 広げる（ApplyScale）。字は kTouchFontMm を下限にするだけ。
+	// 画面の縦が足りない端末では、どちらも kTouchRowsMin に合わせて詰める。
 	bool touchUi_;
 	// 押せるところの高さの下限（実ピクセル）。touchUi_ でなければ 0。
 	float touchMinPx_;
 	// そのときの字の大きさの下限（実ピクセル）。kTouchFontMm から出す。
-	// 行の高さとは切り離してあるので、touchMinPx_ とは連動しない。
+	// 行の高さとは切り離してあるので、touchMinPx_ とは連動しない
+	// （行を詰めたときに kTouchFontRowRatio で頭打ちにするだけ）。
 	float touchFontPx_;
 	// 行が太くなったぶん、ダイアログも広げる倍率。ふつうは 1 倍。
 	float dialogGrow_;
@@ -726,6 +738,12 @@ private:
 	// 決まるまではポップアップごと隠す（ポップアップ自身が最初のフレームで
 	// やっているのと同じ）。
 	bool ctxChildWarm_[kCtxPageCount];
+	// 短縮キーの列を出さない。どれかのページが画面の横に入りきらないと
+	// 分かったら立て、メニューを閉じるまで保つ（毎フレーム決め直すと、
+	// 列を消して幅が縮んだ途端に「入る」に戻ってちらつく）。指で操作する
+	// 端末はキーボードが無いことが多いので、消しても失うものは少ない
+	// （2026-09-24、320px 幅の XS17 で "Shift+M" が切れていた）。
+	bool ctxNoShortcut_;
 	// ページへ入る / 戻る項目。サブメニューの見出しと同じ見た目（右端に ▶、
 	// 戻るは ◀）で、押してもポップアップを閉じない。押されたら true。
 	bool CtxPageItem(const char *label, bool back);

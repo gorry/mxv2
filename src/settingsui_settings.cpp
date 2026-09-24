@@ -161,16 +161,15 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 	// 他のダイアログも操作できない。
 	if (!SyncModal(kSettingsTitle, &visible_)) return;
 
-	// 開くたびに画面の中央から出す。出したあとは掴んで動かせる。倍率や
-	// 表示サイズが変わったフレームだけは矩形ごと作り直す（placeCond）。
+	// 開くたびに画面の中央から出す。出したあとは掴んで動かせる（パソコンのみ。
+	// DialogFlags）。倍率や表示サイズが変わったフレームだけは矩形ごと
+	// 作り直す（placeCond）。
 	CenterNextWindow(placeCond());
 	ImGui::SetNextWindowSize(DialogSize(380, 464), placeCond());
 
 	// p_open に visible_ をそのまま渡す。× で閉じられたときは ImGui が
 	// false にして閉じてくれるし、F1 で false にした場合も同じ経路で閉じる。
-	if (!ImGui::BeginPopupModal(kSettingsTitle, &visible_,
-	                            ImGuiWindowFlags_NoCollapse |
-	                                ImGuiWindowFlags_NoSavedSettings)) {
+	if (!ImGui::BeginPopupModal(kSettingsTitle, &visible_, DialogFlags())) {
 		return;
 	}
 
@@ -340,7 +339,9 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 			// いま効いているか。自動のときに端末をどう見ているかが分かる。
 			if (touchUi_) {
 				const float mmPerPx = 1.0f / Screen::PixelsPerMm();
-				TextNote(MsgF("Settings.TouchNow", MsgNum("%.1f", kTouchTargetMm),
+				// 行の高さは実際の値を出す（縦の短い画面では kTouchTargetMm より
+				// 詰めているため。ApplyScale）。
+				TextNote(MsgF("Settings.TouchNow", MsgNum("%.1f", touchMinPx_ * mmPerPx),
 				              MsgNum("%d", (int)(touchMinPx_ + 0.5f)),
 				              MsgNum("%.1f", touchFontPx_ * mmPerPx))
 				             .c_str());
