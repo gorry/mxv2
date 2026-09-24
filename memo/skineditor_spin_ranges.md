@@ -33,8 +33,8 @@ Min=-99999 / Max=99999 の決め打ち**になっている（でたらめ）。c
 |---|---|---|---:|---:|---|---|---|
 | Screen.Width | 幅 | 単一 | -99999 | 99999 | 1 | 9999 | |
 | Screen.Height | 高さ | 単一 | -99999 | 99999 | 1 | 9999 | |
-| back.bitmapBright | ビットマップの濃さ（配色） | 単一 | 0 | 100 | | | |
-| back.colorBright | 色の濃さ（配色） | 単一 | 0 | 100 | | | |
+| back.bitmapBright | 画像の明るさ（配色） | 単一 | 0 | 100 | | | |
+| back.colorBright | 背景色不透明度（配色） | 単一 | 0 | 100 | | | |
 
 ## [鍵盤] タブ
 
@@ -79,8 +79,8 @@ Min=-99999 / Max=99999 の決め打ち**になっている（でたらめ）。c
 | Status.PosOPMAlgorythm 〜 PosOPMAMSEnable | 音色 / 音色 2 | （各項目名） | (x,y) | | | -9999 | 9999 | 同上。他の Pos と同じ |
 | Status.PosOPMNoise 〜 PosOPMLFOWAVE | 音色 (PCM段) | NOISE 〜 WAVE | (x,y) | | | -9999 | 9999 | 同上 |
 | Status.PcmX / Status.PcmY | PCM | PCM の位置（PCM 1ch〜8ch、各 x,y） | 8行×(x,y) | -99999 | 99999 | -9999 | 9999 | |
-| status.colorBright | (なし) | 文字色の濃さ（配色） | 単一 | 0 | 100 | | | |
-| status.backColorBright | (なし) | 背景色の濃さ（配色） | 単一 | 0 | 100 | | | |
+| status.colorBright | (なし) | 文字の不透明度（配色） | 単一 | 0 | 100 | | | |
+| status.backColorBright | (なし) | 背景の不透明度（配色） | 単一 | 0 | 100 | | | |
 
 ## [ミニフォント] タブ
 
@@ -95,8 +95,8 @@ Min=-99999 / Max=99999 の決め打ち**になっている（でたらめ）。c
 |---|---|---|---:|---:|---|---|---|
 | RegMap.Rect | 矩形 | (x,y,w,h) | -9999 | 9999 | | | w:1-9999, h:1-9999 |
 | RegMap.Pos | 文字の位置 | (x,y) | -9999 | 9999 | | | 矩形の左上からの相対 |
-| regMap.colorBright | 文字色の濃さ（配色） | 単一 | 0 | 100 | | | |
-| regMap.backColorBright | 背景色の濃さ（配色） | 単一 | 0 | 100 | | | |
+| regMap.colorBright | 文字の不透明度（配色） | 単一 | 0 | 100 | | | |
+| regMap.backColorBright | 背景の不透明度（配色） | 単一 | 0 | 100 | | | |
 
 ## [バナー] タブ
 
@@ -110,8 +110,8 @@ Min=-99999 / Max=99999 の決め打ち**になっている（でたらめ）。c
 |---|---|---|---:|---:|---|---|---|
 | Title.Rect | 矩形 | (x,y,w,h) | -99999 | 99999 | -9999 | 9999 | w:1-9999, h:1-9999 |
 | Title.ScrollSpeed | スクロール速度 (%) | 単一 | | | 1 | 1000 | 100 = 文字の高さ × 40/24 px/秒 |
-| mdxTitle.colorBright | 文字色の濃さ（配色） | 単一 | 0 | 100 | | | |
-| mdxTitle.backColorBright | 背景色の濃さ（配色） | 単一 | 0 | 100 | | | |
+| mdxTitle.colorBright | 文字の不透明度（配色） | 単一 | 0 | 100 | | | |
+| mdxTitle.backColorBright | 背景の不透明度（配色） | 単一 | 0 | 100 | | | |
 
 ## [ファイラー] タブ
 
@@ -125,9 +125,9 @@ Min=-99999 / Max=99999 の決め打ち**になっている（でたらめ）。c
 | FileList.TitleX | 曲名開始X（小,大） | (小,大) | -99999 | 99999 | 0 | 9999 |
 | FileList.TitleWidth | 曲名幅（小,大） | (小,大) | -99999 | 99999 | 1 | 9999 |
 | FileList.ScrollSpeed | 曲名スクロール速度 (%) | 単一 | | | 1 | 1000 | 式は曲名欄と同じ。小大の別なし |
-| filer.cursorColorBright | カーソルの効き具合（配色） | 単一 | 0 | 100 | | |
-| filer.colorBright | 文字色の濃さ（配色） | 単一 | 0 | 100 | | |
-| filer.backColorBright | 背景色の濃さ（配色） | 単一 | 0 | 100 | | |
+| filer.cursorColorBright | カーソル不透明度（配色） | 単一 | 0 | 100 | | |
+| filer.colorBright | 文字の不透明度（配色） | 単一 | 0 | 100 | | |
+| filer.backColorBright | 背景の不透明度（配色） | 単一 | 0 | 100 | | |
 
 ## [スクロールバー] タブ
 
@@ -198,7 +198,7 @@ Min=-99999 / Max=99999 の決め打ち**になっている（でたらめ）。c
 | PlayKey.PalGreen | パレット | LED: 緑 | 単一 | -99999 | 99999 | 0 | 255 | |
 | PlayKey.PalYellow | パレット | LED: 黄 | 単一 | -99999 | 99999 | 0 | 255 | |
 | PlayKey.PalBlue | パレット | LED: 青 | 単一 | -99999 | 99999 | 0 | 255 | |
-| playKey.colorBright | (なし) | 文字色の濃さ（配色） | 単一 | 0 | 100 | | | |
+| playKey.colorBright | (なし) | 文字の不透明度（配色） | 単一 | 0 | 100 | | | |
 | playKey.keyBright | (なし) | ボタンの明るさ（配色） | 単一 | 0 | 200 | | | |
 
 ---
