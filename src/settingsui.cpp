@@ -117,6 +117,7 @@ const char *kStartupTitle;
 const char *kAddFsTitle;
 const char *kQuitTitle;
 const char *kHandedTitle;
+const char *kUpdateTitle;
 
 // 題名を作る。id 付きのものは文字列を静的に持ってから返す。
 const char *TitleWithId(const char *key, const char *id) {
@@ -151,6 +152,7 @@ void InitTitles() {
 	kAddFsTitle = Msg("Dialog.AddFs");
 	kQuitTitle = Msg("Dialog.Quit");
 	kHandedTitle = Msg("Dialog.Handed");
+	kUpdateTitle = Msg("Dialog.Update");
 }
 
 // 言語を入れ替えたあと、題名を新しいカタログから取り直す。古いほうの番地は
@@ -159,6 +161,15 @@ void InitTitles() {
 void ResetTitles() {
 	kSettingsTitle = 0;
 	InitTitles();
+}
+
+// 既定のブラウザで url を開く。SDL_OpenURL は Windows でも Android でも効く。
+// バージョン情報と更新の知らせで使う（settingsui_info.cpp から移した）。
+void OpenUrl(const char *url) {
+	if (SDL_OpenURL(url) != 0) {
+		printf("warning  : %s\n", MsgF("Log.OpenUrlFailed", url, SDL_GetError()).c_str());
+		fflush(stdout);
+	}
 }
 
 // 文言に ImGui の id を足した名札。同じ文言を 1 つの画面で何度も使うため。
@@ -434,6 +445,14 @@ SettingsUi::SettingsUi()
       quitAsk_(false),
       quitOpen_(false),
       quitClose_(false),
+      updateAvailable_(false),
+      updateRunning_(false),
+      updateCheckNow_(false),
+      updatePending_(false),
+      updateAsk_(false),
+      updateOpen_(false),
+      updateClose_(false),
+      updateNested_(false),
       bmCloseToggle_(false),
       fsSelected_(0),
       fsRemoveRevoke_(true),
@@ -889,6 +908,9 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	BuildHandedWindow(filer);
 	BuildStartupWindow();
 	BuildHelpWindow();
+	// 更新の知らせ。入れ子で開いたものは [mxv2 の設定] の中で組む。
+	ScheduleUpdateWindow();
+	if (!updateNested_) BuildUpdateWindow();
 	if (folderReturnToSettings_ && !showFolder_ && !folderOpenPending_ &&
 	    !ImGui::IsPopupOpen(folderTitle())) {
 		folderReturnToSettings_ = false;

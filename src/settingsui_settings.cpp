@@ -575,6 +575,13 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 		GroupTrailingSpace();
 	}
 
+	// ---- 通信 ----------------------------------------------------------
+	// 更新チェック（settingsui_update.cpp）。使えない環境では出さない。
+	BuildNetworkGroup(settings);
+
+	// [今すぐ更新チェックを行う] の結果は、開いたままならこの中に重ねて出す。
+	if (updateNested_) BuildUpdateWindow();
+
 	// 保存ボタンは無い。触った時点で mxv2.ini へ書き戻す（スマートフォンでの
 	// 作法に合わせてある。デスクトップでも不自然ではないという判断）。
 	ImGui::PopItemWidth();

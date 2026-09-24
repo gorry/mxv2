@@ -33,14 +33,6 @@ namespace {
 const char *kNoticeUrl = MXV2_URL_NOTICE;
 const char *kProjectUrl = MXV2_URL_PROJECT;
 
-// 既定のブラウザで url を開く。SDL_OpenURL は Windows でも Android でも効く。
-void OpenUrl(const char *url) {
-	if (SDL_OpenURL(url) != 0) {
-		printf("warning  : %s\n", MsgF("Log.OpenUrlFailed", url, SDL_GetError()).c_str());
-		fflush(stdout);
-	}
-}
-
 // バージョン情報の字の大きさを決める物差し。NOTICE は等幅 80 桁で書いて
 // あるので、余裕をみた 88 桁ぶんが横に収まるようにする。
 const char kAboutRuler88[] =

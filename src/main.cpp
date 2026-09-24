@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <string>
 #include <vector>
 
@@ -20,6 +21,7 @@
 #include "androidassets.h"
 #endif
 
+#include "appprofile.h"  // CMake が Profile.ini から生成する
 #include "assetpath.h"
 #include "drawscreen.h"
 #include "fileutil.h"
@@ -35,6 +37,7 @@
 #include "settings.h"
 #include "singleinstance.h"
 #include "tutorial.h"
+#include "updatecheck.h"
 #include "settingsui.h"
 #include "skin.h"
 #include "songloader.h"
@@ -59,6 +62,29 @@ const uint32_t kSettingsSaveDelayMs = 400;
 // 装置とデコードスレッドが進めるので、ここでやるのは曲送りと通知の更新だけ。
 // 曲の終わりに気付くのがこの間隔ぶん遅れうるので、あまり長くはしない。
 const int kBackgroundTickMs = 100;
+
+// 更新チェックの間隔（秒）。確かめ始めるたびに次をこれだけ先へ送る
+// （成功・失敗を問わない。2026-09-24、ユーザーの指示）。
+const long long kUpdateIntervalSec = 24 * 60 * 60;
+
+// 更新チェックの結果をログへ出す。失敗は画面には出さない（[今すぐ…] を
+// 除く）ので、ここが唯一の手掛かりになる。
+void LogUpdateResult(const mxv2::UpdateResult &r) {
+	switch (r.status) {
+		case mxv2::UpdateResult::kNewer:
+			printf("update   : %s\n",
+			       mxv2::MsgF("Log.UpdateNewer", r.latest, MXV2_APP_VERSION).c_str());
+			break;
+		case mxv2::UpdateResult::kLatest:
+			printf("update   : %s\n",
+			       mxv2::MsgF("Log.UpdateLatest", r.latest, MXV2_APP_VERSION).c_str());
+			break;
+		default:
+			printf("update   : %s\n", mxv2::MsgF("Log.UpdateFailed", r.error).c_str());
+			break;
+	}
+	fflush(stdout);
+}
 
 // 外から渡されたもの（ドラッグ＆ドロップ / 2 つめの mxv2）を開く。
 //
@@ -739,6 +765,14 @@ int main(int argc, char **argv) {
 	// 手で選んだ曲が終わったところで終わる）。
 	const bool quitWhenDone = opt.quitOnEnd;
 
+	// 更新チェック（updatecheck.h）。使えない環境（HTTP が無い・公開場所が
+	// GitHub でない）では何もしない。見せる結果は、チュートリアルが済むまで
+	// 預かる（[今すぐ…] の結果は除く）。
+	const bool updateAvailable = mxv2::UpdateChecker::Available();
+	mxv2::UpdateChecker updateChecker;
+	mxv2::UpdateResult pendingUpdate;
+	bool havePendingUpdate = false;
+
 	// ドラッグ＆ドロップ。SDL は落とされたもの 1 つにつき 1 イベント送って
 	// くるので、まとめて落とされたときは最初の 1 つだけを覚えておき、
 	// 一区切り (DROPCOMPLETE) してから開く。
@@ -1195,6 +1229,7 @@ int main(int argc, char **argv) {
 		unsigned newDirt = CollectDirtyFields(&settings, &draw, &player, &filer, &screen, autoNext,
 		                                       autoRepeat);
 		ui.SetOrientationState(orientEnabled, orientNow);
+		ui.SetUpdateCheckState(updateAvailable, updateChecker.running());
 		ui.Build(&settings, &draw, &player, &filer, &screen);
 
 		// チュートリアル（tutorial.md）。ImGui のフレームの中で、ダイアログの
@@ -1255,6 +1290,37 @@ int main(int argc, char **argv) {
 				}
 			}
 		}
+		// 更新チェック。1 日 1 回、**普通に使える状態になってから**（起動時の
+		// 警告とチュートリアルが済んでから）作業スレッドで確かめる。
+		// [今すぐ更新チェックを行う] は間隔も ON/OFF も見ずに始める。
+		// 始めた時点で次を 24 時間後へ送る（途中で終了しても同じ日に
+		// 何度も確かめないように）。結果は Poll で拾い、新しい版があるとき
+		// （と [今すぐ…] の結果）だけ画面に出す。
+		if (updateAvailable) {
+			const long long now = (long long)time(0);
+			const bool manual = ui.TakeUpdateCheckNow();
+			const bool ready = !tutorialPending && !tutorial.active();
+			if (!updateChecker.running() &&
+			    (manual || (ready && settings.updateCheck && now >= settings.nextUpdateCheck))) {
+				if (updateChecker.Start(manual)) {
+					settings.nextUpdateCheck = now + kUpdateIntervalSec;
+					newDirt |= mxv2::Settings::kFieldUpdateSchedule;
+				}
+			}
+			mxv2::UpdateResult r;
+			if (updateChecker.Poll(&r)) {
+				LogUpdateResult(r);
+				if (r.status == mxv2::UpdateResult::kNewer || r.manual) {
+					pendingUpdate = r;
+					havePendingUpdate = true;
+				}
+			}
+			if (havePendingUpdate && (!tutorial.active() || pendingUpdate.manual)) {
+				ui.ShowUpdateResult(pendingUpdate);
+				havePendingUpdate = false;
+			}
+		}
+
 		newDirt |= ui.TakeChangedFields();
 		// [ファイルシステムの設定] は Vfs のマウント一覧を直に触るので、
 		// 書き戻す前にそこから拾い直す。

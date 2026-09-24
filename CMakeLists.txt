@@ -167,6 +167,7 @@ set(MXV2_SOURCES
 	src/filer.cpp
 	src/fileutil.cpp
 	src/gamepad.cpp
+	src/httpget.cpp
 	src/ini.cpp
 	src/kinsoku.cpp
 	src/mdxsong.cpp
@@ -188,6 +189,7 @@ set(MXV2_SOURCES
 	src/settingsui_folder.cpp
 	src/settingsui_menu.cpp
 	src/settingsui_info.cpp
+	src/settingsui_update.cpp
 	src/singleinstance.cpp
 	src/skin.cpp
 	src/songloader.cpp
@@ -196,6 +198,7 @@ set(MXV2_SOURCES
 	src/textlayer.cpp
 	src/textrender.cpp
 	src/tutorial.cpp
+	src/updatecheck.cpp
 	src/vfs.cpp
 	src/visualizer.cpp
 	src/appsetup.h
@@ -213,6 +216,7 @@ set(MXV2_SOURCES
 	src/filer.h
 	src/fileutil.h
 	src/gamepad.h
+	src/httpget.h
 	src/ini.h
 	src/kinsoku.h
 	src/mdxsong.h
@@ -236,6 +240,7 @@ set(MXV2_SOURCES
 	src/textlayer.h
 	src/textrender.h
 	src/tutorial.h
+	src/updatecheck.h
 	src/vfs.h
 	src/visualizer.h
 )
@@ -338,6 +343,8 @@ target_link_libraries(mxv2 PRIVATE portable_mdx sdl2 imgui)
 if(WIN32)
 	# OS の「フォルダを探す」ダイアログ (IFileOpenDialog)
 	target_link_libraries(mxv2 PRIVATE ole32 shell32)
+	# 更新チェックの HTTPS (src/httpget.cpp)
+	target_link_libraries(mxv2 PRIVATE winhttp)
 endif()
 if(ANDROID)
 	# printf を logcat へ流す (__android_log_write)

@@ -155,6 +155,15 @@ struct Settings {
 	// 最大化を忘れてしまう。
 	bool windowMaximized;
 
+	// [Network] 更新チェック（updatecheck.h）。UpdateCheck が立っていれば
+	// 1 日 1 回、GitHub の最新リリースと今の版を比べる（既定は ON）。
+	// NextUpdateCheck は次に確かめてよい時刻（UNIX 時間の秒。0 なら「まだ
+	// 一度も確かめていない」で、使える状態になりしだい確かめる）。
+	// 確かめ始めるたびに 24 時間後へ送る（成功・失敗を問わない）。
+	// 2026-09-24、ユーザーの指示。
+	bool updateCheck;
+	long long nextUpdateCheck;
+
 	// [Tutorial] Done。初回起動のチュートリアルを見終えた（またはスキップ
 	// した）。無ければ次の起動で出す（tutorial.md）。
 	bool tutorialDone;
@@ -187,6 +196,8 @@ struct Settings {
 		kFieldOrientMode = 1 << 20,
 		kFieldTutorial = 1 << 21,
 		kFieldFullScreen = 1 << 22,
+		kFieldUpdateCheck = 1 << 23,     // [Network] UpdateCheck
+		kFieldUpdateSchedule = 1 << 24,  // [Network] NextUpdateCheck
 	};
 
 	Settings();

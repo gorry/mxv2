@@ -86,6 +86,7 @@ extern const char *kStartupTitle;
 extern const char *kAddFsTitle;
 extern const char *kQuitTitle;
 extern const char *kHandedTitle;
+extern const char *kUpdateTitle;
 
 // 題名を作る（1 度だけ）／言語を替えたあとに取り直す。
 void InitTitles();
@@ -115,6 +116,8 @@ void GroupTrailingSpace();
 void CenterNextWindow(ImGuiCond cond);
 // 前後の空白を落とす（入力欄の値）。
 std::string TrimSpaces(const std::string &s);
+// 既定のブラウザで url を開く（開けなければログに出すだけ）。
+void OpenUrl(const char *url);
 
 }  // namespace settingsui
 }  // namespace mxv2

@@ -3,6 +3,7 @@
 #include "settings.h"
 
 #include <cstdio>
+#include <cstdlib>
 
 #include "fileutil.h"
 #include "ini.h"
@@ -75,6 +76,8 @@ Settings::Settings()
       windowH(0),
       windowIconic(false),
       windowMaximized(false),
+      updateCheck(true),
+      nextUpdateCheck(0),
       tutorialDone(false) {
 	// 初回起動のブックマーク（bookmark.md）。ini に [Bookmark] があれば
 	// Load() が置き換える。
@@ -187,6 +190,14 @@ bool Settings::Load(const std::string &path) {
 	windowIconic = ini.GetInt("Position", "Iconic", windowIconic ? 1 : 0) != 0;
 	windowMaximized = ini.GetInt("Position", "Maximized", windowMaximized ? 1 : 0) != 0;
 
+	updateCheck = ini.GetInt("Network", "UpdateCheck", updateCheck ? 1 : 0) != 0;
+	// 時刻は 32 ビットに収まらなくなる日が来るので、文字列で読み書きする。
+	{
+		const std::string v = ini.GetString("Network", "NextUpdateCheck", std::string());
+		if (!v.empty()) nextUpdateCheck = strtoll(v.c_str(), 0, 10);
+		if (nextUpdateCheck < 0) nextUpdateCheck = 0;
+	}
+
 	tutorialDone = ini.GetInt("Tutorial", "Done", tutorialDone ? 1 : 0) != 0;
 
 	if (loops < 1) loops = 1;
@@ -287,6 +298,13 @@ bool Settings::Save(const std::string &path) const {
 	ini.SetInt("Position", "Iconic", windowIconic ? 1 : 0);
 	ini.SetInt("Position", "Maximized", windowMaximized ? 1 : 0);
 
+	ini.SetInt("Network", "UpdateCheck", updateCheck ? 1 : 0);
+	{
+		char buf[32];
+		snprintf(buf, sizeof(buf), "%lld", nextUpdateCheck);
+		ini.SetString("Network", "NextUpdateCheck", buf);
+	}
+
 	ini.SetInt("Tutorial", "Done", tutorialDone ? 1 : 0);
 
 	return ini.Save(path);
@@ -336,6 +354,8 @@ bool Settings::SaveFields(const std::string &path, unsigned fields) const {
 		out.windowMaximized = windowMaximized;
 	}
 	if (fields & kFieldTutorial) out.tutorialDone = tutorialDone;
+	if (fields & kFieldUpdateCheck) out.updateCheck = updateCheck;
+	if (fields & kFieldUpdateSchedule) out.nextUpdateCheck = nextUpdateCheck;
 	return out.Save(path);
 }
 

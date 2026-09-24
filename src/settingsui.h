@@ -25,6 +25,7 @@
 
 #include "assetpath.h"
 #include "message.h"
+#include "updatecheck.h"
 
 namespace mxv2 {
 
@@ -196,6 +197,9 @@ public:
 		if (quitOpen_) { quitClose_ = true; return true; }
 		// 渡された MDX の「どちらで開くか」。閉じたら何も開かない。
 		if (handedOpen_) { handedClose_ = true; return true; }
+		// 更新の知らせ。設定ウィンドウの中に入れ子で開くこともあるので、
+		// 設定ウィンドウより先に閉じる。
+		if (updateOpen_) { updateClose_ = true; return true; }
 		if (showAbout_) { showAbout_ = false; return true; }
 		if (showHelp_) { showHelp_ = false; return true; }
 		// ファイルシステムの追加はその設定ダイアログの中に入れ子で開く。
@@ -301,7 +305,31 @@ public:
 	// 何かしら開いているか（ダイアログ・メニュー・終了の確認）。
 	// チュートリアルは起動時の警告を閉じてから始めるので、その見張りに使う。
 	bool anyDialogOpen() const {
-		return busy() || contextMenuOpen_ || quitOpen_ || handedOpen_;
+		return busy() || contextMenuOpen_ || quitOpen_ || handedOpen_ || updateOpen_;
+	}
+
+	// ---- 更新チェック（updatecheck.h） -------------------------------------
+	// 通信と「いつ確かめるか」は main が持ち、ここは見せるだけ。
+	//
+	// 使える環境か・いま確かめている最中か。main が毎フレーム教える。
+	// 使えない環境では [mxv2 の設定] に [通信] を出さない。
+	void SetUpdateCheckState(bool available, bool running) {
+		updateAvailable_ = available;
+		updateRunning_ = running;
+	}
+	// [今すぐ更新チェックを行う] が押されたか（1 度だけ true）。
+	bool TakeUpdateCheckNow() {
+		const bool v = updateCheckNow_;
+		updateCheckNow_ = false;
+		return v;
+	}
+	// 結果を見せる。見せるのは「新しい版がある」ときと、[今すぐ…] から
+	// 始めたときの結果（最新だった・失敗した）。どれを渡すかは main が決める。
+	// 他のダイアログが開いていれば、閉じるまで預かる。ただし [今すぐ…] の
+	// 結果で [mxv2 の設定] が開いたままなら、その中に重ねて出す。
+	void ShowUpdateResult(const UpdateResult &r) {
+		updateResult_ = r;
+		updatePending_ = true;
 	}
 
 	// 1 フレーム分の UI を組み立てる。設定の変更はその場で反映する。
@@ -697,6 +725,24 @@ private:
 	bool quitAsk_;             // 次のフレームで終了の確認を開く
 	bool quitOpen_;
 	bool quitClose_;
+
+	// 更新チェック（settingsui_update.cpp）。
+	bool updateAvailable_;  // [通信] を出すか
+	bool updateRunning_;    // 確かめている最中（[今すぐ…] を押せなくする）
+	bool updateCheckNow_;   // [今すぐ…] が押された
+	UpdateResult updateResult_;
+	bool updatePending_;    // 見せる結果を預かっている
+	bool updateAsk_;        // 次のフレームで開く
+	bool updateOpen_;
+	bool updateClose_;      // ESC で閉じてほしい
+	// [mxv2 の設定] の中に入れ子で開いたか。ImGui のポップアップの id は
+	// 開いた場所の id スタックで決まるので、開いた場所と同じところで組む。
+	bool updateNested_;
+	// [mxv2 の設定] の [通信] と、結果のダイアログ。
+	void BuildNetworkGroup(Settings *settings);
+	void BuildUpdateWindow();
+	// 預かった結果をどこで開くか決める（Build の頭から毎フレーム）。
+	void ScheduleUpdateWindow();
 	std::string bmToggleRef_;  // Shift+M の確認にかけている場所
 
 	// 起動時の警告。ウィンドウが出る前の printf を持ち越したもの。
