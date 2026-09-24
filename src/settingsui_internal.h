@@ -92,6 +92,8 @@ void ConfirmText(const char *text);
 void ConfirmNote(const char *text);
 // 前の項目の右に label が入るなら SameLine、入らなければ改行。
 void SameLineOrWrap(const char *label);
+// 右にラベルが付く部品の幅を、一番長いラベルが入るところまで詰めて積む。
+void PushLabeledItemWidth(const char *const *keys, int count);
 // 設定ウィンドウの見出し（畳める）と、その末尾の余白。
 bool GroupHeader(const char *label);
 void GroupTrailingSpace();

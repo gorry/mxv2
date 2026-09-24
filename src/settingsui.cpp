@@ -282,6 +282,37 @@ void SameLineOrWrap(const char *label) {
 	if (ImGui::GetItemRectMax().x + style.ItemSpacing.x + need <= right) ImGui::SameLine();
 }
 
+// 右にラベルが付く部品（コンボ・スライダー）の幅を積む。ImGui の既定は
+// ウィンドウ幅の 65% で、ラベルは残りの 35% に置かれ、**入らなければ黙って
+// 切れる**（ImGui はラベルを折り返さない）。指で操作するときの字は mm で
+// 決まるので、何文字入るかは画面の物理的な横幅しだいで、文言を短くする
+// だけでは機種によって切れる（Pixel 7a の縦画面で全角 8 文字が限界。
+// それより狭い機種ではもっと少ない）。
+//
+// そこで、そのダイアログで一番長いラベルが入るところまで部品を細くする。
+// **入らないときだけ効く**（既定の幅より広げはしない）ので、PC の見た目は
+// 変わらない。ただし部品が細くなりすぎると操作できないので、残り幅の
+// kMinItemWidthRatio を下限にする（そこまで詰めても入らないラベルは切れる）。
+// 行ごとに幅を変えると部品の右端がそろわないので、ダイアログ全体で 1 つの
+// 幅にしてある。keys はそのダイアログの部品のラベルのキー（カタログ）。
+// 対になる PopItemWidth() を同じウィンドウの中で呼ぶこと。
+void PushLabeledItemWidth(const char *const *keys, int count) {
+	const float kMinItemWidthRatio = 0.4f;
+
+	float label = 0.0f;
+	for (int i = 0; i < count; i++) {
+		const float w = ImGui::CalcTextSize(Msg(keys[i]), 0, true).x;
+		if (w > label) label = w;
+	}
+	const float avail = ImGui::GetContentRegionAvail().x;
+	float width = avail - ImGui::GetStyle().ItemInnerSpacing.x - label;
+	const float def = ImGui::CalcItemWidth();
+	if (width > def) width = def;
+	const float floor = avail * kMinItemWidthRatio;
+	if (width < floor) width = floor;
+	ImGui::PushItemWidth(width);
+}
+
 // グループの見出し (CollapsingHeader)。**帯を明るくして目立たせる**
 // （2026-09-08、ユーザーの指示）。ImGui の既定は薄い青
 // (ImGuiCol_Header は同じ色の 31% 透過) で、**コンボやスライダなど他の

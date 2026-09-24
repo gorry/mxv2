@@ -174,6 +174,16 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 		return;
 	}
 
+	// コンボ・スライダーのラベルが横で切れないように（PushLabeledItemWidth）。
+	// 部品を足したらここにも足すこと。
+	static const char *const kItemLabels[] = {
+		"Settings.Language",   "Settings.Filter",      "Settings.Touch",
+		"Settings.Skin",       "Settings.SkinPortrait", "Settings.SkinLandscape",
+		"Settings.OrientMode", "Settings.TitleScroll", "Settings.SampleRate",
+		"Settings.Loops",      "Settings.MasterVolume", "Settings.Latency",
+	};
+	PushLabeledItemWidth(kItemLabels, (int)(sizeof(kItemLabels) / sizeof(kItemLabels[0])));
+
 	// ---- 画面 ----------------------------------------------------------
 	// 見出し (CollapsingHeader) は**畳んだ状態から始まる**（ユーザーの指示、
 	// 2026-09-08）。ImGuiTreeNodeFlags_DefaultOpen を付けないだけでよく、
@@ -566,6 +576,7 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 
 	// 保存ボタンは無い。触った時点で mxv2.ini へ書き戻す（スマートフォンでの
 	// 作法に合わせてある。デスクトップでも不自然ではないという判断）。
+	ImGui::PopItemWidth();
 	DragToScroll(&dragScroll_, &dragMoved_, true, false);
 	ImGui::EndPopup();
 }

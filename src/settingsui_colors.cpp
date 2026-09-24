@@ -176,6 +176,15 @@ void SettingsUi::BuildColorsWindow(Settings *settings, DrawScreen *draw, Player 
 		Colors &t = draw->colors();
 		bool dirty = false;
 
+		// スライダーのラベルが横で切れないように（PushLabeledItemWidth）。
+		// 色見本 (ColorEdit3 の NoInputs) は正方形で幅を使わないので入れない。
+		static const char *const kItemLabels[] = {
+			"Colors.ImageGain",    "Colors.BgStrength",   "Colors.BlackKey",
+			"Colors.WhiteKey",     "Colors.PressedKey",   "Colors.TextStrength",
+			"Colors.BackStrength", "Colors.CursorStrength", "Colors.ButtonGain",
+		};
+		PushLabeledItemWidth(kItemLabels, (int)(sizeof(kItemLabels) / sizeof(kItemLabels[0])));
+
 		if (GroupHeader(Msg("Colors.Background"))) {
 			bool useBitmap = (t.back.bitmap != 0);
 			if (ImGui::Checkbox(Msg("Colors.UseImage"), &useBitmap)) {
@@ -244,6 +253,7 @@ void SettingsUi::BuildColorsWindow(Settings *settings, DrawScreen *draw, Player 
 			GroupTrailingSpace();
 		}
 
+		ImGui::PopItemWidth();
 		if (dirty) Rebuild(draw, player);
 
 		BuildOverwriteWindow(settings, draw);
