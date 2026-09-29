@@ -75,7 +75,10 @@ void SettingsUi::RelistFolder(const std::string &dir) {
 			if (!m->available()) continue;
 			if (m->isJumpList()) continue;  // "Bookmarks>" はフォルダではない
 			FolderEntry e;
-			e.name = m->prefix();
+			// 種類 ("SAF>") だけだと、同じ種類が 2 つあるときに見分けが付かない
+			// （SAF のフォルダを 2 つ足したとき。2026-09-30）。[ファイルシステムの
+			// 設定] と同じく名前を添える。
+			e.name = std::string(m->prefix()) + "  " + m->label();
 			e.ref = Vfs::MakeRef(m, m->Root());
 			folderEntries_.push_back(e);
 		}
@@ -240,8 +243,12 @@ void SettingsUi::BuildFolderWindow(Settings *settings, Filer *filer) {
 			picked = true;
 		}
 		for (size_t i = 0; i < folderEntries_.size(); i++) {
-			if (Row::Hit(folderEntries_[i].name.c_str(), folderEntries_[i].ref,
-			             folderSelected_, &entered)) {
+			// 名札が同じ行が 2 つあると ImGui の ID がぶつかり、「2 visible items
+			// with conflicting ID」のエラーが出る（同じ種類のファイルシステムが
+			// 2 つあったとき。2026-09-30、r77）。行の番号で ID を分けておく。
+			char label[600];
+			snprintf(label, sizeof(label), "%s##folder%d", folderEntries_[i].name.c_str(), (int)i);
+			if (Row::Hit(label, folderEntries_[i].ref, folderSelected_, &entered)) {
 				pick = folderEntries_[i].ref;
 				picked = true;
 			}
