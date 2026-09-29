@@ -121,7 +121,7 @@ void SettingsUi::BuildBookmarksWindow(Settings *settings, Filer *filer) {
 	CenterNextWindow(placeCond());
 	ImGui::SetNextWindowSize(DialogSize(460.0f, 360.0f), placeCond());
 
-	if (!ImGui::BeginPopupModal(kBookmarksTitle, &showBookmarks_, DialogFlags())) {
+	if (!BeginDialog(kBookmarksTitle, &showBookmarks_, DialogFlags())) {
 		return;
 	}
 	if (vfs_ == 0) {

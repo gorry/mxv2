@@ -36,7 +36,7 @@ void SettingsUi::BuildFileSystemsWindow(Filer *filer) {
 	CenterNextWindow(placeCond());
 	ImGui::SetNextWindowSize(DialogSize(460.0f, 360.0f), placeCond());
 
-	if (!ImGui::BeginPopupModal(kFileSystemsTitle, &showFileSystems_, DialogFlags())) {
+	if (!BeginDialog(kFileSystemsTitle, &showFileSystems_, DialogFlags())) {
 		return;
 	}
 	if (vfs_ == 0) {

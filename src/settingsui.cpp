@@ -427,6 +427,7 @@ SettingsUi::SettingsUi()
       castSelected_(-1),
       castLastSize_(0.0f, 0.0f),
       castRecenter_(false),
+      castScrollY_(false),
       dragScroll_(false),
       dragMoved_(false),
       showColors_(false),
@@ -766,6 +767,71 @@ ImGuiWindowFlags SettingsUi::DialogFlags() const {
 	                         ImGuiWindowFlags_NoResize;
 	if (touchUi_) flags |= ImGuiWindowFlags_NoMove;
 	return flags;
+}
+
+bool SettingsUi::BeginDialog(const char *title, bool *p_open, ImGuiWindowFlags flags) {
+	if (!touchUi_ || p_open == 0) return ImGui::BeginPopupModal(title, p_open, flags);
+
+	// 指で操作するときは × を題名の帯の**左端**に出す（モバイルの慣習。iOS や
+	// Android の全画面ダイアログと同じ。2026-09-30、ユーザーの指示）。ImGui の ×
+	// は右端に決め打ちなので p_open は渡さず（ImGui の × を出さない）、自分で描く。
+	// 題名は ImGui が帯の左端から描いて × と重なるので、中央寄せにする（題名の
+	// 開始位置だけをずらす手段は ImGui に無い）。寄せ方はこの呼び出しの間だけ
+	// 変えるので、× の無い確認ダイアログの題名は左寄せのまま。
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowTitleAlign,
+	                    ImVec2(0.5f, ImGui::GetStyle().WindowTitleAlign.y));
+	const bool open = ImGui::BeginPopupModal(title, NULL, flags);
+	ImGui::PopStyleVar();
+	if (!open) return false;
+
+	// 当たり判定は帯の左端から帯の高さの 1.5 倍の幅。帯の高さは指で操作するときは
+	// 部品の高さ（touchMinPx_）以上になっているので、縦は足りていて、狭いのは横だけ
+	// （ImGui の × は字の大きさの正方形でしか反応せず、r77 の 480x640 で押しにく
+	// かった）。押した位置と離した位置がどちらも中にあれば閉じる（帯の上での
+	// スクロールのドラッグなどでは閉じない）。上に入れ子のダイアログが開いている
+	// ときは、このダイアログが指の下にないので反応しない。
+	const ImGuiStyle &style = ImGui::GetStyle();
+	const ImGuiIO &io = ImGui::GetIO();
+	const ImVec2 pos = ImGui::GetWindowPos();
+	const float barH = ImGui::GetFrameHeight();
+	const ImVec2 min(pos.x, pos.y);
+	const ImVec2 max(pos.x + barH * 1.5f, pos.y + barH);
+	const ImVec2 pressedAt = io.MouseClickedPos[ImGuiMouseButton_Left];
+	const bool pressedIn =
+	    pressedAt.x >= min.x && pressedAt.x < max.x && pressedAt.y >= min.y && pressedAt.y < max.y;
+	const bool hovered = ImGui::IsWindowHovered() && ImGui::IsMouseHoveringRect(min, max, false);
+	if (hovered && pressedIn && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+		*p_open = false;
+	}
+	// p_open を ImGui に渡していないので、閉じるのは自分で行う（SyncModal は
+	// 「p_open=false を渡して ImGui に閉じてもらう」前提。ESC・[閉じる]・F1 も
+	// *p_open を下ろしてここへ来る）。
+	if (!*p_open) {
+		ImGui::CloseCurrentPopup();
+		ImGui::EndPopup();
+		return false;
+	}
+
+	// 描く。題名が長くて × の下へ来たときは、帯の色で塗りつぶしてから × を重ねる。
+	// 形と色は ImGui の × に合わせ、押している間だけ丸く色を敷く。指は離したあとも
+	// 最後に触った位置が「乗っている」扱いで残るので、乗っているだけでは敷かない
+	// （× で閉じて開き直すと、色が付いたままに見えた）。
+	ImDrawList *dl = ImGui::GetWindowDrawList();
+	dl->PushClipRect(min, max, false);
+	dl->AddRectFilled(min, max, ImGui::GetColorU32(ImGuiCol_TitleBgActive), style.WindowRounding,
+	                  ImDrawFlags_RoundCornersTopLeft);
+	const float fontSize = ImGui::GetFontSize();
+	const ImVec2 center(pos.x + style.FramePadding.x + fontSize * 0.5f, pos.y + barH * 0.5f);
+	if (hovered && pressedIn && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+		dl->AddCircleFilled(center, fontSize * 0.5f + 1.0f,
+		                    ImGui::GetColorU32(ImGuiCol_ButtonActive));
+	}
+	const float e = fontSize * 0.5f * 0.7071f - 1.0f;
+	const ImU32 col = ImGui::GetColorU32(ImGuiCol_Text);
+	dl->AddLine(ImVec2(center.x + e, center.y + e), ImVec2(center.x - e, center.y - e), col, 1.0f);
+	dl->AddLine(ImVec2(center.x + e, center.y - e), ImVec2(center.x - e, center.y + e), col, 1.0f);
+	dl->PopClipRect();
+	return true;
 }
 
 // ---------------------------------------------------------------------------

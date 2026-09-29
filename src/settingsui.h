@@ -428,6 +428,12 @@ private:
 	// 色を詰めるとき、ダイアログをどかして元の画面と見比べるため
 	// （ModalWindowDimBg を透明にしてあるのも同じ理由）。
 	ImGuiWindowFlags DialogFlags() const;
+	// 題名の帯に × のあるダイアログ（p_open を渡すもの）は BeginPopupModal の
+	// 代わりにこれを使う。指で操作するとき（touchUi_）は、× を帯の左端に自前で
+	// 描き（題名は中央寄せ）、当たり判定を広げる。ImGui の × は右端に決め打ちで、
+	// 字の大きさの正方形でしか反応せず、小さい画面では押しにくかった（r77 の
+	// 480x640、2026-09-30、ユーザーの指摘）。
+	bool BeginDialog(const char *title, bool *p_open, ImGuiWindowFlags flags);
 	// 画面を作り直す。ステータス欄は変化があったときしか描かないので、
 	// 作り直したあとは Player に積み直しを頼む。
 	void Rebuild(DrawScreen *draw, Player *player);
@@ -850,6 +856,7 @@ private:
 	int castSelected_;     // 一覧で選んでいる行
 	ImVec2 castLastSize_;  // 前のフレームのダイアログの大きさ（変わったら中央へ置き直す）
 	bool castRecenter_;    // 次のフレームで中央へ置き直す
+	bool castScrollY_;     // 前のフレームで縦のスクロールバーが出ていた（その幅を空ける）
 	// 中身をドラッグしてスクロール中。ダイアログはモーダルで一度に 1 つしか
 	// 開かないので、どのダイアログでもこの 1 つを使い回す。
 	bool dragScroll_;

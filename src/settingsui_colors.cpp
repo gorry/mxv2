@@ -151,7 +151,7 @@ void SettingsUi::BuildColorsWindow(Settings *settings, DrawScreen *draw, Player 
 	CenterNextWindow(placeCond());
 	ImGui::SetNextWindowSize(DialogSize(380.0f, 464.0f), placeCond());
 
-	if (ImGui::BeginPopupModal(kColorsTitle, &showColors_, DialogFlags())) {
+	if (BeginDialog(kColorsTitle, &showColors_, DialogFlags())) {
 		// 開いた直後は、保存先の名前を今のスキン名にしておく。書き込み先は
 		// 必ずユーザーフォルダなので "assets:" は外す（同梱スキンを編集して
 		// いるときは、同じ名前のユーザースキンが作られることになる）。

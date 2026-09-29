@@ -50,6 +50,7 @@ void SettingsUi::BuildCastWindow(Settings *settings) {
 		castSelected_ = -1;
 		castLastSize_ = ImVec2(0.0f, 0.0f);
 		castRecenter_ = false;
+		castScrollY_ = false;
 	} else if (!open && castWasOpen_) {
 		cast::StopDiscovery();
 	}
@@ -83,11 +84,15 @@ void SettingsUi::BuildCastWindow(Settings *settings) {
 	float width = DialogSize(480.0f, 360.0f).x * (wide ? 2.0f : 1.0f);
 	const float maxW = io.DisplaySize.x - st.DisplaySafeAreaPadding.x * 2.0f;
 	if (width > maxW) width = maxW;
+	// 高さが画面に収まらず縦のスクロールバーが出ると、ImGui はその幅を中身の幅に
+	// **足して**窓を広げる。画面いっぱいの幅だと、中央に置いた窓の左右が画面から
+	// 切れた（r77 の 480x640 縦画面、2026-09-30）。出ていたら、そのぶん中身を詰める。
+	if (castScrollY_) width -= st.ScrollbarSize;
 	// 幅は中身の幅で決める（SetNextWindowContentSize。高さは 0＝中身任せ）。
 	// SetNextWindowSizeConstraints で幅を決めると、中身が収まっているのに縦の
 	// スクロールバーが出た（Pixel 7a、2026-09-25）。
 	ImGui::SetNextWindowContentSize(ImVec2(width - st.WindowPadding.x * 2.0f, 0.0f));
-	if (!ImGui::BeginPopupModal(kCastTitle, &showCast_,
+	if (!BeginDialog(kCastTitle, &showCast_,
 	                            DialogFlags() | ImGuiWindowFlags_AlwaysAutoResize)) {
 		return;
 	}
@@ -264,6 +269,11 @@ void SettingsUi::BuildCastWindow(Settings *settings) {
 		castRecenter_ = true;
 	}
 	castLastSize_ = size;
+	const bool scrollY = ImGui::GetScrollMaxY() > 0.0f;
+	if (scrollY != castScrollY_) {
+		castScrollY_ = scrollY;
+		castRecenter_ = true;
+	}
 	ImGui::EndPopup();
 }
 

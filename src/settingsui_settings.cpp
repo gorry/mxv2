@@ -172,7 +172,7 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 
 	// p_open に visible_ をそのまま渡す。× で閉じられたときは ImGui が
 	// false にして閉じてくれるし、F1 で false にした場合も同じ経路で閉じる。
-	if (!ImGui::BeginPopupModal(kSettingsTitle, &visible_, DialogFlags())) {
+	if (!BeginDialog(kSettingsTitle, &visible_, DialogFlags())) {
 		return;
 	}
 
@@ -821,7 +821,7 @@ void SettingsUi::BuildLatencyWindow(Settings *settings, DrawScreen *draw, Player
 
 	PlaceNextWindowNearFiler(draw, screen, placeCond());
 	ImGui::SetNextWindowSize(DialogSize(360.0f, 0.0f), placeCond());
-	if (!ImGui::BeginPopupModal(title, &showLatency_,
+	if (!BeginDialog(title, &showLatency_,
 	                            DialogFlags() | ImGuiWindowFlags_AlwaysAutoResize)) {
 		return;
 	}

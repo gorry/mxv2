@@ -30,7 +30,7 @@ void SettingsUi::BuildPdxPathsWindow(Settings *settings, Filer *filer) {
 	CenterNextWindow(placeCond());
 	ImGui::SetNextWindowSize(DialogSize(460.0f, 360.0f), placeCond());
 
-	if (!ImGui::BeginPopupModal(kPdxPathsTitle, &showPdxPaths_, DialogFlags())) {
+	if (!BeginDialog(kPdxPathsTitle, &showPdxPaths_, DialogFlags())) {
 		return;
 	}
 	if (vfs_ == 0) {
