@@ -35,7 +35,7 @@ const int kZoomKeyStep = 25;
 // 大きさを OS 側が決めているので、倍率を変えても何も起きないため
 // （2026-09-18、ユーザーの指示）。
 void NudgeZoom(const InputTargets &t, int step) {
-	if (t.ctx->screen->windowSizeLocked()) return;
+	if (!Screen::CanZoom() || t.ctx->screen->windowSizeLocked()) return;
 	t.ui->RequestZoomStep(step);
 }
 

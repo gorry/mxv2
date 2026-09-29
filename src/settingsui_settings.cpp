@@ -236,49 +236,53 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 		// 倍率を変えても掛けようがないのでグレーにする（2026-09-18、
 		// ユーザーの指示）。旗は毎フレーム見るので、題名バーのボタンで
 		// 最大化した／元に戻したのにも、開いたまま追いつく。
-		const bool zoomLocked = screen->windowSizeLocked();
-		ImGui::BeginDisabled(zoomLocked);
+		// モバイルは窓の大きさを変えようがないので、表示倍率の行ごと出さない
+		// （Screen::CanZoom。フルスクリーンと同じ扱い）。
+		if (Screen::CanZoom()) {
+			const bool zoomLocked = screen->windowSizeLocked();
+			ImGui::BeginDisabled(zoomLocked);
 
-		// 表示倍率 (%)。100 でドット等倍。
-		// 押している間・入力中に適用してはいけない。ウィンドウが大きくなると
-		// このコントロール自身の座標も変わるので、同じ場所を押しているだけで
-		// 値が行き来してしまう。確定してから少し待って適用する。
-		int zoom = settings->zoomPercent;
-		// -/+ ボタンは高さと同じ幅の正方形。余白や字が大きくなるとその分だけ
-		// 場所を食うので、幅は決め打ちにせず実測で組み立てる。
-		{
-			const ImGuiStyle &st = ImGui::GetStyle();
-			ImGui::SetNextItemWidth(ImGui::CalcTextSize("0000").x + st.FramePadding.x * 2.0f +
-			                        (ImGui::GetFrameHeight() + st.ItemInnerSpacing.x) * 2.0f);
+			// 表示倍率 (%)。100 でドット等倍。
+			// 押している間・入力中に適用してはいけない。ウィンドウが大きくなると
+			// このコントロール自身の座標も変わるので、同じ場所を押しているだけで
+			// 値が行き来してしまう。確定してから少し待って適用する。
+			int zoom = settings->zoomPercent;
+			// -/+ ボタンは高さと同じ幅の正方形。余白や字が大きくなるとその分だけ
+			// 場所を食うので、幅は決め打ちにせず実測で組み立てる。
+			{
+				const ImGuiStyle &st = ImGui::GetStyle();
+				ImGui::SetNextItemWidth(ImGui::CalcTextSize("0000").x + st.FramePadding.x * 2.0f +
+				                        (ImGui::GetFrameHeight() + st.ItemInnerSpacing.x) * 2.0f);
+			}
+			const bool edited = ImGui::InputInt(Msg("Settings.Zoom"), &zoom, 25, 100);
+			if (edited) {
+				if (zoom < Screen::kZoomMin) zoom = Screen::kZoomMin;
+				if (zoom > Screen::kZoomMax) zoom = Screen::kZoomMax;
+				settings->zoomPercent = zoom;
+				changedFields_ |= Settings::kFieldZoom;
+			}
+			// 触られるたびに期限を先送りする（デバウンス）。こうすると
+			// -/+ の連打でも、桁を打っている途中でも、手が止まってから適用される。
+			// InputInt の -/+ ボタンでは IsItemDeactivatedAfterEdit() が来ないので、
+			// edited だけに頼らず両方を見る。
+			if (edited || ImGui::IsItemDeactivatedAfterEdit()) {
+				pendingZoom_ = settings->zoomPercent;
+				zoomApplyAtMs_ = SDL_GetTicks() + kZoomApplyDelayMs;
+			}
+			// ここは Button で置くこと。SmallButton は FramePadding.y が 0 なので
+			// [再読込] など他のボタンより背が低くなり、指で操作するときの
+			// 6mm も満たさない。
+			SameLineOrWrap(Msg("Settings.ZoomSystem"));
+			if (ImGui::Button(Msg("Settings.ZoomSystem"))) {
+				settings->zoomPercent = Screen::SystemZoomPercent();
+				changedFields_ |= Settings::kFieldZoom;
+				pendingZoom_ = settings->zoomPercent;
+				zoomApplyAtMs_ = SDL_GetTicks() + kZoomApplyDelayMs;
+			}
+			ImGui::EndDisabled();
+			// なぜ触れないのかを添える（グレーなだけだと理由が分からない）。
+			if (zoomLocked) TextNote(Msg("Settings.ZoomLocked"));
 		}
-		const bool edited = ImGui::InputInt(Msg("Settings.Zoom"), &zoom, 25, 100);
-		if (edited) {
-			if (zoom < Screen::kZoomMin) zoom = Screen::kZoomMin;
-			if (zoom > Screen::kZoomMax) zoom = Screen::kZoomMax;
-			settings->zoomPercent = zoom;
-			changedFields_ |= Settings::kFieldZoom;
-		}
-		// 触られるたびに期限を先送りする（デバウンス）。こうすると
-		// -/+ の連打でも、桁を打っている途中でも、手が止まってから適用される。
-		// InputInt の -/+ ボタンでは IsItemDeactivatedAfterEdit() が来ないので、
-		// edited だけに頼らず両方を見る。
-		if (edited || ImGui::IsItemDeactivatedAfterEdit()) {
-			pendingZoom_ = settings->zoomPercent;
-			zoomApplyAtMs_ = SDL_GetTicks() + kZoomApplyDelayMs;
-		}
-		// ここは Button で置くこと。SmallButton は FramePadding.y が 0 なので
-		// [再読込] など他のボタンより背が低くなり、指で操作するときの
-		// 6mm も満たさない。
-		SameLineOrWrap(Msg("Settings.ZoomSystem"));
-		if (ImGui::Button(Msg("Settings.ZoomSystem"))) {
-			settings->zoomPercent = Screen::SystemZoomPercent();
-			changedFields_ |= Settings::kFieldZoom;
-			pendingZoom_ = settings->zoomPercent;
-			zoomApplyAtMs_ = SDL_GetTicks() + kZoomApplyDelayMs;
-		}
-		ImGui::EndDisabled();
-		// なぜ触れないのかを添える（グレーなだけだと理由が分からない）。
-		if (zoomLocked) TextNote(Msg("Settings.ZoomLocked"));
 
 		// フルスクリーン表示（デスクトップだけ）。窓の大きさが変わるだけ
 		// なので即時に掛けてよく、キャンバスは次のフレームで窓に合わせて

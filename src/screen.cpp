@@ -442,6 +442,14 @@ bool Screen::CanFullScreen() {
 #endif
 }
 
+bool Screen::CanZoom() {
+#if defined(__ANDROID__) || defined(__IPHONEOS__)
+	return false;
+#else
+	return true;
+#endif
+}
+
 bool Screen::fullScreen() const {
 	if (window_ == 0) return false;
 	return (SDL_GetWindowFlags(window_) & SDL_WINDOW_FULLSCREEN_DESKTOP) != 0;
