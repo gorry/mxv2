@@ -1,5 +1,5 @@
 # ◇mxv2
-mxv2 - MDX player
+mxv2 - MDX Player & Visualizer
 
 <img src="https://github.com/user-attachments/assets/4809b783-a81c-4f7d-9bed-c16f64db0be1" align="right" width="300" alt="スクリーンショット">
 
