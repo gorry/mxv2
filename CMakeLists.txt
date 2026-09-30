@@ -194,6 +194,7 @@ set(MXV2_SOURCES
 	src/settingsui_info.cpp
 	src/settingsui_update.cpp
 	src/settingsui_cast.cpp
+	src/settingsui_dialog.cpp
 	src/cast.cpp
 	src/cast.h
 	src/singleinstance.cpp

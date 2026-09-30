@@ -172,19 +172,13 @@ void SettingsWindow::Build(SettingsUi &ui, Settings *settings, DrawScreen *draw,
                            Filer *filer, Screen *screen) {
 	// ここから下は設定ウィンドウ。モーダルなので、開いている間はメイン画面も
 	// 他のダイアログも操作できない。
-	if (!ui.SyncModal(kSettingsTitle, &visible_)) return;
-
 	// 開くたびに画面の中央から出す。出したあとは掴んで動かせる（パソコンのみ。
 	// DialogFlags）。倍率や表示サイズが変わったフレームだけは矩形ごと
 	// 作り直す（placeCond）。
-	CenterNextWindow(ui.placeCond());
-	ImGui::SetNextWindowSize(ui.DialogSize(380, 464), ui.placeCond());
 
 	// p_open に settings_.visible_ をそのまま渡す。× で閉じられたときは ImGui が
 	// false にして閉じてくれるし、F1 で false にした場合も同じ経路で閉じる。
-	if (!ui.BeginDialog(kSettingsTitle, &visible_, ui.DialogFlags())) {
-		return;
-	}
+	if (!ui.BeginModal(kSettingsTitle, &visible_, 380.0f, 464.0f)) return;
 
 	// コンボ・スライダーのラベルが横で切れないように（PushLabeledItemWidth）。
 	// 部品を足したらここにも足すこと。

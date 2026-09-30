@@ -31,14 +31,7 @@ using namespace settingsui;
 // 決める。実体は Vfs のマウント一覧なので、触ったらその場で効く。
 // 並びは [FileSystem] へ書き戻す（changedFields_ 経由でメインループが書く）。
 void FileSystemsDialog::Build(SettingsUi &ui, Filer *filer) {
-	if (!ui.SyncModal(kFileSystemsTitle, &show_)) return;
-
-	CenterNextWindow(ui.placeCond());
-	ImGui::SetNextWindowSize(ui.DialogSize(460.0f, 360.0f), ui.placeCond());
-
-	if (!ui.BeginDialog(kFileSystemsTitle, &show_, ui.DialogFlags())) {
-		return;
-	}
+	if (!ui.BeginModal(kFileSystemsTitle, &show_, 460.0f, 360.0f)) return;
 	if (ui.vfs_ == 0) {
 		ImGui::TextUnformatted(Msg("FileSystems.Empty"));
 		ImGui::EndPopup();
@@ -341,13 +334,13 @@ void FileSystemsDialog::ApplyPickedTree(SettingsUi &ui, Filer *filer, const std:
 // ---------------------------------------------------------------------------
 void FileSystemsDialog::BuildHandedWindow(SettingsUi &ui, Filer *filer) {
 	if (handed_.popup.ask) {
-		handed_.popup.ask = false;
 		// **OS の許可が残っているフォルダなら尋ねない。** 一覧から外して
 		// あっても、ユーザーから見れば「許可済みのフォルダ」なので、黙って
 		// 一覧へ戻して開く（2026-09-18、ユーザーの報告）。
 		{
 			std::string ref;
 			if (MountGrantedTree(ui, filer, handed_.uri, &ref)) {
+				handed_.popup.ask = false;  // 尋ねずに開くので Begin に開かせない
 				handed_.uri.clear();
 				handed_.name.clear();
 				handed_.ref = ref;
@@ -355,20 +348,8 @@ void FileSystemsDialog::BuildHandedWindow(SettingsUi &ui, Filer *filer) {
 				return;
 			}
 		}
-		ImGui::OpenPopup(kHandedTitle);
 	}
-
-	handed_.popup.open = ImGui::IsPopupOpen(kHandedTitle);
-	if (!handed_.popup.open) {
-		handed_.popup.close = false;
-		return;
-	}
-
-	CenterNextWindow(ui.placeCond());
-	if (!ImGui::BeginPopupModal(kHandedTitle, NULL,
-	                            ui.DialogFlags() | ImGuiWindowFlags_AlwaysAutoResize)) {
-		return;
-	}
+	if (!handed_.popup.Begin(ui, kHandedTitle)) return;
 
 	ConfirmText(MsgF("Handed.Question", handed_.name).c_str());
 	ConfirmNote(Msg("Handed.Note"));
@@ -395,11 +376,9 @@ void FileSystemsDialog::BuildHandedWindow(SettingsUi &ui, Filer *filer) {
 		ImGui::CloseCurrentPopup();
 	}
 	SameLineOrWrap(Msg("Button.Cancel"));
-	if (ImGui::Button(Msg("Button.Cancel")) || handed_.popup.close) {
-		handed_.popup.close = false;
+	if (handed_.popup.CancelButton(Msg("Button.Cancel"))) {
 		handed_.uri.clear();
 		handed_.name.clear();
-		ImGui::CloseCurrentPopup();
 	}
 	ImGui::EndPopup();
 }
@@ -476,24 +455,10 @@ void FileSystemsDialog::OpenHandedByCopy(SettingsUi &ui) {
 
 void FileSystemsDialog::BuildAddWindow(SettingsUi &ui, Filer *filer) {
 	if (addFs_.popup.ask) {
-		addFs_.popup.ask = false;
 		addFs_.pathBuf[0] = '\0';
 		addFs_.error.clear();
-		ImGui::OpenPopup(kAddFsTitle);
 	}
-
-	addFs_.popup.open = ImGui::IsPopupOpen(kAddFsTitle);
-	if (!addFs_.popup.open) {
-		addFs_.popup.close = false;
-		return;
-	}
-
-	CenterNextWindow(ui.placeCond());
-	ImGui::SetNextWindowSize(ui.DialogSize(460.0f, 0.0f), ui.placeCond());
-	if (!ImGui::BeginPopupModal(kAddFsTitle, NULL,
-	                            ui.DialogFlags() | ImGuiWindowFlags_AlwaysAutoResize)) {
-		return;
-	}
+	if (!addFs_.popup.Begin(ui, kAddFsTitle)) return;
 
 	ImGui::TextUnformatted(Msg("AddFs.Path"));
 	ImGui::SetNextItemWidth(-FLT_MIN);
@@ -515,10 +480,7 @@ void FileSystemsDialog::BuildAddWindow(SettingsUi &ui, Filer *filer) {
 	}
 	if (ImGui::Button(Msg("Button.Add"))) apply = true;
 	ImGui::SameLine();
-	if (ImGui::Button(Msg("Button.Cancel")) || addFs_.popup.close) {
-		addFs_.popup.close = false;
-		ImGui::CloseCurrentPopup();
-	}
+	addFs_.popup.CancelButton(Msg("Button.Cancel"));
 
 	if (apply) {
 		const std::string path = TrimSpaces(addFs_.pathBuf);
@@ -548,22 +510,7 @@ void FileSystemsDialog::BuildAddWindow(SettingsUi &ui, Filer *filer) {
 
 // 「本当に削除するか」。ファイルシステムの設定の中に入れ子で開く。
 void FileSystemsDialog::BuildRemoveWindow(SettingsUi &ui, Filer *filer) {
-	if (remove_.popup.ask) {
-		remove_.popup.ask = false;
-		ImGui::OpenPopup(kFsRemoveTitle);
-	}
-
-	remove_.popup.open = ImGui::IsPopupOpen(kFsRemoveTitle);
-	if (!remove_.popup.open) {
-		remove_.popup.close = false;
-		return;
-	}
-
-	CenterNextWindow(ui.placeCond());
-	if (!ImGui::BeginPopupModal(kFsRemoveTitle, NULL,
-	                            ui.DialogFlags() | ImGuiWindowFlags_AlwaysAutoResize)) {
-		return;
-	}
+	if (!remove_.popup.Begin(ui, kFsRemoveTitle)) return;
 
 	const FileSystem *sel =
 	    (ui.vfs_ != 0 && selected_ >= 0 && selected_ < ui.vfs_->count()) ? ui.vfs_->at(selected_)
@@ -606,10 +553,7 @@ void FileSystemsDialog::BuildRemoveWindow(SettingsUi &ui, Filer *filer) {
 		ImGui::CloseCurrentPopup();
 	}
 	ImGui::SameLine();
-	if (ImGui::Button(Msg("Button.Cancel")) || remove_.popup.close) {
-		remove_.popup.close = false;
-		ImGui::CloseCurrentPopup();
-	}
+	remove_.popup.CancelButton(Msg("Button.Cancel"));
 	ImGui::EndPopup();
 }
 

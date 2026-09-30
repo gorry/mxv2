@@ -21,16 +21,16 @@ class Filer;
 class SettingsUi;
 struct Settings;
 
-class BookmarksDialog {
+class BookmarksDialog : public ModalDialog {
 public:
-	BookmarksDialog() : show_(false), selected_(-1), jumpPending_(false) {}
+	BookmarksDialog() : selected_(-1), jumpPending_(false) {}
 
 	void Open() {
 		show_ = true;
 		selected_ = 0;
 		error_.clear();
 	}
-	bool isOpen() const { return show_; }
+	// ModalDialog::CloseTop を隠す。入れ子の確認を先に閉じる。
 	bool CloseTop() {
 		if (remove_.CloseTop()) return true;
 		if (toggle_.CloseTop()) return true;  // 単独で開くが、閉じ方は同じ
@@ -71,7 +71,6 @@ private:
 	// 削除の確認。このダイアログの中に入れ子で開く。
 	void BuildRemoveWindow(SettingsUi &ui, Settings *settings);
 
-	bool show_;
 	int selected_;           // 一覧で選んでいる行。空のときは -1
 	std::string error_;      // 「そのフォルダは見つかりません。」など
 	NestedPopup remove_;     // 削除の確認（ダイアログの中に入れ子）

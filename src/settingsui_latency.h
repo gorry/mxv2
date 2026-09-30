@@ -24,21 +24,15 @@ class Screen;
 class SettingsUi;
 struct Settings;
 
-class LatencyDialog {
+class LatencyDialog : public ModalDialog {
 public:
 	enum Target {
 		kLatencyTargetDisplay = 0,  // [演奏] の画面の遅れ（手動のとき）
 		kLatencyTargetBluetooth,    // いまつないでいる Bluetooth の機器の遅延時間
 	};
 
-	LatencyDialog() : show_(false), target_(kLatencyTargetDisplay) {}
+	LatencyDialog() : target_(kLatencyTargetDisplay) {}
 
-	bool isOpen() const { return show_; }
-	bool CloseTop() {
-		if (!show_) return false;
-		show_ = false;
-		return true;
-	}
 	// [設定…] から。設定ウィンドウを閉じ、閉じきったら開く。device は
 	// kLatencyTargetBluetooth のときの機器名。
 	void Open(SettingsUi &ui, int target, const std::string &device);
@@ -50,7 +44,6 @@ public:
 private:
 	friend class SettingsUi;
 
-	bool show_;
 	Handoff handoff_;     // 設定ウィンドウとの往復
 	int target_;          // Target
 	std::string device_;  // kLatencyTargetBluetooth の機器名（開いたときのもの）

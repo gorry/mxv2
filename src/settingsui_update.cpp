@@ -100,21 +100,7 @@ void UpdateDialog::Schedule(SettingsUi &ui) {
 
 // 結果のダイアログ。新しい版があるときは [リリースページを開く] を添える。
 void UpdateDialog::BuildWindow(SettingsUi &ui) {
-	if (popup_.ask) {
-		popup_.ask = false;
-		ImGui::OpenPopup(kUpdateTitle);
-	}
-	popup_.open = ImGui::IsPopupOpen(kUpdateTitle);
-	if (!popup_.open) {
-		popup_.close = false;
-		return;
-	}
-
-	CenterNextWindow(ui.placeCond());
-	if (!ImGui::BeginPopupModal(kUpdateTitle, NULL,
-	                            ui.DialogFlags() | ImGuiWindowFlags_AlwaysAutoResize)) {
-		return;
-	}
+	if (!popup_.Begin(ui, kUpdateTitle)) return;
 
 	const UpdateResult &r = result_;
 	switch (r.status) {
@@ -141,10 +127,12 @@ void UpdateDialog::BuildWindow(SettingsUi &ui) {
 		}
 		SameLineOrWrap(Msg("Button.Close"));
 	}
-	if (ImGui::Button(Msg("Button.Close")) || popup_.close) close = true;
+	if (ImGui::Button(Msg("Button.Close"))) close = true;
 	if (close) {
 		popup_.close = false;
 		ImGui::CloseCurrentPopup();
+	} else {
+		popup_.TakeClose();  // ESC
 	}
 	ImGui::EndPopup();
 }

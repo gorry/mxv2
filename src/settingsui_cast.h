@@ -14,32 +14,26 @@
 
 #include "imgui.h"
 
+#include "settingsui_dialog.h"
+
 namespace mxv2 {
 
 class SettingsUi;
 struct Settings;
 
-class CastDialog {
+class CastDialog : public ModalDialog {
 public:
 	CastDialog()
-	    : show_(false), wasOpen_(false), selected_(-1), lastSize_(0.0f, 0.0f), recenter_(false),
+	    : wasOpen_(false), selected_(-1), lastSize_(0.0f, 0.0f), recenter_(false),
 	      scrollY_(false) {}
 
 	void Open() { show_ = true; }
-	bool isOpen() const { return show_; }
-	// ESC 用（SettingsUi::CloseDialog）。開いていれば閉じて true。
-	bool CloseTop() {
-		if (!show_) return false;
-		show_ = false;
-		return true;
-	}
 	// 1 フレームぶん。設定ウィンドウが閉じていても毎フレーム呼ぶ。
 	void Build(SettingsUi &ui, Settings *settings);
 
 private:
 	friend class SettingsUi;
 
-	bool show_;
 	bool wasOpen_;     // 前のフレームで開いていた（開いた・閉じた瞬間を拾う）
 	int selected_;     // 一覧で選んでいる行
 	ImVec2 lastSize_;  // 前のフレームのダイアログの大きさ（変わったら中央へ置き直す）

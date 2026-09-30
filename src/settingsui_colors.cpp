@@ -146,13 +146,8 @@ void ColorsDialog::Rebuild(DrawScreen *draw, Player *player) {
 // CollapsingHeader だったが、項目数が多く設定ウィンドウが縦に伸びるので
 // 別ダイアログにした。F2 と右クリックメニューから開ける。
 void ColorsDialog::Build(SettingsUi &ui, Settings *settings, DrawScreen *draw, Player *player) {
-	if (!ui.SyncModal(kColorsTitle, &show_)) return;
-
 	// 設定ウィンドウと同じ作法。開くたびに中央、画面からはみ出さない大きさ。
-	CenterNextWindow(ui.placeCond());
-	ImGui::SetNextWindowSize(ui.DialogSize(380.0f, 464.0f), ui.placeCond());
-
-	if (ui.BeginDialog(kColorsTitle, &show_, ui.DialogFlags())) {
+	if (ui.BeginModal(kColorsTitle, &show_, 380.0f, 464.0f)) {
 		// 開いた直後は、保存先の名前を今のスキン名にしておく。書き込み先は
 		// 必ずユーザーフォルダなので "assets:" は外す（同梱スキンを編集して
 		// いるときは、同じ名前のユーザースキンが作られることになる）。
@@ -358,22 +353,7 @@ void ColorsDialog::BuildSkinSaveRow(SettingsUi &ui, Settings *settings, DrawScre
 // 上書きの確認。配色設定の**中で**開く。ImGui のモーダルは
 // 入れ子なら素直に重なる（同じ階層で掛け替えようとすると失敗する）。
 void ColorsDialog::BuildOverwriteWindow(SettingsUi &ui, Settings *settings, DrawScreen *draw) {
-	if (overwrite_.ask) {
-		overwrite_.ask = false;
-		ImGui::OpenPopup(kOverwriteTitle);
-	}
-
-	overwrite_.open = ImGui::IsPopupOpen(kOverwriteTitle);
-	if (!overwrite_.open) {
-		overwrite_.close = false;
-		return;
-	}
-
-	CenterNextWindow(ui.placeCond());
-	if (!ImGui::BeginPopupModal(kOverwriteTitle, NULL,
-	                            ui.DialogFlags() | ImGuiWindowFlags_AlwaysAutoResize)) {
-		return;
-	}
+	if (!overwrite_.Begin(ui, kOverwriteTitle)) return;
 
 	ConfirmText(MsgF("Colors.OverwriteMessage", overwriteName_).c_str());
 	ImGui::TextUnformatted(Msg("Colors.OverwriteQuestion"));
@@ -384,10 +364,7 @@ void ColorsDialog::BuildOverwriteWindow(SettingsUi &ui, Settings *settings, Draw
 		ImGui::CloseCurrentPopup();
 	}
 	ImGui::SameLine();
-	if (ImGui::Button(Msg("Button.Cancel")) || overwrite_.close) {
-		overwrite_.close = false;
-		ImGui::CloseCurrentPopup();
-	}
+	overwrite_.CancelButton(Msg("Button.Cancel"));
 	ImGui::EndPopup();
 }
 

@@ -18,9 +18,9 @@ namespace mxv2 {
 class Filer;
 class SettingsUi;
 
-class FileSystemsDialog {
+class FileSystemsDialog : public ModalDialog {
 public:
-	FileSystemsDialog() : show_(false), selected_(0) {}
+	FileSystemsDialog() : selected_(0) {}
 
 	void Open() {
 		show_ = true;
@@ -30,7 +30,7 @@ public:
 	// アクセス許可が失われた SAF をファイラーで開こうとしたときに使う
 	// （[許可を取り直す…] へ導く）。
 	void OpenFor(SettingsUi &ui, const std::string &mountRef);
-	bool isOpen() const { return show_; }
+	// ModalDialog::CloseTop を隠す。入れ子の確認を先に閉じる。
 	bool CloseTop() {
 		if (remove_.popup.CloseTop()) return true;
 		if (addFs_.popup.CloseTop()) return true;
@@ -100,7 +100,6 @@ private:
 	// 写して開く（[このまま演奏する] と、許可を取っても見つからなかったとき）。
 	void OpenHandedByCopy(SettingsUi &ui);
 
-	bool show_;
 	int selected_;       // 一覧で選んでいる行
 	std::string error_;  // 「カレントは削除できない」などの文言
 	// 削除の確認（ダイアログの中に入れ子）。「OS のアクセス許可も取り消す」は

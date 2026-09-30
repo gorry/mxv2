@@ -23,11 +23,11 @@ class Filer;
 class SettingsUi;
 struct Settings;
 
-class PdxPathsDialog {
+class PdxPathsDialog : public ModalDialog {
 public:
-	PdxPathsDialog() : show_(false), selected_(0) {}
+	PdxPathsDialog() : selected_(0) {}
 
-	bool isOpen() const { return show_; }
+	// ModalDialog::CloseTop を隠す。入れ子の確認を先に閉じる。
 	bool CloseTop() {
 		if (remove_.CloseTop()) return true;
 		if (!show_) return false;
@@ -47,7 +47,6 @@ private:
 	// 「本当に削除するか」。このダイアログの中に入れ子で開く。
 	void BuildRemoveWindow(SettingsUi &ui, Settings *settings);
 
-	bool show_;
 	Handoff handoff_;     // 設定ウィンドウとの往復
 	int selected_;        // 一覧で選んでいる行。空のときは -1
 	std::string error_;

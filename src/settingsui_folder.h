@@ -14,6 +14,8 @@
 #include <string>
 #include <vector>
 
+#include "settingsui_dialog.h"
+
 namespace mxv2 {
 
 class DirLister;
@@ -21,7 +23,7 @@ class Filer;
 class SettingsUi;
 struct Settings;
 
-class FolderDialog {
+class FolderDialog : public ModalDialog {
 public:
 	// 選んだ結果の行き先。
 	enum Target {
@@ -48,12 +50,6 @@ public:
 		target_ = target;
 		returnTo_ = returnTo;
 		openPending_ = true;
-	}
-	bool isOpen() const { return show_; }
-	bool CloseTop() {
-		if (!show_) return false;
-		show_ = false;
-		return true;
 	}
 	// ダイアログの題名。"###" 以降が ImGui の id なので、見出しを変えても
 	// 同じポップアップとして扱われる。
@@ -84,7 +80,6 @@ private:
 	// 一覧で選んだものを入力欄へ移す。中へは入らない（そこはダブルクリック）。
 	void SelectEntry(const std::string &path);
 
-	bool show_;
 	Target target_;
 	Return returnTo_;
 	bool openPending_;      // 呼び出し元が閉じきったら開く（OpenFor）

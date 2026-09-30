@@ -18,9 +18,9 @@ class Player;
 class SettingsUi;
 struct Settings;
 
-class ColorsDialog {
+class ColorsDialog : public ModalDialog {
 public:
-	ColorsDialog() : show_(false), skinNameReset_(true), saveErrorFresh_(false) {
+	ColorsDialog() : skinNameReset_(true), saveErrorFresh_(false) {
 		skinNameBuf_[0] = '\0';
 	}
 
@@ -29,7 +29,7 @@ public:
 		// 名前の欄は、開いたときに今のスキン名で埋め直す。
 		skinNameReset_ = true;
 	}
-	bool isOpen() const { return show_; }
+	// ModalDialog::CloseTop を隠す。入れ子の確認を先に閉じる。
 	bool CloseTop() {
 		if (overwrite_.CloseTop()) return true;
 		if (!show_) return false;
@@ -54,7 +54,6 @@ private:
 	// 作り直したあとは Player に積み直しを頼む。
 	void Rebuild(DrawScreen *draw, Player *player);
 
-	bool show_;
 	// 保存先のスキン名。開いたときに今のスキン名で埋め直す。
 	char skinNameBuf_[128];
 	bool skinNameReset_;

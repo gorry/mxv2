@@ -670,6 +670,15 @@ ImGuiWindowFlags SettingsUi::DialogFlags() const {
 	return flags;
 }
 
+bool SettingsUi::BeginModal(const char *title, bool *show, float w, float h,
+                            ImGuiWindowFlags extra) {
+	if (!SyncModal(title, show)) return false;
+	CenterNextWindow(placeCond());
+	ImGui::SetNextWindowSize(DialogSize(w, h), placeCond());
+	if (h <= 0.0f) extra |= ImGuiWindowFlags_AlwaysAutoResize;
+	return BeginDialog(title, show, DialogFlags() | extra);
+}
+
 bool SettingsUi::BeginDialog(const char *title, bool *p_open, ImGuiWindowFlags flags) {
 	if (!touchUi_ || p_open == 0) return ImGui::BeginPopupModal(title, p_open, flags);
 

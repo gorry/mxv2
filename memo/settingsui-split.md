@@ -280,3 +280,119 @@ wrapper の宣言まで書き換わる／bash の heredoc がバックスラッ�
 Windows Debug / Android release ビルド通過。動きは Windows（ud2）で設定→PDX→フォルダ選択→
 ESC→×、F2/F3/F4/F9、削除確認の ESC、右クリックメニュー、Pixel 7a で設定→PDX→フォルダ→戻る、
 F3、メニューを確認（このあとの節に結果）。
+
+## 第 3 段の見積もり: 各ダイアログの共通部を括り出す（2026-09-30）
+
+第 2 段の 11 クラスを並べて、各 Build() の中で**同じ形で繰り返している部分**を数えた。
+「インターフェース（抽象基底）」より、**定型を関数に括り出す**ほうが効く、という見立て。
+
+### 繰り返している定型（3 つ）
+
+1. **モーダルの開き方**（9 か所: settings / colors / pdx / bookmarks / folder / filesystems /
+   latency / info×2、cast は幅の決め方が独自）
+   ```
+   if (!ui.SyncModal(title, &show_)) return;
+   CenterNextWindow(ui.placeCond());
+   ImGui::SetNextWindowSize(ui.DialogSize(w, h), ui.placeCond());
+   if (!ui.BeginDialog(title, &show_, ui.DialogFlags())) return;
+   ... 中身 ...
+   DragToScroll(&ui.dragScroll_, &ui.dragMoved_, ...);   // 7 か所
+   ImGui::EndPopup();
+   ```
+   違うのは title / show_ / 大きさ / DragToScroll の引数 / 追加フラグ（latency は
+   AlwaysAutoResize、置き場所もファイラー側）だけ。
+
+2. **入れ子の確認（NestedPopup）の開閉**（7 か所: bookmarks×2 / colors / filesystems×3 /
+   menu の quit / update）。**7 か所が字句まで同じ**:
+   ```
+   if (p.ask) { p.ask = false; ImGui::OpenPopup(title); }
+   p.open = ImGui::IsPopupOpen(title);
+   if (!p.open) { p.close = false; return; }
+   CenterNextWindow(ui.placeCond());
+   if (!ImGui::BeginPopupModal(title, NULL, ui.DialogFlags() | AlwaysAutoResize)) return;
+   ... 中身 ...
+   if (ImGui::Button(Cancel) || p.close) { p.close = false; ImGui::CloseCurrentPopup(); }
+   ImGui::EndPopup();
+   ```
+
+3. **各クラスの `show_` / `isOpen()` / `CloseTop()`**（11 クラスで同じ 3 行）。
+
+### 「インターフェース」で括るとどうなるか
+
+`class Dialog { virtual void Build(SettingsUi&) = 0; virtual bool CloseTop() = 0; ... }` を
+基底にして 11 クラスが継承する形。得られるのは SettingsUi::Build の呼び出し列と
+CloseDialog() の 11 連結を `for (Dialog *d : dialogs_)` に畳めること。ただし:
+- Build の引数がクラスごとに違う（settings/draw/player/filer/screen の組み合わせが 5 通り）。
+  揃えるには全部渡す「BuildContext」を作ることになり、使わない引数が並ぶ。
+- **順番が意味を持つ**（メニュー→about→cast→colors→往復の配線→folder→…→settings 本体、
+  入れ子の update は設定ウィンドウの中）。配列で回すと順番が配列の並びに隠れて、今の
+  Build() の「なぜこの順か」のコメントが付けにくい。
+- CloseDialog の順番も同じ（内側の入れ子から）。
+- 仮想関数にする実益（実行時に入れ替える相手）が無い。
+→ 抽象基底は**畳める行が少ない割に、順番の意図を隠す**ので勧めない。
+
+### 勧める形: 定型 1・2 を関数に、3 を小さな基底に
+
+- **(A) 入れ子の確認 → `NestedPopup` に開閉を持たせる**（settingsui_dialog.h）
+  ```
+  struct NestedPopup {
+    bool ask, open, close;
+    // 開く・閉じるの定型。true を返したら中身を組んで EndPopup() すること。
+    bool Begin(SettingsUi &ui, const char *title);   // ask→OpenPopup、open の更新、BeginPopupModal
+    // [キャンセル] と ESC を 1 か所で。押されたら CloseCurrentPopup して true。
+    bool CancelButton(const char *label);
+  };
+  ```
+  7 か所 × 約 12 行 → 各 2 行。ImGui に依るので実装は .cpp（settingsui_dialog.cpp）。
+- **(B) モーダルの開き方 → SettingsUi の 1 関数に**
+  ```
+  // SyncModal + 置き場所 + 大きさ + BeginDialog をまとめる。false なら何もせず return。
+  bool BeginModal(const char *title, bool *show, float w, float h,
+                  ImGuiWindowFlags extra = 0, Placement place = kCenter);
+  ```
+  9 か所 × 4〜5 行 → 各 1 行。latency の「ファイラー側」は Placement で、cast の幅の
+  決め方だけは今のまま。
+- **(C) `show_` / `isOpen()` / `CloseTop()` → 小さな基底 `ModalDialog`**
+  ```
+  class ModalDialog {          // 仮想関数は持たない。共通の 3 行を置くだけ
+  public:
+    bool isOpen() const { return show_; }
+    bool CloseTop() { if (!show_) return false; show_ = false; return true; }
+  protected:
+    bool show_ = false;
+  };
+  ```
+  入れ子を持つクラス（bm / pdx / colors / fs）は CloseTop を上書きして先に入れ子を閉じる
+  （非仮想で隠す。SettingsUi は具象型で持っているので問題ない）。update / info / ctx は
+  `show_` 1 つで表せないので継承しない。
+
+### 見込み
+
+- 差分は合計 −150 行ほど。危険は小さい（字句が同じ所を関数に置き換えるだけ）。
+- 新しいダイアログを足すときの型が「ModalDialog を継承、Build の頭は BeginModal 1 行、
+  確認は NestedPopup::Begin / CancelButton」に決まる。
+- (A) が一番効く（7 か所の完全な重複が消える）。(B) は読みやすさ、(C) は型の統一。
+
+### やらないこと
+
+- 抽象基底 + 配列で Build/CloseDialog を回す（上の理由）。
+- Build の引数を BuildContext にまとめる（使わない引数が並ぶ。順番の問題も解けない）。
+
+### 第 3 段の実施（2026-09-30）
+
+(A)(B)(C) を全部当てた。差分 20 ファイル、+150 / −316 行。
+- (A) `NestedPopup::Begin(ui, title)` / `CancelButton(label)` / `TakeClose()`（settingsui_dialog.cpp）。
+  7 か所の入れ子（bm の削除・Shift+M、colors の上書き、fs の削除・追加・渡されたファイル、
+  menu の終了、update）が「Begin で開く → 中身 → CancelButton」の形に。開く前に支度がある
+  もの（Shift+M で控えられない場所、渡されたファイルが許可済みで尋ねない）は、支度の中で
+  `ask = false` にして Begin に開かせない。update は [閉じる] とまとめるので TakeClose。
+  NestedPopup は SettingsUi の friend（placeCond / DialogFlags を使う）。
+- (B) `SettingsUi::BeginModal(title, &show, w, h, extra)`。9 か所（settings / colors / pdx /
+  bookmarks / folder / filesystems / info×3）が 1 行に。h=0 なら AlwaysAutoResize を足す。
+  latency（ファイラー側に置く）と cast（幅を中身で決める）は SyncModal + 自前の配置のまま。
+- (C) `ModalDialog`（show_ / isOpen / CloseTop、仮想関数なし）を cast / latency / folder /
+  pdx / bookmarks / colors / filesystems が継承。入れ子を持つ 4 つは CloseTop を隠して先に
+  入れ子を閉じる。settings（visible_ の意味が違う）/ update / info / ctx は継承しない。
+- 確認: Windows Debug / Android release ビルド通過。Windows（ud2）で設定→PDX→フォルダ→ESC→×、
+  [画面の遅れ] の往復、F4 の削除確認（ESC で 1 段ずつ）、F2、終了の確認、F12。Pixel 7a で F4 の
+  削除確認、Shift+M の確認、設定→PDX→フォルダ→戻る。ログに例外なし。

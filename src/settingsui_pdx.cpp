@@ -25,14 +25,7 @@ using namespace settingsui;
 // 同じ作りで、[開く] が無いだけ。並び順がそのまま探す順（MDX と同じフォルダの
 // 次に、上から順）。
 void PdxPathsDialog::Build(SettingsUi &ui, Settings *settings, Filer *filer) {
-	if (!ui.SyncModal(kPdxPathsTitle, &show_)) return;
-
-	CenterNextWindow(ui.placeCond());
-	ImGui::SetNextWindowSize(ui.DialogSize(460.0f, 360.0f), ui.placeCond());
-
-	if (!ui.BeginDialog(kPdxPathsTitle, &show_, ui.DialogFlags())) {
-		return;
-	}
+	if (!ui.BeginModal(kPdxPathsTitle, &show_, 460.0f, 360.0f)) return;
 	if (ui.vfs_ == 0) {
 		ImGui::TextUnformatted(Msg("FileSystems.Empty"));
 		ImGui::EndPopup();
@@ -132,22 +125,7 @@ void PdxPathsDialog::Insert(std::vector<std::string> *list, const std::string &r
 
 // 「本当に削除するか」。PDX の探索先の中に入れ子で開く。
 void PdxPathsDialog::BuildRemoveWindow(SettingsUi &ui, Settings *settings) {
-	if (remove_.ask) {
-		remove_.ask = false;
-		ImGui::OpenPopup(kPdxRemoveTitle);
-	}
-
-	remove_.open = ImGui::IsPopupOpen(kPdxRemoveTitle);
-	if (!remove_.open) {
-		remove_.close = false;
-		return;
-	}
-
-	CenterNextWindow(ui.placeCond());
-	if (!ImGui::BeginPopupModal(kPdxRemoveTitle, NULL,
-	                            ui.DialogFlags() | ImGuiWindowFlags_AlwaysAutoResize)) {
-		return;
-	}
+	if (!remove_.Begin(ui, kPdxRemoveTitle)) return;
 
 	std::vector<std::string> &list = settings->pdxPaths;
 	const bool valid = (selected_ >= 0 && selected_ < (int)list.size());
@@ -165,10 +143,7 @@ void PdxPathsDialog::BuildRemoveWindow(SettingsUi &ui, Settings *settings) {
 		ImGui::CloseCurrentPopup();
 	}
 	ImGui::SameLine();
-	if (ImGui::Button(Msg("Button.Cancel")) || remove_.close) {
-		remove_.close = false;
-		ImGui::CloseCurrentPopup();
-	}
+	remove_.CancelButton(Msg("Button.Cancel"));
 	ImGui::EndPopup();
 }
 

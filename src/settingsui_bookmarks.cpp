@@ -92,14 +92,7 @@ void BookmarksDialog::JumpToRef(SettingsUi &ui, Settings *settings, const std::s
 }
 
 void BookmarksDialog::Build(SettingsUi &ui, Settings *settings, Filer *filer) {
-	if (!ui.SyncModal(kBookmarksTitle, &show_)) return;
-
-	CenterNextWindow(ui.placeCond());
-	ImGui::SetNextWindowSize(ui.DialogSize(460.0f, 360.0f), ui.placeCond());
-
-	if (!ui.BeginDialog(kBookmarksTitle, &show_, ui.DialogFlags())) {
-		return;
-	}
+	if (!ui.BeginModal(kBookmarksTitle, &show_, 460.0f, 360.0f)) return;
 	if (ui.vfs_ == 0) {
 		ImGui::TextUnformatted(Msg("FileSystems.Empty"));
 		ImGui::EndPopup();
@@ -210,22 +203,7 @@ void BookmarksDialog::Insert(std::vector<std::string> *list, const std::string &
 
 // 「本当に削除するか」。ブックマークの設定の中に入れ子で開く。
 void BookmarksDialog::BuildRemoveWindow(SettingsUi &ui, Settings *settings) {
-	if (remove_.ask) {
-		remove_.ask = false;
-		ImGui::OpenPopup(kBmRemoveTitle);
-	}
-
-	remove_.open = ImGui::IsPopupOpen(kBmRemoveTitle);
-	if (!remove_.open) {
-		remove_.close = false;
-		return;
-	}
-
-	CenterNextWindow(ui.placeCond());
-	if (!ImGui::BeginPopupModal(kBmRemoveTitle, NULL,
-	                            ui.DialogFlags() | ImGuiWindowFlags_AlwaysAutoResize)) {
-		return;
-	}
+	if (!remove_.Begin(ui, kBmRemoveTitle)) return;
 
 	std::vector<std::string> &list = settings->bookmarks;
 	const bool valid = (selected_ >= 0 && selected_ < (int)list.size());
@@ -243,10 +221,7 @@ void BookmarksDialog::BuildRemoveWindow(SettingsUi &ui, Settings *settings) {
 		ImGui::CloseCurrentPopup();
 	}
 	ImGui::SameLine();
-	if (ImGui::Button(Msg("Button.Cancel")) || remove_.close) {
-		remove_.close = false;
-		ImGui::CloseCurrentPopup();
-	}
+	remove_.CancelButton(Msg("Button.Cancel"));
 	ImGui::EndPopup();
 }
 
@@ -255,26 +230,15 @@ void BookmarksDialog::BuildRemoveWindow(SettingsUi &ui, Settings *settings) {
 // 入れ子ではなく単独のモーダルとして開く。
 void BookmarksDialog::BuildToggleWindow(SettingsUi &ui, Settings *settings, Filer *filer) {
 	if (toggle_.ask) {
-		toggle_.ask = false;
 		const std::string cur = (filer != 0) ? filer->currentRef() : std::string();
 		// 追加できない場所（ファイルシステムの選択、"Bookmarks>"）では何もしない。
 		if (ui.CanBookmark(cur)) {
 			toggleRef_ = cur;
-			ImGui::OpenPopup(kBmToggleTitle);
+		} else {
+			toggle_.ask = false;  // 開かせない
 		}
 	}
-
-	toggle_.open = ImGui::IsPopupOpen(kBmToggleTitle);
-	if (!toggle_.open) {
-		toggle_.close = false;
-		return;
-	}
-
-	CenterNextWindow(ui.placeCond());
-	if (!ImGui::BeginPopupModal(kBmToggleTitle, NULL,
-	                            ui.DialogFlags() | ImGuiWindowFlags_AlwaysAutoResize)) {
-		return;
-	}
+	if (!toggle_.Begin(ui, kBmToggleTitle)) return;
 
 	std::vector<std::string> &list = settings->bookmarks;
 	const int at = ui.FindBookmark(list, toggleRef_);
@@ -305,10 +269,7 @@ void BookmarksDialog::BuildToggleWindow(SettingsUi &ui, Settings *settings, File
 		ImGui::EndDisabled();
 	}
 	ImGui::SameLine();
-	if (ImGui::Button(Msg("Button.Cancel")) || toggle_.close) {
-		toggle_.close = false;
-		ImGui::CloseCurrentPopup();
-	}
+	toggle_.CancelButton(Msg("Button.Cancel"));
 	ImGui::EndPopup();
 }
 

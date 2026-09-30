@@ -401,6 +401,14 @@ private:
 	// 字の大きさの正方形でしか反応せず、小さい画面では押しにくかった（r77 の
 	// 480x640、2026-09-30、ユーザーの指摘）。
 	bool BeginDialog(const char *title, bool *p_open, ImGuiWindowFlags flags);
+	// ダイアログを開く定型をまとめたもの: SyncModal → 置き場所 → 大きさ →
+	// BeginDialog。false なら何もせず return する（開いていない、または ImGui が
+	// このフレームは組まない）。true なら中身を組んで ImGui::EndPopup() すること。
+	// w, h は DialogSize に渡す倍率 1 倍のときの大きさ（h=0 は中身任せ。そのとき
+	// は AlwaysAutoResize を足す）。extra は DialogFlags に足すフラグ。
+	// 置き場所は画面の中央。それ以外（[遅延時間] のファイラー側）は各自で
+	// SetNextWindowPos してから BeginDialog を呼ぶ。
+	bool BeginModal(const char *title, bool *show, float w, float h, ImGuiWindowFlags extra = 0);
 
 	// ダイアログのクラスは SettingsUi の中（共通の道具・main への出力・
 	// 他のダイアログ）に手が届く。逆に SettingsUi も各クラスの中を触る
@@ -416,6 +424,7 @@ private:
 	friend class FolderDialog;
 	friend class FileSystemsDialog;
 	friend class SettingsWindow;
+	friend struct NestedPopup;  // 入れ子の確認の開き方（placeCond / DialogFlags）
 
 	bool ready_;
 	bool hasJapaneseFont_;

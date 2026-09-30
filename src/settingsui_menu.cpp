@@ -416,22 +416,7 @@ void ContextMenu::Build(SettingsUi &ui, Settings *settings, DrawScreen *draw, Pl
 // 終了の確認。Android の戻るキーで、ダイアログも戻る先も無いときに出す。
 // メイン画面から直に開くので、単独のモーダルとして扱う。
 void ContextMenu::BuildQuitWindow(SettingsUi &ui) {
-	if (quit_.ask) {
-		quit_.ask = false;
-		ImGui::OpenPopup(kQuitTitle);
-	}
-
-	quit_.open = ImGui::IsPopupOpen(kQuitTitle);
-	if (!quit_.open) {
-		quit_.close = false;
-		return;
-	}
-
-	CenterNextWindow(ui.placeCond());
-	if (!ImGui::BeginPopupModal(kQuitTitle, NULL,
-	                            ui.DialogFlags() | ImGuiWindowFlags_AlwaysAutoResize)) {
-		return;
-	}
+	if (!quit_.Begin(ui, kQuitTitle)) return;
 
 	ConfirmText(Msg("Dialog.QuitQuestion"));
 	ImGui::Separator();
@@ -444,10 +429,7 @@ void ContextMenu::BuildQuitWindow(SettingsUi &ui) {
 		ImGui::CloseCurrentPopup();
 	}
 	ImGui::SameLine();
-	if (ImGui::Button(Msg("Button.Cancel")) || quit_.close) {
-		quit_.close = false;
-		ImGui::CloseCurrentPopup();
-	}
+	quit_.CancelButton(Msg("Button.Cancel"));
 	ImGui::EndPopup();
 }
 

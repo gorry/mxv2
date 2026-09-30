@@ -37,7 +37,7 @@ bool LessPathNoCase(const std::string &a, const std::string &b) {
 }  // namespace
 
 FolderDialog::FolderDialog()
-    : show_(false), target_(kFolderTargetFiler), returnTo_(kFolderReturnNone), openPending_(false),
+    : target_(kFolderTargetFiler), returnTo_(kFolderReturnNone), openPending_(false),
       lister_(new DirLister()), loading_(false), ticks_(0), hasPrev_(false) {
 	pathBuf_[0] = '\0';
 }
@@ -182,14 +182,7 @@ const char *FolderDialog::Title() const {
 
 void FolderDialog::Build(SettingsUi &ui, Settings *settings, Filer *filer) {
 	const char *title = Title();
-	if (!ui.SyncModal(title, &show_)) return;
-
-	CenterNextWindow(ui.placeCond());
-	ImGui::SetNextWindowSize(ui.DialogSize(460.0f, 400.0f), ui.placeCond());
-
-	if (!ui.BeginDialog(title, &show_, ui.DialogFlags())) {
-		return;
-	}
+	if (!ui.BeginModal(title, &show_, 460.0f, 400.0f)) return;
 
 	// 一覧は別スレッドが読んでいる。届いていれば取り込む。
 	PollDir(ui);
