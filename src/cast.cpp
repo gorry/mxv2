@@ -570,7 +570,7 @@ void EndFrame(SDL_Renderer *renderer, const SDL_Rect &rect, uint64_t visualFrame
               int sampleRate) {
 	Global &g = G();
 	if (!g.streaming || renderer == 0 || rect.w <= 0 || rect.h <= 0 || sampleRate <= 0) {
-		// Begin で描画先を替えていれば、窓へ写して戻す。
+		// Begin で描画先を替えていれば、ウィンドウへ写して戻す。
 		SDLCastG_EndRendererFrameNoVideo(renderer);
 		return;
 	}
@@ -605,7 +605,7 @@ void EndFrame(SDL_Renderer *renderer, const SDL_Rect &rect, uint64_t visualFrame
 	}
 
 	if (!SDLCastG_WantVideoFrame()) {
-		SDLCastG_EndRendererFrameNoVideo(renderer);  // 窓へ写すだけ
+		SDLCastG_EndRendererFrameNoVideo(renderer);  // ウィンドウへ写すだけ
 		return;
 	}
 	// いま画面に出ているのは visualFrame の音の時点の様子。その音が流れの上で
@@ -624,7 +624,7 @@ void EndFrame(SDL_Renderer *renderer, const SDL_Rect &rect, uint64_t visualFrame
 	// （音声のコールバックは Android で 43ms ごと。30fps で読むと同じ時刻が続く）。
 	// 止まっているとき（pts が「いま」）は読む。ダイアログの変化を送るため。
 	if (pts >= 0 && g.haveCaptured && visualFrame == g.lastCapturedFrame) {
-		SDLCastG_EndRendererFrameNoVideo(renderer);  // 窓へ写すだけ（読み出さない）
+		SDLCastG_EndRendererFrameNoVideo(renderer);  // ウィンドウへ写すだけ（読み出さない）
 		return;
 	}
 	g.lastCapturedFrame = visualFrame;

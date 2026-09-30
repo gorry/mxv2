@@ -94,7 +94,7 @@ void LogUpdateResult(const mxv2::UpdateResult &r) {
 // **チュートリアル中は受け取らない**（2026-09-18、ユーザーの指示）。案内は
 // 画面の状態を見て進むので、途中で曲や場所が変わると筋が合わなくなる。
 // 受け取らなかったことはログに 1 行出すだけで、**あとで開き直したりはしない**。
-// 2 つめから渡されたときに窓を前面へ出すのは受け取った時点で済んでいるので、
+// 2 つめから渡されたときにウィンドウを前面へ出すのは受け取った時点で済んでいるので、
 // ここは捨てるだけでよい（落とされたぶんは、そもそも前面に居る）。
 void OpenHandedPath(const PlayContext &ctx, mxv2::Filer *filer, bool tutorialActive,
                     const std::string &path) {
@@ -108,7 +108,7 @@ void OpenHandedPath(const PlayContext &ctx, mxv2::Filer *filer, bool tutorialAct
 }
 
 // キー・マウス・メニューのどこからでも変わる項目（文字の大きさ・音量・
-// 今の場所・CONT / REPEAT・窓の位置）を設定と見比べて、変わっていれば
+// 今の場所・CONT / REPEAT・ウィンドウの位置）を設定と見比べて、変わっていれば
 // 設定に写す。返すのは変わった項目のビット和。フレームごと（保存の待ち
 // 時間へ入れる）と終了時（残りを流す）の 2 か所から同じ手順を通す。
 unsigned CollectDirtyFields(mxv2::Settings *settings, mxv2::DrawScreen *draw,
@@ -165,9 +165,9 @@ unsigned CollectDirtyFields(mxv2::Settings *settings, mxv2::DrawScreen *draw,
 		settings->windowMaximized = screen->maximized();
 		dirt |= mxv2::Settings::kFieldWindowPos;
 	}
-	// 窓の位置と大きさは**普通の窓のときだけ**見る。フルスクリーン・最大化は
+	// ウィンドウの位置と大きさは**普通のウィンドウのときだけ**見る。フルスクリーン・最大化は
 	// 画面いっぱいの形を、最小化は (-32000,-32000) を覚えてしまうし、
-	// 最大化をやめたときに戻る場所は「その前の普通の窓」であってほしい。
+	// 最大化をやめたときに戻る場所は「その前の普通のウィンドウ」であってほしい。
 	if (!screen->fullScreen() && !screen->minimized() && !screen->maximized()) {
 		int wx = 0, wy = 0, ww = 0, wh = 0;
 		screen->GetWindowRect(&wx, &wy, &ww, &wh);
@@ -185,19 +185,19 @@ unsigned CollectDirtyFields(mxv2::Settings *settings, mxv2::DrawScreen *draw,
 
 // ---- 画面の向きでスキンを切り替える（screen_orientation.md） --------------
 
-// ---- 窓の大きさの知らせを描画スレッドで配り直す（Android） ----------------
+// ---- ウィンドウの大きさの知らせを描画スレッドで配り直す（Android） ----------------
 //
-// SDL2 の Android は、窓の大きさの変化を **Java の UI スレッドから** 配る
+// SDL2 の Android は、ウィンドウの大きさの変化を **Java の UI スレッドから** 配る
 // （SDLSurface.surfaceChanged → onNativeResize → SDL_SendWindowEvent）。配る途中で
 // レンダラーの event watch（SDL_RendererEventWatch）が同じ UI スレッドで走り、
-// 描画先を窓へ切り替えて戻し、ビューポートの命令を積む。GL の文脈は描画スレッドの
+// 描画先をウィンドウへ切り替えて戻し、ビューポートの命令を積む。GL の文脈は描画スレッドの
 // ものなので eglMakeCurrent は EGL_BAD_ACCESS で失敗し、SDL の控え（描画先・
 // 命令の列）だけが描画スレッドと取り合いで書き換わる。素早く縦横を替えると、
 // 画面が上下逆・赤青反転・古い絵のまま固まった（2026-09-25、screen_orientation.md）。
 //
 // 対処: UI スレッドから来た大きさの知らせはイベントフィルターで捨てて印だけ立て、
 // 描画スレッドのフレームの頭で SIZE_CHANGED を積み直す（積み直した知らせでは
-// event watch が描画スレッドで走る）。窓の大きさそのもの（SDL_GetWindowSize）は
+// event watch が描画スレッドで走る）。ウィンドウの大きさそのもの（SDL_GetWindowSize）は
 // 捨てる前に SDL が書き換え済み。
 SDL_atomic_t g_resizePending;
 
@@ -414,7 +414,7 @@ int main(int argc, char **argv) {
 	bool startFound = false;
 	// Android: ファイルマネージャなどから渡されたものは **URI** で届く
 	// （openintent.h）。すでに許可のあるフォルダの中なら、そのまま開く場所と
-	// して使える。外なら**窓が出てから尋ねる**ので、ここでは預かるだけにする
+	// して使える。外なら**ウィンドウが出てから尋ねる**ので、ここでは預かるだけにする
 	// （ダイアログを出すには UI が要る。許可を取るか、写して鳴らすか）。
 	std::string startHandedUri;
 	if (!opt.target.empty() && mxv2::openintent::IsUri(opt.target)) {
@@ -647,7 +647,7 @@ int main(int argc, char **argv) {
 		// 前回の大きさに戻す。**縮める方向には戻さない**（表示倍率が
 		// 100% を割るとキャンバスが潰れるので、宣言サイズ x 表示倍率を
 		// 下限にする）。伸びたぶんはファイラーの行数として戻ってくる。
-		// **窓の大きさを決められるプラットフォームだけ**（Android では窓＝画面で、
+		// **ウィンドウの大きさを決められるプラットフォームだけ**（Android ではウィンドウ＝画面で、
 		// SDL_SetWindowSize を呼ぶと SDL 側の記録だけがずれる。Screen の
 		// CanResizeWindow のコメント）。
 		if (mxv2::Screen::CanResizeWindow() && settings.windowW > 0 &&
@@ -659,25 +659,25 @@ int main(int argc, char **argv) {
 			SDL_SetWindowSize(screen.window(), w, h);
 		}
 		// 前回最大化で終えていたら、最大化で始める（[Position] Maximized）。
-		// 位置と大きさを決めたあとに掛けるので、元に戻すと覚えていた窓になる。
+		// 位置と大きさを決めたあとに掛けるので、元に戻すと覚えていたウィンドウになる。
 		if (settings.windowMaximized) screen.Maximize();
 		// 前回フルスクリーンで終えていたら、その状態で始める（-fullscreen も
-		// ここを通る）。**窓の大きさを戻したあとに掛ける**ことで、SDL が
-		// 「フルスクリーンをやめたときの大きさ」として前回の窓を覚える。
+		// ここを通る）。**ウィンドウの大きさを戻したあとに掛ける**ことで、SDL が
+		// 「フルスクリーンをやめたときの大きさ」として前回のウィンドウを覚える。
 		if (settings.fullScreen && mxv2::Screen::CanFullScreen()) {
 			screen.SetFullScreen(true);
 		}
 		// 前回最小化で終えていたら、最小化で始める（旧 mxv の
 		// [Position] Iconic）。**位置と大きさを決めたあとに掛ける**ことで、
-		// 元に戻したときに覚えていた窓になる。
+		// 元に戻したときに覚えていたウィンドウになる。
 		if (settings.windowIconic) screen.Minimize();
 
-		// ここまでの見た目を決めてから窓を出す。**Open() は隠して作る**ので、
+		// ここまでの見た目を決めてからウィンドウを出す。**Open() は隠して作る**ので、
 		// これを呼ばないと画面に何も出ない（screen.h の Open のコメント）。
 		screen.Show();
 
 		// 2 つめの mxv2 からの依頼を受け取れるようにする（多重起動の抑止）。
-		// 窓の handle を渡すのは、依頼が来たときに前面へ出すため。
+		// ウィンドウの handle を渡すのは、依頼が来たときに前面へ出すため。
 		mxv2::singleinstance::Start(screen.nativeWindowHandle());
 		screen.SetScaleMode(
 		    mxv2::Screen::ScaleModeFromName(settings.scaleFilter, mxv2::Screen::kScaleSharp));
@@ -822,8 +822,8 @@ int main(int argc, char **argv) {
 	// 画面の向きが変わったときに入る。
 	std::string pendingSkin;
 
-	// 窓の大きさが変わった印。フレームの頭でキャンバスを合わせ直す。
-	// 起動直後にも 1 回通して、窓の縦横比にキャンバスを寄せる。
+	// ウィンドウの大きさが変わった印。フレームの頭でキャンバスを合わせ直す。
+	// 起動直後にも 1 回通して、ウィンドウの縦横比にキャンバスを寄せる。
 	bool windowResized = true;
 
 	bool quit = false;
@@ -911,7 +911,7 @@ int main(int argc, char **argv) {
 	bool dropGroup = false;
 
 	// 外から渡された MDX（Android の VIEW インテント。openintent.h）の待ち行列。
-	// 起動のときに預かったぶんを先頭に置く（窓が出てから尋ねるため）。
+	// 起動のときに預かったぶんを先頭に置く（ウィンドウが出てから尋ねるため）。
 	std::vector<std::string> handedUris;
 	if (!startHandedUri.empty()) handedUris.push_back(startHandedUri);
 
@@ -920,8 +920,8 @@ int main(int argc, char **argv) {
 
 	while (!quit) {
 		// 小窓（ピクチャー・イン・ピクチャー。memo/pip.md）の出し入れの間は、
-		// 窓の大きさが落ち着いていない。そこで向きを見たりキャンバスを窓へ
-		// 合わせたりすると、**小さな横長の窓を見て横向き用のスキンへ
+		// ウィンドウの大きさが落ち着いていない。そこで向きを見たりキャンバスをウィンドウへ
+		// 合わせたりすると、**小さな横長のウィンドウを見て横向き用のスキンへ
 		// 切り替えてしまう**ので、どちらもしない。抜けたら合わせ直す。
 		// 小窓の間は SDL の面を隠しているので、描くのはバックグラウンドと
 		// 同じく止まっている。
@@ -930,7 +930,7 @@ int main(int argc, char **argv) {
 		pipWasActive = pipActive;
 
 		// 画面の向きが変わったらスキンを取り替える（screen_orientation.md）。
-		// 見るのは窓の縦横比で、端末の「自然な向き」ではない（Screen の
+		// 見るのはウィンドウの縦横比で、端末の「自然な向き」ではない（Screen の
 		// コメント）。「常に切り替える」以外は起動時（と設定を閉じたとき）に
 		// 決めたきりなので、ここでは何もしない。
 		if (orientEnabled && settings.orientationMode == mxv2::Settings::kOrientAlways &&
@@ -951,7 +951,7 @@ int main(int argc, char **argv) {
 		// スキンの差し替え。設定ウィンドウで選ばれたときと、画面の向きが
 		// 変わったとき（screen_orientation.md）に来る。
 		//
-		// **キャンバスを窓へ合わせるより前に置くこと。** 逆だと、回転した
+		// **キャンバスをウィンドウへ合わせるより前に置くこと。** 逆だと、回転した
 		// フレームでキャンバスだけ先に追従して、1 フレームぶん「旧スキンが
 		// 引き伸びた絵」が出る。
 		if (!pendingSkin.empty()) {
@@ -1015,14 +1015,14 @@ int main(int argc, char **argv) {
 				player.RequestStatusRefresh();
 				chromeRefresh = true;
 				fileListRefresh = true;
-				// 宣言サイズが同じスキンへ移ったときは窓の大きさが変わらず、
+				// 宣言サイズが同じスキンへ移ったときはウィンドウの大きさが変わらず、
 				// リサイズのイベントも来ない。分割が違えばキャンバスは
 				// 変わるので、次のフレームで合わせ直させる。
 				windowResized = true;
 			}
 		}
 
-		// 窓の大きさが変わっていたらキャンバスを作り直す。イベントごとでは
+		// ウィンドウの大きさが変わっていたらキャンバスを作り直す。イベントごとでは
 		// なくフレームに 1 回にすることが、そのままリサイズ中のデバウンスに
 		// なる。表示倍率やスキンを変えたあとの追随もここが受け持つ。
 		// 小窓の出し入れの間は印を立てたまま待つ（上の pipActive）。
@@ -1042,7 +1042,7 @@ int main(int argc, char **argv) {
 			}
 		}
 
-		// UI スレッドから来て捨てた窓の大きさの知らせを、ここ（描画スレッド）で積み直す。
+		// UI スレッドから来て捨てたウィンドウの大きさの知らせを、ここ（描画スレッド）で積み直す。
 		RepostResizeEvent(screen.window());
 
 		SDL_Event ev;
@@ -1175,7 +1175,7 @@ int main(int argc, char **argv) {
 				}
 			}
 
-			// マウス。イベントは窓の画素で届くので、キャンバスの論理座標へ
+			// マウス。イベントはウィンドウの画素で届くので、キャンバスの論理座標へ
 			// 直してから配る（当たり判定はすべて論理座標）。
 			SDL_Event mev = ev;
 			screen.WindowEventToCanvas(&mev);
@@ -1196,7 +1196,7 @@ int main(int argc, char **argv) {
 		}
 
 		// 2 つめの mxv2 が渡してきたもの。**落とされたのと同じ扱い**で開く
-		// （曲なら演奏してそのフォルダへ、フォルダならそこへ移る）。窓を
+		// （曲なら演奏してそのフォルダへ、フォルダならそこへ移る）。ウィンドウを
 		// 前面へ出すのは受け取った時点で済んでいる。渡すものが無い起動
 		// （引数なしの 2 つめ）のときは空で届くので、開くものは無い。
 		{
@@ -1556,8 +1556,8 @@ int main(int argc, char **argv) {
 		fileListRefresh = false;
 
 		draw.BlitTo(&screen);
-		// Chromecast へ送っていれば、このフレームは窓と同じ大きさのテクスチャへ
-		// 描かせる（下の EndFrame で縮めて読み出し、窓へ写す。cast.h）。
+		// Chromecast へ送っていれば、このフレームはウィンドウと同じ大きさのテクスチャへ
+		// 描かせる（下の EndFrame で縮めて読み出し、ウィンドウへ写す。cast.h）。
 		mxv2::cast::BeginFrame(screen.renderer());
 		screen.Draw();
 		textLayer.Render(&screen);  // 文字は拡大後の解像度で重ねる

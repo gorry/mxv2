@@ -47,7 +47,7 @@ float FramesToMs(int frames, const Player *player) {
 }  // namespace settingsui
 
 // キー (Ctrl +/-) から頼まれた倍率の増減を入れる。1 段は keybind.cpp の
-// kZoomKeyStep で、端は Screen::kZoomMin / kZoomMax で止まる。窓へ掛けるのは
+// kZoomKeyStep で、端は Screen::kZoomMin / kZoomMax で止まる。ウィンドウへ掛けるのは
 // ダイアログと同じく kZoomApplyDelayMs だけ待ってから（押しっぱなしで
 // リピートしても、手が止まってから 1 回だけ作り直す）。
 void SettingsUi::ApplyZoomStep(Settings *settings) {
@@ -236,11 +236,11 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 	}
 
 	if (GroupHeader(Msg("Settings.Screen"))) {
-		// 窓の大きさを OS 側が決めている間（最大化・フルスクリーン）は、
+		// ウィンドウの大きさを OS 側が決めている間（最大化・フルスクリーン）は、
 		// 倍率を変えても掛けようがないのでグレーにする（2026-09-18、
 		// ユーザーの指示）。フラグは毎フレーム見るので、題名バーのボタンで
 		// 最大化した／元に戻したのにも、開いたまま追いつく。
-		// モバイルは窓の大きさを変えようがないので、表示倍率の行ごと出さない
+		// モバイルはウィンドウの大きさを変えようがないので、表示倍率の行ごと出さない
 		// （Screen::CanZoom。フルスクリーンと同じ扱い）。
 		if (Screen::CanZoom()) {
 			const bool zoomLocked = screen->windowSizeLocked();
@@ -288,8 +288,8 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 			if (zoomLocked) TextNote(Msg("Settings.ZoomLocked"));
 		}
 
-		// フルスクリーン表示（デスクトップだけ）。窓の大きさが変わるだけ
-		// なので即時に掛けてよく、キャンバスは次のフレームで窓に合わせて
+		// フルスクリーン表示（デスクトップだけ）。ウィンドウの大きさが変わるだけ
+		// なので即時に掛けてよく、キャンバスは次のフレームでウィンドウに合わせて
 		// 作り直される（main の SyncCanvasToWindow）。
 		if (Screen::CanFullScreen()) {
 			bool full = screen->fullScreen();

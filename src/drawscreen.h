@@ -37,7 +37,7 @@ public:
 	// キャンバスはスキンの宣言サイズで始まる（伸ばすのは Resize）。
 	bool Init(const Skin *skin, std::string *err);
 
-	// キャンバスの大きさを変える（窓のリサイズ、画面の回転）。
+	// キャンバスの大きさを変える（ウィンドウのリサイズ、画面の回転）。
 	// バッファを作り直し、レイアウトを解決し直して、全面を描き直す。
 	// 大きさが同じなら何もしないで true。
 	bool Resize(int canvasW, int canvasH, std::string *err);

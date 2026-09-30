@@ -64,7 +64,7 @@ int64_t NowMs() {
 	    .count();
 }
 
-// 採った値（ナノ秒）を窓ごとに中央値にして渡す。
+// 採った値（ナノ秒）を区間ごとに中央値にして渡す。
 class Collector {
 public:
 	Collector() : start_(NowMs()), windowStart_(0) {}

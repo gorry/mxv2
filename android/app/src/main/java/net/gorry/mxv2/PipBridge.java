@@ -22,7 +22,7 @@ import java.util.ArrayList;
  * **小窓の間は SDL の面 (SurfaceView) を隠す。** 面が消えると SDL は
  * PAUSED に移り、ネイティブには SDL_APP_WILLENTERBACKGROUND が届くので、
  * mxv2 は今のバックグラウンドの経路（描かない・演奏と曲送りと通知は続ける）に
- * そのまま入る。小さな窓でキャンバスを作り直したり、横長の窓を見て横向き用の
+ * そのまま入る。小さなウィンドウでキャンバスを作り直したり、横長のウィンドウを見て横向き用の
  * スキンへ切り替えたりさせないため。
  *
  * ネイティブ（src/pip.cpp）からは SDL のメインスレッドで呼ばれ、Activity
@@ -70,7 +70,7 @@ public class PipBridge {
 	 * MainActivity.onCreate から。**Activity が作り直されたときも来る**ので、
 	 * 前の Activity の小窓の状態をここで捨てる。static はプロセスが続く限り
 	 * 残り、SDL は同じプロセスで SDL_main を最初から走らせ直すため、残して
-	 * おくとネイティブの見張り (inPip) が立ったままになり、キャンバスが窓に
+	 * おくとネイティブの見張り (inPip) が立ったままになり、キャンバスがウィンドウに
 	 * 合わなくなる（2026-09-25、ユーザーの報告）。
 	 */
 	static void setActivity(MainActivity a) {
@@ -151,7 +151,7 @@ public class PipBridge {
 	/**
 	 * 小窓へ移るとき、Activity は一時停止する。**Android 12 以降の自動の
 	 * 入り方では onPictureInPictureModeChanged より先にここが来る**ので、
-	 * ここで面を隠して、小さな窓で一度でも描かれるのを避ける。
+	 * ここで面を隠して、小さなウィンドウで一度でも描かれるのを避ける。
 	 */
 	static void onPause() {
 		final MainActivity a = sActivity;
@@ -188,7 +188,7 @@ public class PipBridge {
 		if (a == null || !available()) return;
 		// 表示するものが無いときは入らない。
 		if (!PlaybackBridge.snapshot().active) return;
-		// 窓が小さくなる前から、ネイティブにはキャンバスを触らせない。
+		// ウィンドウが小さくなる前から、ネイティブにはキャンバスを触らせない。
 		sInPip = true;
 		boolean ok = false;
 		try {
@@ -208,7 +208,7 @@ public class PipBridge {
 	}
 
 	/**
-	 * 小窓から戻った（広げた、または閉じた）。面を出すのは**窓が元の大きさに
+	 * 小窓から戻った（広げた、または閉じた）。面を出すのは**ウィンドウが元の大きさに
 	 * なってから**にしたいので、レイアウトを 1 回待つ。そのあと少し置いてから
 	 * ネイティブの見張りを解く（出したばかりの面の大きさが落ち着くまで）。
 	 */

@@ -75,7 +75,7 @@ void SettingsUi::BuildCastWindow(Settings *settings) {
 	// 1 列の高さの見積もり: 字の行が 14（説明 1・一覧 4・状態 3・名札 2・注記 1・
 	// 流れの様子 1・折り返しの余裕 2）、部品の行が 5（ボタン・品質・チェック・
 	// スライダー・[閉じる]）、
-	// 題名の帯、余白（窓の上下と一覧の枠の上下）。
+	// 題名の帯、余白（ウィンドウの上下と一覧の枠の上下）。
 	const float oneColumnH = ImGui::GetTextLineHeightWithSpacing() * 14.0f +
 	                         ImGui::GetFrameHeightWithSpacing() * 6.0f +
 	                         st.WindowPadding.y * 4.0f + st.ItemSpacing.y * 2.0f;
@@ -85,7 +85,7 @@ void SettingsUi::BuildCastWindow(Settings *settings) {
 	const float maxW = io.DisplaySize.x - st.DisplaySafeAreaPadding.x * 2.0f;
 	if (width > maxW) width = maxW;
 	// 高さが画面に収まらず縦のスクロールバーが出ると、ImGui はその幅を中身の幅に
-	// **足して**窓を広げる。画面いっぱいの幅だと、中央に置いた窓の左右が画面から
+	// **足して**ウィンドウを広げる。画面いっぱいの幅だと、中央に置いたウィンドウの左右が画面から
 	// 切れた（r77 の 480x640 縦画面、2026-09-30）。出ていたら、そのぶん中身を詰める。
 	if (cast_.scrollY) width -= st.ScrollbarSize;
 	// 幅は中身の幅で決める（SetNextWindowContentSize。高さは 0＝中身任せ）。

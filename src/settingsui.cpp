@@ -65,9 +65,9 @@ const float kFontSizePx = 15.0f;
 
 // ダブルクリックの判定を SDL（＝メイン画面のファイラーの clicks）に揃える。
 // ImGui の既定は 300ms・6 実ピクセル未満で、指では事実上成立しない
-// （Pixel 7a では 6px ≒ 0.4mm）。SDL は 500ms・縦横それぞれ 32 窓ピクセル
+// （Pixel 7a では 6px ≒ 0.4mm）。SDL は 500ms・縦横それぞれ 32 ウィンドウピクセル
 // 以内（SDL_mouse.c。「タッチ向けにこのくらい」との注記）。ImGui は直線
-// 距離で見るので、SDL の箱を覆うように √2 倍しておく。窓ピクセルから
+// 距離で見るので、SDL の箱を覆うように √2 倍しておく。ウィンドウピクセルから
 // 実ピクセルへの換算 (inputScale_) は毎フレーム変わりうるので、Build() で
 // 毎回入れ直す。
 const float kDoubleClickTimeSec = 0.5f;
@@ -533,7 +533,7 @@ void SettingsUi::Shutdown() {
 void SettingsUi::ProcessEvent(const SDL_Event &ev) {
 	if (!ready_) return;
 
-	// ImGui は実ピクセルで動かす。SDL のマウスイベントは窓の座標で届くので、
+	// ImGui は実ピクセルで動かす。SDL のマウスイベントはウィンドウの座標で届くので、
 	// **渡す前に**実ピクセルへ直す（HiDPI で食い違う環境のための倍率で、
 	// ふつうは 1 倍）。ここで直さずに後から io.MousePos を上書きしても、
 	// ImGui::NewFrame() がキューを適用する際に上書きが打ち消され、
@@ -593,7 +593,7 @@ bool SettingsUi::wantCaptureKeyboard() const {
 // 頭打ちにする。メニューもダイアログも同じ物差しで縮むので、個別の手当ては
 // 要らない。
 bool SettingsUi::ApplyScale(float scale, bool touch, float displayH) {
-	// 画面の高さを見るのは指で操作するときだけ（パソコンで窓の大きさを
+	// 画面の高さを見るのは指で操作するときだけ（パソコンでウィンドウの大きさを
 	// 変えるたびに作り直さないように）。
 	const float h = touch ? displayH : 0.0f;
 	if (scale == styleScale_ && touch == touchUi_ && h == styleDisplayH_) return false;
@@ -623,7 +623,7 @@ bool SettingsUi::ApplyScale(float scale, bool touch, float displayH) {
 
 	ImGuiStyle &style = ImGui::GetStyle();
 	style = baseStyle_;
-	// 余白や角の丸めは**字に合わせて**拡げる。字だけ大きくすると、窓の内側の
+	// 余白や角の丸めは**字に合わせて**拡げる。字だけ大きくすると、ウィンドウの内側の
 	// 余白や区切りが相対的に痩せて見える。
 	style.ScaleAllSizes(fontScale);
 	style.FontScaleDpi = fontScale;
@@ -760,7 +760,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	ImGui_ImplSDL2_NewFrame();
 
 	// ImGui は実ピクセルで描く。字の大きさはキャンバスの拡大率に合わせ、
-	// マウス座標は「窓 -> 実ピクセル」の倍率で直す（別物なので注意。
+	// マウス座標は「ウィンドウ -> 実ピクセル」の倍率で直す（別物なので注意。
 	// 前者は 2.25 倍でも、後者はふつう 1 倍）。
 	float scale = 1.0f;
 	screen->GetRenderScale(&scale, 0);
@@ -776,7 +776,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	}
 	{
 		ImGuiIO &io = ImGui::GetIO();
-		// 描く場所は窓の左上が原点（BeginNativeScale が論理サイズを外す）
+		// 描く場所はウィンドウの左上が原点（BeginNativeScale が論理サイズを外す）
 		// なので、ImGui の画面はキャンバスではなく**実出力そのもの**にする。
 		// キャンバスより広ければ帯のぶんまで使えるだけで、ダイアログは
 		// 画面の真ん中に出る。

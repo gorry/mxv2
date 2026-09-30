@@ -81,8 +81,8 @@
   **自然な向き**からの回転量）をそのまま写しているので、**横が自然な向きの
   タブレットでは、横に持っているのに `PORTRAIT` が返る**。
   代わりに**出力（ウィンドウ）の `w > h`** で決める。端末を問わず正しく、
-  fullscreen.md の「キャンバスが窓に追従する」とも整合する。
-  デスクトップは窓を自由に変形できるので縦横比では決められない
+  fullscreen.md の「キャンバスがウィンドウに追従する」とも整合する。
+  デスクトップはウィンドウを自由に変形できるので縦横比では決められない
   （変形のたびにスキンが入れ替わってしまう）。ダミーで常に横を返す。
 - **回転の制御には JNI ブリッジが要る。** `SCREEN_ORIENTATION_SENSOR_*` を
   実行中に切り替える手段が SDL には無い——`SDL_HINT_ORIENTATIONS` は
@@ -95,7 +95,7 @@
   名前しか返さず、`Default-Midnight` のように **Base から画面サイズを
   継承しているスキン**は、名前や layout.ini の直読みでは分けられない。
   [再読込] でも測り直す。
-- **回転したときの適用順。** スキンの差し替えを、キャンバスを窓へ合わせる
+- **回転したときの適用順。** スキンの差し替えを、キャンバスをウィンドウへ合わせる
   処理（`SyncCanvasToWindow`）**より前**に置くこと。逆だと、キャンバスだけ先に
   追従して 1 フレームぶん「旧スキンが引き伸びた絵」が出る。
 - 「ダイアログを閉じた」は `SettingsUi` の表示フラグが落ちるのを見れば分かる。
@@ -150,14 +150,14 @@
 - 再現: `adb shell cmd window user-rotation lock 1` / `lock 0` を交互に 40 回ほど
   （間隔 0.1〜0.9 秒）。ダイアログを開いておくとほぼ確実。終わったら
   `cmd window user-rotation free` で戻す。キャストとは無関係（前からあった）。
-- **原因**: SDL2 の Android は、窓の大きさの変化を **Java の UI スレッドから** 配る
+- **原因**: SDL2 の Android は、ウィンドウの大きさの変化を **Java の UI スレッドから** 配る
   （SDLSurface.surfaceChanged → onNativeResize → Android_SendResize →
   SDL_SendWindowEvent）。配る途中でレンダラーの event watch（SDL_render.c の
-  SDL_RendererEventWatch）が UI スレッドで走り、描画先を一度窓へ切り替えて戻し
+  SDL_RendererEventWatch）が UI スレッドで走り、描画先を一度ウィンドウへ切り替えて戻し
   （SDL_SetRenderTarget ×2 → GLES2_ActivateRenderer → eglMakeCurrent が
   EGL_BAD_ACCESS。エラー 2 回の正体）、ビューポートの命令を積む。GL の実際の状態は
   変わらないまま SDL の控え（描画先・命令の列）だけが描画スレッドと取り合いで
-  書き換わり、テクスチャ向けの上下反転や別のシェーダーのまま窓へ描いてしまう。
+  書き換わり、テクスチャ向けの上下反転や別のシェーダーのままウィンドウへ描いてしまう。
 - **対処**（src/main.cpp）: `SDL_SetEventFilter` で、描画スレッド以外から来た
   SDL_WINDOWEVENT_RESIZED / SIZE_CHANGED を捨てて印だけ立て、描画スレッドの
   フレームの頭（SDL_PollEvent の前）で SIZE_CHANGED を積み直す（`RepostResizeEvent`）。

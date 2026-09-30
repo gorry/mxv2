@@ -83,7 +83,7 @@ YouTube や Google マップのように、ホームへ戻ったときなどに 
 - API 31 以降は `setAutoEnterEnabled`（ホームへ戻る動きと一緒に小窓になる）。
   モードと演奏状態から有効/無効を決めて、そのつど params を出し直す。
   このとき **面を隠すのは `onPause` で `isInPictureInPictureMode()` が真の
-  とき**（`onPictureInPictureModeChanged` より先に小さな窓で 1 回描かれて
+  とき**（`onPictureInPictureModeChanged` より先に小さなウィンドウで 1 回描かれて
   しまうのを避ける）。
 - API 26〜30 は `onUserLeaveHint()` で面を隠してから
   `enterPictureInPictureMode()`。
@@ -126,8 +126,8 @@ YouTube や Google マップのように、ホームへ戻ったときなどに 
 
 1. SDLActivity は API 24 以降、`onPause` ではなく `onStop` でネイティブを
    止める。**面を隠さずに PiP へ入ると、SDL は前面のまま**描き続ける
-   （フォーカスを失ったこと・窓の大きさが変わったことだけが届く）。
-2. そのまま小さな窓で描かせると、`SIZE_CHANGED` → `SyncCanvasToWindow` で
+   （フォーカスを失ったこと・ウィンドウの大きさが変わったことだけが届く）。
+2. そのまま小さなウィンドウで描かせると、`SIZE_CHANGED` → `SyncCanvasToWindow` で
    キャンバスが作り直され、`Screen::orientation()`（出力の縦横比で決まる）が
    横になって**横向き用スキンへ切り替わる**。`kTouchRowsMin` による行の
    詰め直しも走る。→ 面を隠す方針にした理由。
@@ -139,8 +139,8 @@ YouTube や Google マップのように、ホームへ戻ったときなどに 
 - 面を隠す／戻すことで、GL の面が作り直される。今の
   `SDL_RENDER_TARGETS_RESET` / `DEVICE_RESET` と `ForceRedrawAll` の経路で
   足りるはずだが、PiP から戻った直後の画面は必ず目で見る。
-- 小窓から戻るとき、窓がまだ小さいうちに面が戻ると 2. と同じことが起きうる。
-  面を戻すのは `onPictureInPictureModeChanged(false)` のあと、窓の大きさが
+- 小窓から戻るとき、ウィンドウがまだ小さいうちに面が戻ると 2. と同じことが起きうる。
+  面を戻すのは `onPictureInPictureModeChanged(false)` のあと、ウィンドウの大きさが
   元に戻ってから（`onConfigurationChanged` を待つ）にする。
 - `launchMode="singleInstance"` のまま、ランチャーのアイコンを押したときに
   小窓が元の大きさに戻るかを確かめる。
@@ -152,7 +152,7 @@ YouTube や Google マップのように、ホームへ戻ったときなどに 
 
 - 面を隠すのは `PipBridge.onPause`（`isInPictureInPictureMode()` が真のとき）と
   `onPictureInPictureModeChanged(true)` の早いほう。Pixel 7a では `onPause` →
-  `surfaceDestroyed` → `nativePause` の順で、小さな窓で描かれることは無かった。
+  `surfaceDestroyed` → `nativePause` の順で、小さなウィンドウで描かれることは無かった。
 - 「自分で別の画面を開いた」印は `SafBridge` ではなく
   **`MainActivity.startActivityForResult` の上書き**で立てる（`startActivity` も
   ここを通るので、SAF の選択画面と `SDL_OpenURL` のブラウザを 1 か所で拾える）。
@@ -163,8 +163,8 @@ YouTube や Google マップのように、ホームへ戻ったときなどに 
 - 小窓の字の大きさは**端末の文字サイズの設定に従う**（2026-09-25、ユーザーの指示）。
   曲名 16sp・状態と時刻 14sp を `TypedValue.applyDimension(COMPLEX_UNIT_SP)` で
   ピクセルにする（Android 14 以降の非線形の拡大も効く）。3 行がバーの上に
-  収まらないときだけ、同じ割合で縮める。余白・行の間隔・バーは窓の高さの割合
-  （8% / 4% / 5%）。縦横比は 2:1。当初は字も窓の高さの割合（20% / 14%）だった。
+  収まらないときだけ、同じ割合で縮める。余白・行の間隔・バーはウィンドウの高さの割合
+  （8% / 4% / 5%）。縦横比は 2:1。当初は字もウィンドウの高さの割合（20% / 14%）だった。
   Pixel 7a（小窓の高さ 299px、420dpi）で文字サイズ 0.85 / 1.0 / 1.3 / 2.0 を
   見比べた: 0.85・1.0 は設定どおりの大きさでバーの上に空きが残り、1.3 で
   ほぼいっぱい、2.0 は収まるように縮められて 1.3 と同じ大きさになる。

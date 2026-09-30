@@ -44,7 +44,7 @@ std::string ExecutableDir();
 
 // 実行ファイルの名前から拡張子を除いたもの（mxv2.exe → "mxv2"、
 // mxv2_debug.exe → "mxv2_debug"）。Windows だけ。ほかの環境と、取得できない
-// ときは "mxv2"。窓の題名・多重起動の判定・ユーザーフォルダの名前に使い、
+// ときは "mxv2"。ウィンドウの題名・多重起動の判定・ユーザーフォルダの名前に使い、
 // 名前の違う mxv2 を別のアプリとして並べて動かせるようにする（2026-09-28、
 // ユーザーの指示。SkinEditor など mxv2 本体以外はこれまでどおり "mxv2"）。
 std::string ExecutableBaseName();
@@ -110,7 +110,7 @@ bool HasFolderBrowser();
 //   title : ダイアログの見出し
 //   start : 最初に見せるフォルダ（空なら OS 任せ）
 //   owner : 親ウィンドウのネイティブハンドル（Screen::nativeWindowHandle）。
-//           0 でもよいが、渡すとこちらの窓の上に出る
+//           0 でもよいが、渡すとこちらのウィンドウの上に出る
 // **メインスレッドから呼ぶこと。** 開いている間、mxv2 側は止まる。
 bool BrowseForFolder(const std::string &title, const std::string &start, void *owner,
                      std::string *out);

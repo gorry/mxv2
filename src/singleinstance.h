@@ -37,14 +37,14 @@ namespace singleinstance {
 // （起動できないより、2 つ出るほうがまし）。
 bool HandOffToExisting(const std::string &target);
 
-// 窓ができてから呼ぶ。以後、他のインスタンスからの依頼を Poll() で拾える。
+// ウィンドウができてから呼ぶ。以後、他のインスタンスからの依頼を Poll() で拾える。
 // nativeWindowHandle は Screen::nativeWindowHandle()（前面へ出すために使う。
 // 0 でもよく、そのときは前面へ出さないだけ）。
 // HandOffToExisting() が false を返した起動でだけ意味を持つ。
 void Start(void *nativeWindowHandle);
 
 // 届いた依頼を 1 つ取り出す（毎フレーム、空になるまで呼ぶ）。
-// **窓を前面へ出す（最小化なら戻す）のは受け取った時点で済ませてある**ので、
+// **ウィンドウを前面へ出す（最小化なら戻す）のは受け取った時点で済ませてある**ので、
 // 呼び出し側は target を開くだけでよい。target が空なら「前面へ出せ」だけの
 // 依頼（曲を渡さずに 2 つめを起動したとき）。
 bool Poll(std::string *target);

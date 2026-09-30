@@ -349,7 +349,7 @@ struct Skin {
 	void CanvasSizeFor(int outW, int outH, int stretchLimit, int *cw, int *ch) const;
 
 	// 伸ばす方向の上限をどれだけ大きくしても、宣言サイズのこの倍率で
-	// 打ち切る。背景を使わないスキンで窓を極端に細長くしたときに、
+	// 打ち切る。背景を使わないスキンでウィンドウを極端に細長くしたときに、
 	// 途方もない大きさのバッファを作らないための保険。
 	static const int kMaxCanvasStretch = 8;
 

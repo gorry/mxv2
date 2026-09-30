@@ -114,7 +114,7 @@ final class PipView extends View {
 		final PlaybackBridge.Snapshot s = PlaybackBridge.snapshot();
 		final long now = SystemClock.elapsedRealtime();
 
-		// 余白・行の間隔・バーは窓の高さから決める（小窓は利用者が広げ
+		// 余白・行の間隔・バーはウィンドウの高さから決める（小窓は利用者が広げ
 		// 縮めできる）。
 		final float pad = h * 0.08f;
 		final float gap = h * 0.04f;

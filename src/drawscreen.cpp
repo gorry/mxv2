@@ -221,7 +221,7 @@ bool DrawScreen::CreateBuffers(std::string *err) {
 }
 
 // キャンバスの大きさを変える。バッファを作り直し、レイアウトを解決し直して
-// 全面を描き直す。窓のリサイズと画面の回転から呼ばれる（fullscreen.md）。
+// 全面を描き直す。ウィンドウのリサイズと画面の回転から呼ばれる（fullscreen.md）。
 bool DrawScreen::Resize(int canvasW, int canvasH, std::string *err) {
 	if (skin_ == 0) {
 		*err = Msg("Error.NoSkin");

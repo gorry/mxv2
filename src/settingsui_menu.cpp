@@ -397,7 +397,7 @@ void SettingsUi::BuildContextMenu(Settings *settings, DrawScreen *draw, Player *
 			// 位置をマウスとして覚えていて、回転後もその項目に重なったままなら
 			// hovered 扱い）。親を閉じたあとに開いたサブメニューは
 			// OpenPopupStack の 0 段目に孤立し、以後どの Begin にも拾われず、
-			// 窓を持たないので「外を押したら閉じる」にも掛からない。ImGui は
+			// ウィンドウを持たないので「外を押したら閉じる」にも掛からない。ImGui は
 			// ポップアップがある限り WantCaptureMouse を立てるので、タッチが
 			// 一切効かなくなる（2026-09-16、横画面でサブメニューを出したまま
 			// 縦にすると操作不能、とユーザーの報告）。

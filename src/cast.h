@@ -120,9 +120,9 @@ void SetVideoAdvanceMs(int ms);
 void AudioTap(int16_t *pcm, int frames, int sampleRate, uint64_t startFrame);
 
 // 1 フレームを描く前に BeginFrame、表示（SDL_RenderPresent）の直前に EndFrame。
-// 送っている間は、窓と同じ大きさのテクスチャへ描かせ、EndFrame でキャンバスの
-// 範囲（rect）を送る大きさへ GPU で縮めてから読み出して渡し、窓へ写す
-// （sdlcastg_sdl.h の SDLCastG_BeginRendererFrame）。窓の大きさのまま読むと
+// 送っている間は、ウィンドウと同じ大きさのテクスチャへ描かせ、EndFrame でキャンバスの
+// 範囲（rect）を送る大きさへ GPU で縮めてから読み出して渡し、ウィンドウへ写す
+// （sdlcastg_sdl.h の SDLCastG_BeginRendererFrame）。ウィンドウの大きさのまま読むと
 // Xperia Ace III で 1 回 22ms かかり、30fps に届かなかった。
 // visualFrame は**このフレームを描くのに使った** Player::visualFrame()
 // （いま聞こえている音の位置）。読み出すときに取り直すと、描いてから読むまでの

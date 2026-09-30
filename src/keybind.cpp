@@ -31,7 +31,7 @@ const int kVolumeKeyStep = 5;
 // -/+ ボタンと同じ刻みにしてある。
 const int kZoomKeyStep = 25;
 
-// 表示倍率を 1 段変える。**フルスクリーンと最大化の間は効かない**——窓の
+// 表示倍率を 1 段変える。**フルスクリーンと最大化の間は効かない**——ウィンドウの
 // 大きさを OS 側が決めているので、倍率を変えても何も起きないため
 // （2026-09-18、ユーザーの指示）。
 void NudgeZoom(const InputTargets &t, int step) {
@@ -190,7 +190,7 @@ void HandleKeyDown(const SDL_KeyboardEvent &ev, const InputTargets &t) {
 		case SDLK_RETURN:
 		case SDLK_KP_ENTER:
 			// Alt+Enter はフルスクリーンの切り替え（デスクトップだけ）。
-			// 窓そのものの操作なので、ここだけ Screen を直に触る。
+			// ウィンドウそのものの操作なので、ここだけ Screen を直に触る。
 			if ((ev.keysym.mod & KMOD_ALT) != 0 && mxv2::Screen::CanFullScreen()) {
 				mxv2::Screen *screen = t.ctx->screen;
 				screen->SetFullScreen(!screen->fullScreen());
