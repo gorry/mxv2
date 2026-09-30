@@ -157,7 +157,8 @@ unsigned CollectDirtyFields(mxv2::Settings *settings, mxv2::DrawScreen *draw,
 		dirt |= mxv2::Settings::kFieldWindowPos;
 	}
 	// 最大化したまま終えたかを覚える。**最小化中とフルスクリーン中は見ない**
-	// ——どちらも SDL の最大化の旗が落ちるので、そのまま写すと
+	// ——どちらもアプリケーションウィンドウ（SDL_Window）の最大化のフラグが
+	// 落ちるので、そのまま写すと
 	// 「最大化したまま最小化して終了」で最大化を忘れてしまう。
 	if (!screen->minimized() && !screen->fullScreen() &&
 		settings->windowMaximized != screen->maximized()) {

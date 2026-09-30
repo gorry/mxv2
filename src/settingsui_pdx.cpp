@@ -25,12 +25,12 @@ using namespace settingsui;
 // 同じ作りで、[開く] が無いだけ。並び順がそのまま探す順（MDX と同じフォルダの
 // 次に、上から順）。
 void SettingsUi::BuildPdxPathsWindow(Settings *settings, Filer *filer) {
-	if (!SyncModal(kPdxPathsTitle, &showPdxPaths_)) return;
+	if (!SyncModal(kPdxPathsTitle, &pdx_.show)) return;
 
 	CenterNextWindow(placeCond());
 	ImGui::SetNextWindowSize(DialogSize(460.0f, 360.0f), placeCond());
 
-	if (!BeginDialog(kPdxPathsTitle, &showPdxPaths_, DialogFlags())) {
+	if (!BeginDialog(kPdxPathsTitle, &pdx_.show, DialogFlags())) {
 		return;
 	}
 	if (vfs_ == 0) {
@@ -41,8 +41,8 @@ void SettingsUi::BuildPdxPathsWindow(Settings *settings, Filer *filer) {
 
 	std::vector<std::string> &list = settings->pdxPaths;
 	const int count = (int)list.size();
-	if (pdxSelected_ >= count) pdxSelected_ = count - 1;
-	if (pdxSelected_ < 0 && count > 0) pdxSelected_ = 0;
+	if (pdx_.selected >= count) pdx_.selected = count - 1;
+	if (pdx_.selected < 0 && count > 0) pdx_.selected = 0;
 
 	{
 		const float foot = ImGui::GetFrameHeightWithSpacing() * 2.0f +
@@ -52,9 +52,9 @@ void SettingsUi::BuildPdxPathsWindow(Settings *settings, Filer *filer) {
 		for (int i = 0; i < count; i++) {
 			char label[512];
 			snprintf(label, sizeof(label), "%s##pdx%d", vfs_->DisplayPath(list[i]).c_str(), i);
-			if (ImGui::Selectable(label, i == pdxSelected_) && !dragMoved_) {
-				pdxSelected_ = i;
-				pdxError_.clear();
+			if (ImGui::Selectable(label, i == pdx_.selected) && !dragMoved_) {
+				pdx_.selected = i;
+				pdx_.error.clear();
 			}
 			// 表示は見やすさ優先で DisplayPath なので、生の ref はここで見せる。
 			if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", list[i].c_str());
@@ -63,42 +63,40 @@ void SettingsUi::BuildPdxPathsWindow(Settings *settings, Filer *filer) {
 		ImGui::EndChild();
 	}
 
-	if (pdxError_.empty()) {
+	if (pdx_.error.empty()) {
 		TextNote(Msg("PdxPath.Hint"));
 	} else {
-		TextError(pdxError_.c_str());
+		TextError(pdx_.error.c_str());
 	}
 
 	// [上へ] [下へ]。端まで来たら押せなくする。
-	ImGui::BeginDisabled(pdxSelected_ <= 0);
+	ImGui::BeginDisabled(pdx_.selected <= 0);
 	if (ImGui::Button(Msg("Button.Up"))) {
-		std::swap(list[pdxSelected_], list[pdxSelected_ - 1]);
-		pdxSelected_--;
+		std::swap(list[pdx_.selected], list[pdx_.selected - 1]);
+		pdx_.selected--;
 		changedFields_ |= Settings::kFieldPdxPaths;
 	}
 	ImGui::EndDisabled();
 	ImGui::SameLine();
-	ImGui::BeginDisabled(pdxSelected_ < 0 || pdxSelected_ >= count - 1);
+	ImGui::BeginDisabled(pdx_.selected < 0 || pdx_.selected >= count - 1);
 	if (ImGui::Button(Msg("Button.Down"))) {
-		std::swap(list[pdxSelected_], list[pdxSelected_ + 1]);
-		pdxSelected_++;
+		std::swap(list[pdx_.selected], list[pdx_.selected + 1]);
+		pdx_.selected++;
 		changedFields_ |= Settings::kFieldPdxPaths;
 	}
 	ImGui::EndDisabled();
 
 	// [追加…] はフォルダ選択ダイアログを経由して、選んだフォルダを選択位置へ
 	// 挿し込む（ブックマークの設定と同じ往復）。開始位置は選んでいる探索先
-	// （Build() の folderOpenPending_ のところ）。
+	// （Build() の folder_.openPending のところ）。
 	(void)filer;
 	const bool full = (count >= Settings::kMaxPdxPaths);
 	ImGui::SameLine();
 	ImGui::BeginDisabled(full);
 	if (ImGui::Button(Msg("Button.AddPdxPath"))) {
-		pdxError_.clear();
-		folderTarget_ = kFolderTargetPdx;
-		folderReturnToPdx_ = true;
-		folderOpenPending_ = true;
-		showPdxPaths_ = false;
+		pdx_.error.clear();
+		OpenFolderFor(kFolderTargetPdx, kFolderReturnPdx);
+		pdx_.show = false;
 	}
 	ImGui::EndDisabled();
 	if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
@@ -106,10 +104,10 @@ void SettingsUi::BuildPdxPathsWindow(Settings *settings, Filer *filer) {
 	}
 
 	ImGui::SameLine();
-	ImGui::BeginDisabled(pdxSelected_ < 0);
+	ImGui::BeginDisabled(pdx_.selected < 0);
 	if (ImGui::Button(Msg("Button.Remove"))) {
-		pdxError_.clear();
-		pdxOpenRemove_ = true;
+		pdx_.error.clear();
+		pdx_.remove.ask = true;
 	}
 	ImGui::EndDisabled();
 
@@ -118,16 +116,30 @@ void SettingsUi::BuildPdxPathsWindow(Settings *settings, Filer *filer) {
 	ImGui::EndPopup();
 }
 
+void SettingsUi::OpenPdxPathsFromSettings() {
+	pdx_.selected = 0;
+	pdx_.error.clear();
+	pdx_.handoff.Start();
+	SetSettingsVisible(false);
+}
+
+void SettingsUi::InsertPdxPath(std::vector<std::string> *list, const std::string &ref) {
+	const int count = (int)list->size();
+	const int at = (pdx_.selected >= 0 && pdx_.selected <= count) ? pdx_.selected : count;
+	list->insert(list->begin() + at, ref);
+	pdx_.selected = at;
+}
+
 // 「本当に削除するか」。PDX の探索先の中に入れ子で開く。
 void SettingsUi::BuildPdxRemoveWindow(Settings *settings) {
-	if (pdxOpenRemove_) {
-		pdxOpenRemove_ = false;
+	if (pdx_.remove.ask) {
+		pdx_.remove.ask = false;
 		ImGui::OpenPopup(kPdxRemoveTitle);
 	}
 
-	pdxRemoveOpen_ = ImGui::IsPopupOpen(kPdxRemoveTitle);
-	if (!pdxRemoveOpen_) {
-		pdxCloseRemove_ = false;
+	pdx_.remove.open = ImGui::IsPopupOpen(kPdxRemoveTitle);
+	if (!pdx_.remove.open) {
+		pdx_.remove.close = false;
 		return;
 	}
 
@@ -138,23 +150,23 @@ void SettingsUi::BuildPdxRemoveWindow(Settings *settings) {
 	}
 
 	std::vector<std::string> &list = settings->pdxPaths;
-	const bool valid = (pdxSelected_ >= 0 && pdxSelected_ < (int)list.size());
+	const bool valid = (pdx_.selected >= 0 && pdx_.selected < (int)list.size());
 	ConfirmText(MsgF("PdxPath.RemoveConfirm",
-	                 (valid && vfs_ != 0) ? vfs_->DisplayPath(list[pdxSelected_])
+	                 (valid && vfs_ != 0) ? vfs_->DisplayPath(list[pdx_.selected])
 	                                      : std::string())
 	                .c_str());
 	ImGui::Separator();
 	if (ImGui::Button(Msg("Button.Remove"))) {
 		if (valid) {
-			list.erase(list.begin() + pdxSelected_);
-			if (pdxSelected_ >= (int)list.size()) pdxSelected_ = (int)list.size() - 1;
+			list.erase(list.begin() + pdx_.selected);
+			if (pdx_.selected >= (int)list.size()) pdx_.selected = (int)list.size() - 1;
 			changedFields_ |= Settings::kFieldPdxPaths;
 		}
 		ImGui::CloseCurrentPopup();
 	}
 	ImGui::SameLine();
-	if (ImGui::Button(Msg("Button.Cancel")) || pdxCloseRemove_) {
-		pdxCloseRemove_ = false;
+	if (ImGui::Button(Msg("Button.Cancel")) || pdx_.remove.close) {
+		pdx_.remove.close = false;
 		ImGui::CloseCurrentPopup();
 	}
 	ImGui::EndPopup();

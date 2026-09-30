@@ -34,7 +34,7 @@ int SettingsUi::FindBookmark(const std::vector<std::string> &list,
 
 // ブックマークを開く。控えた先がファイルだったときは「そのファイルのある
 // フォルダ」へ直し、控えの方も書き換えてから開く（仕様どおり、直した結果が
-// 他と重なったら相手側を消す）。開けなければ bmError_ に理由を入れて残る。
+// 他と重なったら相手側を消す）。開けなければ bm_.error に理由を入れて残る。
 void SettingsUi::OpenBookmark(Settings *settings, int index) {
 	std::vector<std::string> &list = settings->bookmarks;
 	if (vfs_ == 0 || index < 0 || index >= (int)list.size()) return;
@@ -46,14 +46,14 @@ void SettingsUi::OpenBookmark(Settings *settings, int index) {
 		FileSystem *fs = 0;
 		std::string rel;
 		if (vfs_->Parse(ref, &fs, &rel) && fs != 0 && !fs->accessible()) {
-			bmError_ = MsgF("FileSystems.NoAccessNote", fs->label());
+			bm_.error = MsgF("FileSystems.NoAccessNote", fs->label());
 			return;
 		}
 	}
 	if (!vfs_->IsDir(ref)) {
 		const std::string parent = vfs_->Parent(ref);
 		if (!vfs_->Exists(ref) || parent.empty() || !vfs_->IsDir(parent)) {
-			bmError_ = Msg("Bookmark.NotFound");
+			bm_.error = Msg("Bookmark.NotFound");
 			return;
 		}
 		list[index] = parent;
@@ -64,7 +64,7 @@ void SettingsUi::OpenBookmark(Settings *settings, int index) {
 			list.erase(list.begin() + i);
 			if (i < index) index--;
 		}
-		bmSelected_ = index;
+		bm_.selected = index;
 		changedFields_ |= Settings::kFieldBookmarks;
 		ref = parent;
 	}
@@ -73,8 +73,8 @@ void SettingsUi::OpenBookmark(Settings *settings, int index) {
 	// （フォルダ選択やコンテキストメニューと同じ作法）。
 	requestedFolder_ = ref;
 	request_ = kRequestSetFolder;
-	bmError_.clear();
-	showBookmarks_ = false;
+	bm_.error.clear();
+	bm_.show = false;
 }
 
 void SettingsUi::OpenBookmarkList() {
@@ -99,8 +99,8 @@ void SettingsUi::JumpToBookmarkRef(Settings *settings, const std::string &ref) {
 	const int index = FindBookmark(settings->bookmarks, ref);
 	if (index >= 0) {
 		OpenBookmark(settings, index);
-		if (bmError_.empty()) return;  // request_ に積まれた
-		bmError_.clear();
+		if (bm_.error.empty()) return;  // request_ に積まれた
+		bm_.error.clear();
 	}
 	// 控えに無い（並べ替え中に消えた）か、開けない。ファイラーに任せる。
 	requestedFolder_ = ref;
@@ -116,12 +116,12 @@ bool SettingsUi::CanBookmark(const std::string &ref) const {
 }
 
 void SettingsUi::BuildBookmarksWindow(Settings *settings, Filer *filer) {
-	if (!SyncModal(kBookmarksTitle, &showBookmarks_)) return;
+	if (!SyncModal(kBookmarksTitle, &bm_.show)) return;
 
 	CenterNextWindow(placeCond());
 	ImGui::SetNextWindowSize(DialogSize(460.0f, 360.0f), placeCond());
 
-	if (!BeginDialog(kBookmarksTitle, &showBookmarks_, DialogFlags())) {
+	if (!BeginDialog(kBookmarksTitle, &bm_.show, DialogFlags())) {
 		return;
 	}
 	if (vfs_ == 0) {
@@ -132,8 +132,8 @@ void SettingsUi::BuildBookmarksWindow(Settings *settings, Filer *filer) {
 
 	std::vector<std::string> &list = settings->bookmarks;
 	const int count = (int)list.size();
-	if (bmSelected_ >= count) bmSelected_ = count - 1;
-	if (bmSelected_ < 0 && count > 0) bmSelected_ = 0;
+	if (bm_.selected >= count) bm_.selected = count - 1;
+	if (bm_.selected < 0 && count > 0) bm_.selected = 0;
 
 	// 一覧。クリックで選ぶだけ、ダブルクリックで開く（メイン画面の
 	// ファイラーと同じ操作感）。開くのは一覧を組み終わってからにする。
@@ -146,11 +146,11 @@ void SettingsUi::BuildBookmarksWindow(Settings *settings, Filer *filer) {
 		for (int i = 0; i < count; i++) {
 			char label[512];
 			snprintf(label, sizeof(label), "%s##bm%d", vfs_->DisplayPath(list[i]).c_str(), i);
-			if (ImGui::Selectable(label, i == bmSelected_,
+			if (ImGui::Selectable(label, i == bm_.selected,
 			                      ImGuiSelectableFlags_AllowDoubleClick) &&
 			    !dragMoved_) {
-				bmSelected_ = i;
-				bmError_.clear();
+				bm_.selected = i;
+				bm_.error.clear();
 				if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) openIndex = i;
 			}
 			// 表示は見やすさ優先で DisplayPath なので、生の ref はここで見せる。
@@ -160,30 +160,30 @@ void SettingsUi::BuildBookmarksWindow(Settings *settings, Filer *filer) {
 		ImGui::EndChild();
 	}
 
-	if (bmError_.empty()) {
+	if (bm_.error.empty()) {
 		TextNote(Msg("Bookmark.Hint"));
 	} else {
-		TextError(bmError_.c_str());
+		TextError(bm_.error.c_str());
 	}
 
 	// [開く] は 1 行を占有する大きなボタン（仕様どおり）。
-	ImGui::BeginDisabled(bmSelected_ < 0);
-	if (ImGui::Button(Msg("Button.Open"), ImVec2(-FLT_MIN, 0.0f))) openIndex = bmSelected_;
+	ImGui::BeginDisabled(bm_.selected < 0);
+	if (ImGui::Button(Msg("Button.Open"), ImVec2(-FLT_MIN, 0.0f))) openIndex = bm_.selected;
 	ImGui::EndDisabled();
 
 	// [上へ] [下へ]。端まで来たら押せなくする。
-	ImGui::BeginDisabled(bmSelected_ <= 0);
+	ImGui::BeginDisabled(bm_.selected <= 0);
 	if (ImGui::Button(Msg("Button.Up"))) {
-		std::swap(list[bmSelected_], list[bmSelected_ - 1]);
-		bmSelected_--;
+		std::swap(list[bm_.selected], list[bm_.selected - 1]);
+		bm_.selected--;
 		changedFields_ |= Settings::kFieldBookmarks;
 	}
 	ImGui::EndDisabled();
 	ImGui::SameLine();
-	ImGui::BeginDisabled(bmSelected_ < 0 || bmSelected_ >= count - 1);
+	ImGui::BeginDisabled(bm_.selected < 0 || bm_.selected >= count - 1);
 	if (ImGui::Button(Msg("Button.Down"))) {
-		std::swap(list[bmSelected_], list[bmSelected_ + 1]);
-		bmSelected_++;
+		std::swap(list[bm_.selected], list[bm_.selected + 1]);
+		bm_.selected++;
 		changedFields_ |= Settings::kFieldBookmarks;
 	}
 	ImGui::EndDisabled();
@@ -201,11 +201,9 @@ void SettingsUi::BuildBookmarksWindow(Settings *settings, Filer *filer) {
 	ImGui::BeginDisabled(full);
 	// ダイアログを開くボタンなので末尾に "…"（Button.AddBookmark）。
 	if (ImGui::Button(Msg("Button.AddBookmark"))) {
-		bmError_.clear();
-		folderTarget_ = kFolderTargetBookmark;
-		folderReturnToBookmarks_ = true;
-		folderOpenPending_ = true;
-		showBookmarks_ = false;
+		bm_.error.clear();
+		OpenFolderFor(kFolderTargetBookmark, kFolderReturnBookmarks);
+		bm_.show = false;
 	}
 	ImGui::EndDisabled();
 	if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
@@ -213,10 +211,10 @@ void SettingsUi::BuildBookmarksWindow(Settings *settings, Filer *filer) {
 	}
 
 	ImGui::SameLine();
-	ImGui::BeginDisabled(bmSelected_ < 0);
+	ImGui::BeginDisabled(bm_.selected < 0);
 	if (ImGui::Button(Msg("Button.Remove"))) {
-		bmError_.clear();
-		bmOpenRemove_ = true;
+		bm_.error.clear();
+		bm_.remove.ask = true;
 	}
 	ImGui::EndDisabled();
 
@@ -227,16 +225,23 @@ void SettingsUi::BuildBookmarksWindow(Settings *settings, Filer *filer) {
 	ImGui::EndPopup();
 }
 
+void SettingsUi::InsertBookmark(std::vector<std::string> *list, const std::string &ref) {
+	const int count = (int)list->size();
+	const int at = (bm_.selected >= 0 && bm_.selected <= count) ? bm_.selected : count;
+	list->insert(list->begin() + at, ref);
+	bm_.selected = at;
+}
+
 // 「本当に削除するか」。ブックマークの設定の中に入れ子で開く。
 void SettingsUi::BuildBookmarkRemoveWindow(Settings *settings) {
-	if (bmOpenRemove_) {
-		bmOpenRemove_ = false;
+	if (bm_.remove.ask) {
+		bm_.remove.ask = false;
 		ImGui::OpenPopup(kBmRemoveTitle);
 	}
 
-	bmRemoveOpen_ = ImGui::IsPopupOpen(kBmRemoveTitle);
-	if (!bmRemoveOpen_) {
-		bmCloseRemove_ = false;
+	bm_.remove.open = ImGui::IsPopupOpen(kBmRemoveTitle);
+	if (!bm_.remove.open) {
+		bm_.remove.close = false;
 		return;
 	}
 
@@ -247,23 +252,23 @@ void SettingsUi::BuildBookmarkRemoveWindow(Settings *settings) {
 	}
 
 	std::vector<std::string> &list = settings->bookmarks;
-	const bool valid = (bmSelected_ >= 0 && bmSelected_ < (int)list.size());
+	const bool valid = (bm_.selected >= 0 && bm_.selected < (int)list.size());
 	ConfirmText(MsgF("Bookmark.RemoveConfirm",
-	                 (valid && vfs_ != 0) ? vfs_->DisplayPath(list[bmSelected_])
+	                 (valid && vfs_ != 0) ? vfs_->DisplayPath(list[bm_.selected])
 	                                      : std::string())
 	                .c_str());
 	ImGui::Separator();
 	if (ImGui::Button(Msg("Button.Remove"))) {
 		if (valid) {
-			list.erase(list.begin() + bmSelected_);
-			if (bmSelected_ >= (int)list.size()) bmSelected_ = (int)list.size() - 1;
+			list.erase(list.begin() + bm_.selected);
+			if (bm_.selected >= (int)list.size()) bm_.selected = (int)list.size() - 1;
 			changedFields_ |= Settings::kFieldBookmarks;
 		}
 		ImGui::CloseCurrentPopup();
 	}
 	ImGui::SameLine();
-	if (ImGui::Button(Msg("Button.Cancel")) || bmCloseRemove_) {
-		bmCloseRemove_ = false;
+	if (ImGui::Button(Msg("Button.Cancel")) || bm_.remove.close) {
+		bm_.remove.close = false;
 		ImGui::CloseCurrentPopup();
 	}
 	ImGui::EndPopup();
@@ -273,19 +278,19 @@ void SettingsUi::BuildBookmarkRemoveWindow(Settings *settings) {
 // 削除、無ければ末尾へ追加する。メイン画面から直に出すので、他のダイアログの
 // 入れ子ではなく単独のモーダルとして開く。
 void SettingsUi::BuildBookmarkToggleWindow(Settings *settings, Filer *filer) {
-	if (bmOpenToggle_) {
-		bmOpenToggle_ = false;
+	if (bm_.toggle.ask) {
+		bm_.toggle.ask = false;
 		const std::string cur = (filer != 0) ? filer->currentRef() : std::string();
 		// 追加できない場所（ファイルシステムの選択、"Bookmarks>"）では何もしない。
 		if (CanBookmark(cur)) {
-			bmToggleRef_ = cur;
+			bm_.toggleRef = cur;
 			ImGui::OpenPopup(kBmToggleTitle);
 		}
 	}
 
-	bmToggleOpen_ = ImGui::IsPopupOpen(kBmToggleTitle);
-	if (!bmToggleOpen_) {
-		bmCloseToggle_ = false;
+	bm_.toggle.open = ImGui::IsPopupOpen(kBmToggleTitle);
+	if (!bm_.toggle.open) {
+		bm_.toggle.close = false;
 		return;
 	}
 
@@ -296,15 +301,15 @@ void SettingsUi::BuildBookmarkToggleWindow(Settings *settings, Filer *filer) {
 	}
 
 	std::vector<std::string> &list = settings->bookmarks;
-	const int at = FindBookmark(list, bmToggleRef_);
-	const std::string shown = (vfs_ != 0) ? vfs_->DisplayPath(bmToggleRef_) : bmToggleRef_;
+	const int at = FindBookmark(list, bm_.toggleRef);
+	const std::string shown = (vfs_ != 0) ? vfs_->DisplayPath(bm_.toggleRef) : bm_.toggleRef;
 
 	if (at >= 0) {
 		ConfirmText(MsgF("Bookmark.RemoveConfirm", shown).c_str());
 		ImGui::Separator();
 		if (ImGui::Button(Msg("Button.Remove"))) {
 			list.erase(list.begin() + at);
-			if (bmSelected_ >= (int)list.size()) bmSelected_ = (int)list.size() - 1;
+			if (bm_.selected >= (int)list.size()) bm_.selected = (int)list.size() - 1;
 			changedFields_ |= Settings::kFieldBookmarks;
 			ImGui::CloseCurrentPopup();
 		}
@@ -317,15 +322,15 @@ void SettingsUi::BuildBookmarkToggleWindow(Settings *settings, Filer *filer) {
 		ImGui::Separator();
 		ImGui::BeginDisabled(full);
 		if (ImGui::Button(Msg("Button.Add"))) {
-			list.push_back(bmToggleRef_);  // 追加は末尾（仕様どおり）
+			list.push_back(bm_.toggleRef);  // 追加は末尾（仕様どおり）
 			changedFields_ |= Settings::kFieldBookmarks;
 			ImGui::CloseCurrentPopup();
 		}
 		ImGui::EndDisabled();
 	}
 	ImGui::SameLine();
-	if (ImGui::Button(Msg("Button.Cancel")) || bmCloseToggle_) {
-		bmCloseToggle_ = false;
+	if (ImGui::Button(Msg("Button.Cancel")) || bm_.toggle.close) {
+		bm_.toggle.close = false;
 		ImGui::CloseCurrentPopup();
 	}
 	ImGui::EndPopup();

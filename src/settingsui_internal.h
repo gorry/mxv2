@@ -4,6 +4,7 @@
 // （2026-09-16。1 ファイル 3500 行を超えたため）:
 //   settingsui.cpp             … 初期化・フレーム処理 (Build)・共通の小道具
 //   settingsui_settings.cpp    … [mxv2 の設定] (F1)
+//   settingsui_latency.cpp     … [画面の遅れ] / [遅延時間]（[mxv2 の設定] の [設定…] から）
 //   settingsui_colors.cpp      … [配色設定] (F2)
 //   settingsui_filesystems.cpp … [ファイルシステムの設定] (F3)・SAF
 //   settingsui_bookmarks.cpp   … [ブックマークの設定] (F4)・Shift+M
@@ -27,6 +28,10 @@ namespace mxv2 {
 class Player;
 
 namespace settingsui {
+
+// 画面の遅れ (ms) とサンプル数の相互変換（settingsui_settings.cpp）。
+int MsToFrames(int ms, const Player *player);
+float FramesToMs(int frames, const Player *player);
 
 // 指で押すところの高さの下限 (mm)。指の腹が当たる幅として Material Design は
 // 48dp (約 7.6mm)、Apple は 44pt (約 7mm) を勧めているが、mxv2 のダイアログは

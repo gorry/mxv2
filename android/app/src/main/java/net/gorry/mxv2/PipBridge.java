@@ -169,7 +169,7 @@ public class PipBridge {
 	/** 自分で別の画面を開く直前（MainActivity.startActivityForResult）。 */
 	static void onLaunchingOwn() {
 		sLaunchingOwn = true;
-		// Android 12 以降は、自動で入る旗を先に下ろしておく。
+		// Android 12 以降は、自動で入るフラグを先に下ろしておく。
 		updateParams();
 	}
 

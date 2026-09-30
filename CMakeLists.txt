@@ -184,6 +184,7 @@ set(MXV2_SOURCES
 	src/settings.cpp
 	src/settingsui.cpp
 	src/settingsui_settings.cpp
+	src/settingsui_latency.cpp
 	src/settingsui_colors.cpp
 	src/settingsui_filesystems.cpp
 	src/settingsui_bookmarks.cpp

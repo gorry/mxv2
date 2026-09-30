@@ -39,22 +39,22 @@ void QualityLabel(const char *name, const cast::QualityPreset &p, char *out, siz
 
 void SettingsUi::BuildCastWindow(Settings *settings) {
 	if (!cast::Available()) {
-		showCast_ = false;
+		cast_.show = false;
 		return;
 	}
-	const bool open = SyncModal(kCastTitle, &showCast_);
+	const bool open = SyncModal(kCastTitle, &cast_.show);
 	// 開いた瞬間に探し始め、閉じたらやめる（mDNS の問い合わせと、Android の
 	// マルチキャストのロックを持ち続けないため）。
-	if (open && !castWasOpen_) {
+	if (open && !cast_.wasOpen) {
 		cast::StartDiscovery();
-		castSelected_ = -1;
-		castLastSize_ = ImVec2(0.0f, 0.0f);
-		castRecenter_ = false;
-		castScrollY_ = false;
-	} else if (!open && castWasOpen_) {
+		cast_.selected = -1;
+		cast_.lastSize = ImVec2(0.0f, 0.0f);
+		cast_.recenter = false;
+		cast_.scrollY = false;
+	} else if (!open && cast_.wasOpen) {
 		cast::StopDiscovery();
 	}
-	castWasOpen_ = open;
+	cast_.wasOpen = open;
 	if (!open) return;
 
 	// 幅は決め、高さは中身に合わせる（一覧は 4 行ぶん。送り先はふつう数台なので
@@ -63,8 +63,8 @@ void SettingsUi::BuildCastWindow(Settings *settings) {
 	// 大きさは中身任せなので、画面を回して 2 列 ⇔ 1 列が替わると、置き直した次の
 	// フレームで大きさが変わり、下へはみ出した（横画面で開いてから縦画面にしたとき。
 	// 2026-09-25、ユーザーの指摘）。大きさが変わったフレームの次は中央へ置き直す。
-	CenterNextWindow(castRecenter_ ? ImGuiCond_Always : placeCond());
-	castRecenter_ = false;
+	CenterNextWindow(cast_.recenter ? ImGuiCond_Always : placeCond());
+	cast_.recenter = false;
 	// 画面の縁の余白（DisplaySafeAreaPadding）の内側に収める。画面の幅ちょうどに
 	// すると、ImGui が「収まらない」とみて、中身は収まっているのに縦のスクロール
 	// バーを出した（Pixel 7a、2026-09-25）。
@@ -87,12 +87,12 @@ void SettingsUi::BuildCastWindow(Settings *settings) {
 	// 高さが画面に収まらず縦のスクロールバーが出ると、ImGui はその幅を中身の幅に
 	// **足して**窓を広げる。画面いっぱいの幅だと、中央に置いた窓の左右が画面から
 	// 切れた（r77 の 480x640 縦画面、2026-09-30）。出ていたら、そのぶん中身を詰める。
-	if (castScrollY_) width -= st.ScrollbarSize;
+	if (cast_.scrollY) width -= st.ScrollbarSize;
 	// 幅は中身の幅で決める（SetNextWindowContentSize。高さは 0＝中身任せ）。
 	// SetNextWindowSizeConstraints で幅を決めると、中身が収まっているのに縦の
 	// スクロールバーが出た（Pixel 7a、2026-09-25）。
 	ImGui::SetNextWindowContentSize(ImVec2(width - st.WindowPadding.x * 2.0f, 0.0f));
-	if (!BeginDialog(kCastTitle, &showCast_,
+	if (!BeginDialog(kCastTitle, &cast_.show,
 	                            DialogFlags() | ImGuiWindowFlags_AlwaysAutoResize)) {
 		return;
 	}
@@ -100,7 +100,7 @@ void SettingsUi::BuildCastWindow(Settings *settings) {
 	const cast::State state = cast::GetState();
 	const bool idle = (state == cast::kIdle);
 	const std::vector<cast::Device> devices = cast::Devices();
-	if (castSelected_ >= (int)devices.size()) castSelected_ = -1;
+	if (cast_.selected >= (int)devices.size()) cast_.selected = -1;
 	// 送っている間は、送り先の行に印を付ける（名前で探す）。
 	int castingIndex = -1;
 	if (!idle) {
@@ -133,10 +133,10 @@ void SettingsUi::BuildCastWindow(Settings *settings) {
 			char label[256];
 			snprintf(label, sizeof(label), "%s  (%s)##cast%d", devices[i].name.c_str(),
 			         devices[i].model.c_str(), i);
-			const bool selected = idle ? (i == castSelected_) : (i == castingIndex);
+			const bool selected = idle ? (i == cast_.selected) : (i == castingIndex);
 			if (ImGui::Selectable(label, selected, ImGuiSelectableFlags_AllowDoubleClick) &&
 			    !dragMoved_ && idle) {
-				castSelected_ = i;
+				cast_.selected = i;
 				if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) startIndex = i;
 			}
 			if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", devices[i].address.c_str());
@@ -148,8 +148,8 @@ void SettingsUi::BuildCastWindow(Settings *settings) {
 
 	// [送る] と [キャストを終了] は同じ場所。
 	if (idle) {
-		ImGui::BeginDisabled(castSelected_ < 0);
-		if (ImGui::Button(Msg("Cast.Start"), ImVec2(-FLT_MIN, 0.0f))) startIndex = castSelected_;
+		ImGui::BeginDisabled(cast_.selected < 0);
+		if (ImGui::Button(Msg("Cast.Start"), ImVec2(-FLT_MIN, 0.0f))) startIndex = cast_.selected;
 		ImGui::EndDisabled();
 		if (startIndex >= 0 && startIndex < (int)devices.size()) {
 			cast::SetQuality(settings->castQuality);
@@ -262,17 +262,17 @@ void SettingsUi::BuildCastWindow(Settings *settings) {
 		const std::string stats = cast::StatsText();
 		ImGui::TextDisabled("%s", stats.empty() ? " " : stats.c_str());
 	}
-	if (ImGui::Button(Msg("Button.Close"))) showCast_ = false;
+	if (ImGui::Button(Msg("Button.Close"))) cast_.show = false;
 	if (twoColumns) ImGui::EndTable();
 	const ImVec2 size = ImGui::GetWindowSize();
-	if (castLastSize_.x > 0.0f && (size.x != castLastSize_.x || size.y != castLastSize_.y)) {
-		castRecenter_ = true;
+	if (cast_.lastSize.x > 0.0f && (size.x != cast_.lastSize.x || size.y != cast_.lastSize.y)) {
+		cast_.recenter = true;
 	}
-	castLastSize_ = size;
+	cast_.lastSize = size;
 	const bool scrollY = ImGui::GetScrollMaxY() > 0.0f;
-	if (scrollY != castScrollY_) {
-		castScrollY_ = scrollY;
-		castRecenter_ = true;
+	if (scrollY != cast_.scrollY) {
+		cast_.scrollY = scrollY;
+		cast_.recenter = true;
 	}
 	ImGui::EndPopup();
 }

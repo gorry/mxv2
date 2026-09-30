@@ -90,7 +90,7 @@ bool CheckSkinName(const std::string &name, std::string *err) {
 // ものがそのまま使われる（Default-Midnight と同じ作り）。同梱スキンを
 // 編集していたときは Base が "assets:<名前>" になる。
 void SettingsUi::SaveColorsAs(const std::string &name, Settings *settings, DrawScreen *draw) {
-	saveError_.clear();
+	colors_.saveError.clear();
 
 	const bool isNewSkin = !paths_.UserSkinExists(name);
 	// 土台には、今のスキンが実際に指しているフォルダを名指しする ref を書く
@@ -104,19 +104,19 @@ void SettingsUi::SaveColorsAs(const std::string &name, Settings *settings, DrawS
 	const std::string dir = paths_.UserSkinDir(name);
 
 	if (!MakeDirectories(dir)) {
-		saveError_ = MsgF("Colors.MakeDirFailed", dir);
+		colors_.saveError = MsgF("Colors.MakeDirFailed", dir);
 		return;
 	}
 	if (isNewSkin && !isCurrent && !baseRef.empty()) {
 		Ini ini;
 		ini.SetString("Skin", "Base", baseRef);
 		if (!ini.Save(JoinPath(dir, "layout.ini"))) {
-			saveError_ = MsgF("Colors.LayoutFailed", dir);
+			colors_.saveError = MsgF("Colors.LayoutFailed", dir);
 			return;
 		}
 	}
 	if (!draw->colors().Save(JoinPath(dir, kColorsFile))) {
-		saveError_ = MsgF("Colors.SaveFailed", JoinPath(dir, kColorsFile));
+		colors_.saveError = MsgF("Colors.SaveFailed", JoinPath(dir, kColorsFile));
 		return;
 	}
 	// 旧い名前のファイルが残っていると、colors.ini に隠れて読まれなくなる。
@@ -145,21 +145,21 @@ void SettingsUi::Rebuild(DrawScreen *draw, Player *player) {
 // CollapsingHeader だったが、項目数が多く設定ウィンドウが縦に伸びるので
 // 別ダイアログにした。F2 と右クリックメニューから開ける。
 void SettingsUi::BuildColorsWindow(Settings *settings, DrawScreen *draw, Player *player) {
-	if (!SyncModal(kColorsTitle, &showColors_)) return;
+	if (!SyncModal(kColorsTitle, &colors_.show)) return;
 
 	// 設定ウィンドウと同じ作法。開くたびに中央、画面からはみ出さない大きさ。
 	CenterNextWindow(placeCond());
 	ImGui::SetNextWindowSize(DialogSize(380.0f, 464.0f), placeCond());
 
-	if (BeginDialog(kColorsTitle, &showColors_, DialogFlags())) {
+	if (BeginDialog(kColorsTitle, &colors_.show, DialogFlags())) {
 		// 開いた直後は、保存先の名前を今のスキン名にしておく。書き込み先は
 		// 必ずユーザーフォルダなので "assets:" は外す（同梱スキンを編集して
 		// いるときは、同じ名前のユーザースキンが作られることになる）。
-		if (skinNameReset_) {
-			skinNameReset_ = false;
-			snprintf(skinNameBuf_, sizeof(skinNameBuf_), "%s",
+		if (colors_.skinNameReset) {
+			colors_.skinNameReset = false;
+			snprintf(colors_.skinNameBuf, sizeof(colors_.skinNameBuf), "%s",
 			         SkinRefName(settings->skinName).c_str());
-			saveError_.clear();
+			colors_.saveError.clear();
 		}
 
 		// 保存まわりはダイアログの先頭に置く。色の項目は縦に長く、
@@ -298,13 +298,14 @@ void SettingsUi::BuildSkinSaveRow(Settings *settings, DrawScreen *draw) {
 
 	SaveRowLabel(kLabels[0], valueX);
 	ImGui::SetNextItemWidth(-FLT_MIN);
-	const bool entered = ImGui::InputText("##skinname", skinNameBuf_, sizeof(skinNameBuf_),
+	const bool entered = ImGui::InputText("##skinname", colors_.skinNameBuf,
+	                                      sizeof(colors_.skinNameBuf),
 	                                      ImGuiInputTextFlags_EnterReturnsTrue);
 
 	// 保存先。書き込むのは skin/<名前>/colors.ini だが、行を短くするために
 	// フォルダまでを出し、完全なパスはツールチップに出す。
 	{
-		const std::string name = TrimSpaces(skinNameBuf_);
+		const std::string name = TrimSpaces(colors_.skinNameBuf);
 		SaveRowLabel(kLabels[1], valueX);
 		ImGui::TextDisabled("skin/%s", name.c_str());
 		if (ImGui::IsItemHovered()) {
@@ -313,19 +314,19 @@ void SettingsUi::BuildSkinSaveRow(Settings *settings, DrawScreen *draw) {
 	}
 
 	if (ImGui::Button(Msg("Button.Save")) || entered) {
-		const std::string name = TrimSpaces(skinNameBuf_);
-		saveError_.clear();
-		if (!CheckSkinName(name, &saveError_)) {
+		const std::string name = TrimSpaces(colors_.skinNameBuf);
+		colors_.saveError.clear();
+		if (!CheckSkinName(name, &colors_.saveError)) {
 			// 文言は CheckSkinName が入れている
 		} else if (paths_.UserSkinExists(name)) {
 			// すでにある名前。上書きしてよいか訊く。同梱ぶんに同じ名前が
 			// あっても、そちらは別のスキン (assets:<名前>) なので訊かない。
-			overwriteName_ = name;
-			openOverwrite_ = true;
+			colors_.overwriteName = name;
+			colors_.overwrite.ask = true;
 		} else {
 			SaveColorsAs(name, settings, draw);
 		}
-		saveErrorFresh_ = !saveError_.empty();
+		colors_.saveErrorFresh = !colors_.saveError.empty();
 	}
 	ImGui::SameLine();
 	if (ImGui::Button(Msg("Button.Reload"))) {
@@ -344,10 +345,10 @@ void SettingsUi::BuildSkinSaveRow(Settings *settings, DrawScreen *draw) {
 		}
 	}
 
-	if (!saveError_.empty()) {
-		TextWrapColor(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), saveError_.c_str());
-		if (saveErrorFresh_) {
-			saveErrorFresh_ = false;
+	if (!colors_.saveError.empty()) {
+		TextWrapColor(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), colors_.saveError.c_str());
+		if (colors_.saveErrorFresh) {
+			colors_.saveErrorFresh = false;
 			ImGui::SetScrollHereY(0.0f);
 		}
 	}
@@ -356,14 +357,14 @@ void SettingsUi::BuildSkinSaveRow(Settings *settings, DrawScreen *draw) {
 // 上書きの確認。配色設定の**中で**開く。ImGui のモーダルは
 // 入れ子なら素直に重なる（同じ階層で掛け替えようとすると失敗する）。
 void SettingsUi::BuildOverwriteWindow(Settings *settings, DrawScreen *draw) {
-	if (openOverwrite_) {
-		openOverwrite_ = false;
+	if (colors_.overwrite.ask) {
+		colors_.overwrite.ask = false;
 		ImGui::OpenPopup(kOverwriteTitle);
 	}
 
-	overwriteOpen_ = ImGui::IsPopupOpen(kOverwriteTitle);
-	if (!overwriteOpen_) {
-		closeOverwrite_ = false;
+	colors_.overwrite.open = ImGui::IsPopupOpen(kOverwriteTitle);
+	if (!colors_.overwrite.open) {
+		colors_.overwrite.close = false;
 		return;
 	}
 
@@ -373,17 +374,17 @@ void SettingsUi::BuildOverwriteWindow(Settings *settings, DrawScreen *draw) {
 		return;
 	}
 
-	ConfirmText(MsgF("Colors.OverwriteMessage", overwriteName_).c_str());
+	ConfirmText(MsgF("Colors.OverwriteMessage", colors_.overwriteName).c_str());
 	ImGui::TextUnformatted(Msg("Colors.OverwriteQuestion"));
 	ImGui::Separator();
 	if (ImGui::Button(Msg("Button.Overwrite"))) {
-		SaveColorsAs(overwriteName_, settings, draw);
-		saveErrorFresh_ = !saveError_.empty();
+		SaveColorsAs(colors_.overwriteName, settings, draw);
+		colors_.saveErrorFresh = !colors_.saveError.empty();
 		ImGui::CloseCurrentPopup();
 	}
 	ImGui::SameLine();
-	if (ImGui::Button(Msg("Button.Cancel")) || closeOverwrite_) {
-		closeOverwrite_ = false;
+	if (ImGui::Button(Msg("Button.Cancel")) || colors_.overwrite.close) {
+		colors_.overwrite.close = false;
 		ImGui::CloseCurrentPopup();
 	}
 	ImGui::EndPopup();

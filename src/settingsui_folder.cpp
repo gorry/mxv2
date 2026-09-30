@@ -55,18 +55,18 @@ void SettingsUi::RelistFolder(const std::string &dir) {
 
 	// 読めなかったときに戻る先を控える。読み込み中の（まだ空の）姿は
 	// 控えない（続けて打ち込まれたときに空へ戻ってしまう）。
-	if (!folderLoading_) {
-		folderPrevDir_ = folderDir_;
-		folderPrevSelected_ = folderSelected_;
-		folderPrevEntries_ = folderEntries_;
-		folderHasPrev_ = true;
+	if (!folder_.loading) {
+		folder_.prevDir = folder_.dir;
+		folder_.prevSelected = folder_.selected;
+		folder_.prevEntries = folder_.entries;
+		folder_.hasPrev = true;
 	}
 
-	folderLoading_ = false;
-	folderLister_->Cancel();
-	folderDir_ = want;
-	folderSelected_.clear();
-	folderEntries_.clear();
+	folder_.loading = false;
+	folder_.lister->Cancel();
+	folder_.dir = want;
+	folder_.selected.clear();
+	folder_.entries.clear();
 
 	// ファイルシステムの選択。読み込みは要らない。
 	if (fs == 0) {
@@ -80,39 +80,39 @@ void SettingsUi::RelistFolder(const std::string &dir) {
 			// 設定] と同じく名前を添える。
 			e.name = std::string(m->prefix()) + "  " + m->label();
 			e.ref = Vfs::MakeRef(m, m->Root());
-			folderEntries_.push_back(e);
+			folder_.entries.push_back(e);
 		}
 		return;
 	}
 
-	folderLoading_ = true;
-	folderTicks_ = SDL_GetTicks();
-	folderLister_->Start(vfs_, folderDir_);
+	folder_.loading = true;
+	folder_.ticks = SDL_GetTicks();
+	folder_.lister->Start(vfs_, folder_.dir);
 }
 
 // 別スレッドが読み終えた中身を一覧へ入れる。
 void SettingsUi::PollFolderDir() {
 	DirLister::Result r;
-	if (!folderLister_->Take(&r)) return;
-	if (!folderLoading_ || r.ref != folderDir_) return;
+	if (!folder_.lister->Take(&r)) return;
+	if (!folder_.loading || r.ref != folder_.dir) return;
 
-	folderLoading_ = false;
+	folder_.loading = false;
 
 	if (!r.ok) {
 		// 開けない場所（打ち込みの途中、読めないドライブ）。前の一覧に戻す。
-		if (folderHasPrev_) {
-			folderDir_ = folderPrevDir_;
-			folderSelected_ = folderPrevSelected_;
-			folderEntries_ = folderPrevEntries_;
+		if (folder_.hasPrev) {
+			folder_.dir = folder_.prevDir;
+			folder_.selected = folder_.prevSelected;
+			folder_.entries = folder_.prevEntries;
 		}
 		return;
 	}
 
 	FileSystem *fs = 0;
 	std::string rel;
-	if (vfs_ == 0 || !vfs_->Parse(folderDir_, &fs, &rel) || fs == 0) return;
+	if (vfs_ == 0 || !vfs_->Parse(folder_.dir, &fs, &rel) || fs == 0) return;
 
-	folderEntries_.clear();
+	folder_.entries.clear();
 	std::vector<std::string> names;
 	for (size_t i = 0; i < r.entries.size(); i++) {
 		if (r.entries[i].isDir) names.push_back(r.entries[i].name);
@@ -122,7 +122,7 @@ void SettingsUi::PollFolderDir() {
 		FolderEntry e;
 		e.name = names[i];
 		e.ref = Vfs::MakeRef(fs, fs->Join(rel, names[i]));
-		folderEntries_.push_back(e);
+		folder_.entries.push_back(e);
 	}
 
 	// ファイルシステムが足すもの（ローカル FS のドライブ一覧）。
@@ -132,41 +132,41 @@ void SettingsUi::PollFolderDir() {
 		FolderEntry e;
 		e.name = extras[i].name;
 		e.ref = Vfs::MakeRef(fs, extras[i].rel);
-		folderEntries_.push_back(e);
+		folder_.entries.push_back(e);
 	}
 }
 
 // 一覧に出すフォルダを決めて、入力欄もそこへ合わせる。
 void SettingsUi::SetFolderDir(const std::string &dir) {
 	RelistFolder(dir);
-	// folderDir_ は読み込みを始めた時点で行き先になっている（中身だけが
+	// folder_.dir は読み込みを始めた時点で行き先になっている（中身だけが
 	// あとから届く）ので、入力欄はそのまま合わせてよい。
-	snprintf(folderPathBuf_, sizeof(folderPathBuf_), "%s", folderDir_.c_str());
-	folderError_.clear();
+	snprintf(folder_.pathBuf, sizeof(folder_.pathBuf), "%s", folder_.dir.c_str());
+	folder_.error.clear();
 }
 
 // 一覧で選んだものを入力欄へ移すだけ。中へは入らない。
 // メイン画面のファイラーと同じで、クリックは選ぶだけ・ダブルクリックで移動。
 void SettingsUi::SelectFolderEntry(const std::string &path) {
-	folderSelected_ = path;
-	snprintf(folderPathBuf_, sizeof(folderPathBuf_), "%s", path.c_str());
-	folderError_.clear();
+	folder_.selected = path;
+	snprintf(folder_.pathBuf, sizeof(folder_.pathBuf), "%s", path.c_str());
+	folder_.error.clear();
 }
 
 const char *SettingsUi::folderTitle() const {
-	if (folderTarget_ == kFolderTargetPdx) return kPdxFolderTitle;
-	if (folderTarget_ == kFolderTargetBookmark) return kBookmarkFolderTitle;
+	if (folder_.target == kFolderTargetPdx) return kPdxFolderTitle;
+	if (folder_.target == kFolderTargetBookmark) return kBookmarkFolderTitle;
 	return kFolderTitle;
 }
 
 void SettingsUi::BuildFolderWindow(Settings *settings, Filer *filer) {
 	const char *title = folderTitle();
-	if (!SyncModal(title, &showFolder_)) return;
+	if (!SyncModal(title, &folder_.show)) return;
 
 	CenterNextWindow(placeCond());
 	ImGui::SetNextWindowSize(DialogSize(460.0f, 400.0f), placeCond());
 
-	if (!BeginDialog(title, &showFolder_, DialogFlags())) {
+	if (!BeginDialog(title, &folder_.show, DialogFlags())) {
 		return;
 	}
 
@@ -175,23 +175,23 @@ void SettingsUi::BuildFolderWindow(Settings *settings, Filer *filer) {
 
 	// パスは直接打ってもよい。ENTER は「開く」と同じ扱い。
 	ImGui::SetNextItemWidth(-FLT_MIN);
-	bool apply = ImGui::InputText("##folderpath", folderPathBuf_, sizeof(folderPathBuf_),
+	bool apply = ImGui::InputText("##folderpath", folder_.pathBuf, sizeof(folder_.pathBuf),
 	                              ImGuiInputTextFlags_EnterReturnsTrue);
 
 	// 打ち込んだ先が実在するフォルダなら、下の一覧もそこへ合わせる。
 	// 入力欄そのものは書き換えない。打っている最中に正規化された文字列で
 	// 差し替えると、カーソルごと飛んでしまって打てなくなる。
 	if (ImGui::IsItemEdited()) {
-		const std::string typed = folderPathBuf_;
+		const std::string typed = folder_.pathBuf;
 		std::string ref;
 		// 打ち込みの途中は開けない場所を通るが、**それを確かめるのも
 		// 別スレッドの仕事**（ここで IsDir を呼ぶと 1 打鍵ごとに固まる）。
 		// 開けなければ PollFolderDir が前の一覧に戻す。
-		if (!typed.empty() && vfs_ != 0 && vfs_->Resolve(typed, folderDir_, &ref) &&
-		    ref != folderDir_) {
+		if (!typed.empty() && vfs_ != 0 && vfs_->Resolve(typed, folder_.dir, &ref) &&
+		    ref != folder_.dir) {
 			RelistFolder(ref);
 		}
-		folderError_.clear();
+		folder_.error.clear();
 	}
 
 	// 親へ戻るのは一覧の ".." が受け持つので、専用のボタンは置かない。
@@ -200,12 +200,12 @@ void SettingsUi::BuildFolderWindow(Settings *settings, Filer *filer) {
 	// 見出しは付けず、上の入力欄と桁を揃える。入力欄の文字は枠の内側に
 	// FramePadding のぶん寄っているので、こちらも同じだけ下げる。
 	// ファイルシステムのルートの 1 つ上は「ファイルシステムの選択」(ref は空)。
-	const std::string up = (vfs_ != 0) ? vfs_->Parent(folderDir_) : std::string();
-	const bool hasUp = !folderDir_.empty();
+	const std::string up = (vfs_ != 0) ? vfs_->Parent(folder_.dir) : std::string();
+	const bool hasUp = !folder_.dir.empty();
 	{
 		const float inset = ImGui::GetStyle().FramePadding.x;
 		ImGui::Indent(inset);
-		TextNote(folderDir_.empty() ? Msg("Folder.FileSystem") : folderDir_.c_str());
+		TextNote(folder_.dir.empty() ? Msg("Folder.FileSystem") : folder_.dir.c_str());
 		ImGui::Unindent(inset);
 	}
 
@@ -238,25 +238,25 @@ void SettingsUi::BuildFolderWindow(Settings *settings, Filer *filer) {
 		bool picked = false;   // ref は空にもなりうるので、有無は別に持つ
 		bool entered = false;  // ダブルクリックだったか
 
-		if (hasUp && Row::Hit("..", up, folderSelected_, &entered)) {
+		if (hasUp && Row::Hit("..", up, folder_.selected, &entered)) {
 			pick = up;
 			picked = true;
 		}
-		for (size_t i = 0; i < folderEntries_.size(); i++) {
+		for (size_t i = 0; i < folder_.entries.size(); i++) {
 			// 名札が同じ行が 2 つあると ImGui の ID がぶつかり、「2 visible items
 			// with conflicting ID」のエラーが出る（同じ種類のファイルシステムが
 			// 2 つあったとき。2026-09-30、r77）。行の番号で ID を分けておく。
 			char label[600];
-			snprintf(label, sizeof(label), "%s##folder%d", folderEntries_[i].name.c_str(), (int)i);
-			if (Row::Hit(label, folderEntries_[i].ref, folderSelected_, &entered)) {
-				pick = folderEntries_[i].ref;
+			snprintf(label, sizeof(label), "%s##folder%d", folder_.entries[i].name.c_str(), (int)i);
+			if (Row::Hit(label, folder_.entries[i].ref, folder_.selected, &entered)) {
+				pick = folder_.entries[i].ref;
 				picked = true;
 			}
 		}
 
 		// 手間取っているときだけ知らせる。ローカルのフォルダは一瞬で
 		// 届くので、すぐ出すとちらつくだけになる。
-		if (folderLoading_ && (SDL_GetTicks() - folderTicks_) >= kLoadingDelayMs) {
+		if (folder_.loading && (SDL_GetTicks() - folder_.ticks) >= kLoadingDelayMs) {
 			ImGui::TextDisabled("%s", Msg("Filer.Loading"));
 		}
 
@@ -276,71 +276,65 @@ void SettingsUi::BuildFolderWindow(Settings *settings, Filer *filer) {
 		ImGui::EndChild();
 	}
 
-	if (folderError_.empty()) {
+	if (folder_.error.empty()) {
 		TextNote(Msg("Folder.Hint"));
 	} else {
-		TextError(folderError_.c_str());
+		TextError(folder_.error.c_str());
 	}
 	if (ImGui::Button(Msg("Button.Open"))) apply = true;
 	ImGui::SameLine();
-	if (ImGui::Button(Msg("Button.Cancel"))) showFolder_ = false;
+	if (ImGui::Button(Msg("Button.Cancel"))) folder_.show = false;
 
 	if (nextDirValid) {
 		SetFolderDir(nextDir);
 	} else if (apply) {
-		const std::string want = folderPathBuf_;
+		const std::string want = folder_.pathBuf;
 		std::string ref;
-		const bool ok = (vfs_ != 0) && vfs_->Resolve(want, folderDir_, &ref);
+		const bool ok = (vfs_ != 0) && vfs_->Resolve(want, folder_.dir, &ref);
 		// ref が空なら「ファイルシステムの選択」。ファイラーは行けるが、
 		// PDX の探索先には指定できない。
 		// 今一覧に出している場所なら読めているのが分かっているので、
 		// IsDir は省く（遅いファイルシステムでの往復を 1 回減らす）。
-		const bool known = ok && (ref == folderDir_) && !folderLoading_;
+		const bool known = ok && (ref == folder_.dir) && !folder_.loading;
 		if (!ok || (!ref.empty() && !known && !vfs_->IsDir(ref))) {
-			folderError_ = Msg("Folder.NotFound");
-		} else if (folderTarget_ == kFolderTargetPdx) {
+			folder_.error = Msg("Folder.NotFound");
+		} else if (folder_.target == kFolderTargetPdx) {
 			// PDX の探索先に足す。ルート（ファイルシステムの選択）と "Bookmarks>"
 			// 自身、入れてある場所は入れられない。挿す位置は [PDX の探索先] で
 			// 選んでいた行（無ければ末尾）。
 			std::vector<std::string> &list = settings->pdxPaths;
 			if (!CanBookmark(ref)) {
-				folderError_ = Msg("PdxPath.AddRoot");
+				folder_.error = Msg("PdxPath.AddRoot");
 			} else if (FindBookmark(list, ref) >= 0) {
-				folderError_ = MsgF("PdxPath.AddDuplicate", vfs_->DisplayPath(ref));
+				folder_.error = MsgF("PdxPath.AddDuplicate", vfs_->DisplayPath(ref));
 			} else if ((int)list.size() >= Settings::kMaxPdxPaths) {
-				folderError_ = Msg("PdxPath.AddFull");
+				folder_.error = Msg("PdxPath.AddFull");
 			} else {
-				const int count = (int)list.size();
-				const int at = (pdxSelected_ >= 0 && pdxSelected_ <= count) ? pdxSelected_ : count;
-				list.insert(list.begin() + at, ref);
-				pdxSelected_ = at;
+				InsertPdxPath(&list, ref);
 				changedFields_ |= Settings::kFieldPdxPaths;
-				showFolder_ = false;
+				folder_.show = false;
 			}
-		} else if (folderTarget_ == kFolderTargetBookmark) {
+		} else if (folder_.target == kFolderTargetBookmark) {
 			// ブックマークに足す。ルート（ファイルシステムの選択）と
 			// "Bookmarks>" 自身、控え済みの場所は入れられない。挿す位置は
 			// [ブックマークの設定] で選んでいた行（無ければ末尾）。
 			std::vector<std::string> &list = settings->bookmarks;
 			if (!CanBookmark(ref)) {
-				folderError_ = Msg("Bookmark.AddRoot");
+				folder_.error = Msg("Bookmark.AddRoot");
 			} else if (FindBookmark(list, ref) >= 0) {
-				folderError_ = MsgF("Bookmark.AddDuplicate", vfs_->DisplayPath(ref));
+				folder_.error = MsgF("Bookmark.AddDuplicate", vfs_->DisplayPath(ref));
 			} else if ((int)list.size() >= Settings::kMaxBookmarks) {
-				folderError_ = Msg("Bookmark.AddFull");
+				folder_.error = Msg("Bookmark.AddFull");
 			} else {
-				const int count = (int)list.size();
-				const int at = (bmSelected_ >= 0 && bmSelected_ <= count) ? bmSelected_ : count;
-				list.insert(list.begin() + at, ref);
-				bmSelected_ = at;
+				InsertBookmark(&list, ref);
 				changedFields_ |= Settings::kFieldBookmarks;
-				showFolder_ = false;
+				folder_.show = false;
 			}
 		} else {
 			// ファイラーを動かすのはメインループの持ち物なので、要求だけ積む。
 			requestedFolder_ = ref;
 			request_ = kRequestSetFolder;
-			showFolder_ = false;
+			folder_.show = false;
 		}
 	}
 

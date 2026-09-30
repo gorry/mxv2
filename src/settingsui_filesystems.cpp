@@ -31,12 +31,12 @@ using namespace settingsui;
 // 決める。実体は Vfs のマウント一覧なので、触ったらその場で効く。
 // 並びは [FileSystem] へ書き戻す（changedFields_ 経由でメインループが書く）。
 void SettingsUi::BuildFileSystemsWindow(Filer *filer) {
-	if (!SyncModal(kFileSystemsTitle, &showFileSystems_)) return;
+	if (!SyncModal(kFileSystemsTitle, &fs_.show)) return;
 
 	CenterNextWindow(placeCond());
 	ImGui::SetNextWindowSize(DialogSize(460.0f, 360.0f), placeCond());
 
-	if (!BeginDialog(kFileSystemsTitle, &showFileSystems_, DialogFlags())) {
+	if (!BeginDialog(kFileSystemsTitle, &fs_.show, DialogFlags())) {
 		return;
 	}
 	if (vfs_ == 0) {
@@ -46,8 +46,8 @@ void SettingsUi::BuildFileSystemsWindow(Filer *filer) {
 	}
 
 	const int count = vfs_->count();
-	if (fsSelected_ >= count) fsSelected_ = count - 1;
-	if (fsSelected_ < 0) fsSelected_ = 0;
+	if (fs_.selected >= count) fs_.selected = count - 1;
+	if (fs_.selected < 0) fs_.selected = 0;
 
 	// 一覧。削除できないもの（初回起動時から使えるもの）は薄く出して、
 	// 削除できないことを見て分かるようにする。
@@ -68,9 +68,9 @@ void SettingsUi::BuildFileSystemsWindow(Filer *filer) {
 			} else if (fixed) {
 				ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyle().Colors[ImGuiCol_TextDisabled]);
 			}
-			if (ImGui::Selectable(label, i == fsSelected_) && !dragMoved_) {
-				fsSelected_ = i;
-				fsError_.clear();
+			if (ImGui::Selectable(label, i == fs_.selected) && !dragMoved_) {
+				fs_.selected = i;
+				fs_.error.clear();
 			}
 			if (noAccess || fixed) ImGui::PopStyleColor();
 		}
@@ -80,24 +80,24 @@ void SettingsUi::BuildFileSystemsWindow(Filer *filer) {
 
 	// 「薄い項目は削除できない」の注記は 2026-09-24 に外した（ユーザーの
 	// 指示。狭い画面で行を食うわりに、[削除] が押せないことで分かる）。
-	if (!fsError_.empty()) TextError(fsError_.c_str());
+	if (!fs_.error.empty()) TextError(fs_.error.c_str());
 
-	const FileSystem *sel = (count > 0) ? vfs_->at(fsSelected_) : 0;
+	const FileSystem *sel = (count > 0) ? vfs_->at(fs_.selected) : 0;
 
 	// [上へ] [下へ]。端まで来たら押せなくする。
-	ImGui::BeginDisabled(fsSelected_ <= 0);
+	ImGui::BeginDisabled(fs_.selected <= 0);
 	if (ImGui::Button(Msg("Button.Up"))) {
-		vfs_->Move(fsSelected_, -1);
-		fsSelected_--;
+		vfs_->Move(fs_.selected, -1);
+		fs_.selected--;
 		changedFields_ |= Settings::kFieldFileSystems;
 		filer->Refresh();
 	}
 	ImGui::EndDisabled();
 	ImGui::SameLine();
-	ImGui::BeginDisabled(fsSelected_ < 0 || fsSelected_ >= count - 1);
+	ImGui::BeginDisabled(fs_.selected < 0 || fs_.selected >= count - 1);
 	if (ImGui::Button(Msg("Button.Down"))) {
-		vfs_->Move(fsSelected_, 1);
-		fsSelected_++;
+		vfs_->Move(fs_.selected, 1);
+		fs_.selected++;
 		changedFields_ |= Settings::kFieldFileSystems;
 		filer->Refresh();
 	}
@@ -111,15 +111,15 @@ void SettingsUi::BuildFileSystemsWindow(Filer *filer) {
 	// 3 種類以上になったら、ここに種類の選択を挟むこと。
 	ImGui::SameLine();
 	if (ImGui::Button(Msg("Button.AddFs"))) {
-		fsError_.clear();
+		fs_.error.clear();
 		if (SafAvailable()) {
 			if (SafPickTree()) {
-				safPicking_ = true;
+				fs_.saf.picking = true;
 			} else {
-				fsError_ = Msg("FileSystems.PickFailed");
+				fs_.error = Msg("FileSystems.PickFailed");
 			}
 		} else {
-			addFsOpen_ = true;
+			fs_.addFs.popup.ask = true;
 		}
 	}
 	if (ImGui::IsItemHovered()) {
@@ -132,10 +132,10 @@ void SettingsUi::BuildFileSystemsWindow(Filer *filer) {
 	ImGui::BeginDisabled(sel == 0 || !sel->removable());
 	if (ImGui::Button(Msg("Button.Remove"))) {
 		if (sel != 0 && filer != 0 && filer->fs() == sel) {
-			fsError_ = Msg("FileSystems.RemoveCurrent");
+			fs_.error = Msg("FileSystems.RemoveCurrent");
 		} else {
-			fsError_.clear();
-			fsOpenConfirm_ = true;
+			fs_.error.clear();
+			fs_.remove.popup.ask = true;
 		}
 	}
 	ImGui::EndDisabled();
@@ -153,12 +153,12 @@ void SettingsUi::BuildFileSystemsWindow(Filer *filer) {
 		const bool canRegrant = (sel != 0) && !sel->accessible();
 		ImGui::BeginDisabled(!canRegrant);
 		if (ImGui::Button(Msg("Button.Regrant"))) {
-			fsError_.clear();
+			fs_.error.clear();
 			if (SafPickTree(sel->Root())) {
-				safPicking_ = true;
-				safRegrantRef_ = sel->mountRef();
+				fs_.saf.picking = true;
+				fs_.saf.regrantRef = sel->mountRef();
 			} else {
-				fsError_ = Msg("FileSystems.PickFailed");
+				fs_.error = Msg("FileSystems.PickFailed");
 			}
 		}
 		ImGui::EndDisabled();
@@ -174,8 +174,8 @@ void SettingsUi::BuildFileSystemsWindow(Filer *filer) {
 }
 
 void SettingsUi::SetBrowsedPath(const std::string &path) {
-	snprintf(addFsPathBuf_, sizeof(addFsPathBuf_), "%s", path.c_str());
-	addFsError_.clear();
+	snprintf(fs_.addFs.pathBuf, sizeof(fs_.addFs.pathBuf), "%s", path.c_str());
+	fs_.addFs.error.clear();
 }
 
 // ファイルシステムの追加。今のところ足せるのはフォルダマウント (dir:) だけ
@@ -193,19 +193,29 @@ void SettingsUi::SetBrowsedPath(const std::string &path) {
 // 読み直すので見た目には残らない。
 void SettingsUi::QuiesceVfsReaders(Filer *filer) {
 	if (filer != 0) filer->WaitIo();
-	if (folderLister_ != 0) folderLister_->Quiesce();
+	if (folder_.lister != 0) folder_.lister->Quiesce();
 	if (songLoader_ != 0) songLoader_->Quiesce();
 }
 
 void SettingsUi::OpenFileSystemsFor(const std::string &mountRef) {
 	OpenFileSystems();
-	if (!showFileSystems_ || vfs_ == 0) return;
+	if (!fs_.show || vfs_ == 0) return;
 	for (int i = 0; i < vfs_->count(); i++) {
 		if (CompareNoCase(vfs_->at(i)->mountRef(), mountRef) != 0) continue;
-		fsSelected_ = i;
-		fsError_ = MsgF("FileSystems.NoAccessNote", vfs_->at(i)->label());
+		fs_.selected = i;
+		fs_.error = MsgF("FileSystems.NoAccessNote", vfs_->at(i)->label());
 		break;
 	}
+}
+
+bool SettingsUi::StartSafRegrant(const std::string &mountRef, bool fromFiler) {
+	if (vfs_ == 0 || !SafAvailable() || fs_.saf.picking) return false;
+	FileSystem *fs = vfs_->FindByMountRef(mountRef);
+	if (fs == 0 || !SafPickTree(fs->Root())) return false;
+	fs_.saf.picking = true;
+	fs_.saf.regrantRef = mountRef;
+	fs_.saf.regrantFromFiler = fromFiler;
+	return true;
 }
 
 void SettingsUi::RegrantAccess(const std::string &mountRef) {
@@ -213,31 +223,26 @@ void SettingsUi::RegrantAccess(const std::string &mountRef) {
 	FileSystem *fs = vfs_->FindByMountRef(mountRef);
 	if (fs == 0 || fs->accessible()) return;
 	// ピッカーを直に出す。出せなければ設定ダイアログで事情を示す。
-	if (SafAvailable() && !safPicking_ && SafPickTree(fs->Root())) {
-		safPicking_ = true;
-		safRegrantRef_ = mountRef;
-		safRegrantFromFiler_ = true;
-		return;
-	}
+	if (StartSafRegrant(mountRef, true)) return;
 	OpenFileSystemsFor(mountRef);
 }
 
 void SettingsUi::PollSafPicked(Filer *filer) {
-	if (!safPicking_) return;
+	if (!fs_.saf.picking) return;
 
 	std::string uri;
 	if (!SafPollPicked(&uri)) return;
-	safPicking_ = false;
-	const std::string regrant = safRegrantRef_;
-	const bool fromFiler = safRegrantFromFiler_;
-	safRegrantRef_.clear();
-	safRegrantFromFiler_ = false;
+	fs_.saf.picking = false;
+	const std::string regrant = fs_.saf.regrantRef;
+	const bool fromFiler = fs_.saf.regrantFromFiler;
+	fs_.saf.regrantRef.clear();
+	fs_.saf.regrantFromFiler = false;
 	// 外から渡された MDX のために出したピッカーか（openintent.h）。
-	const bool handed = !safHandedUri_.empty();
-	safHandedUri_.clear();
+	const bool handed = !fs_.saf.handedUri.empty();
+	fs_.saf.handedUri.clear();
 	// 渡されたものの許可は**一覧の末尾**へ足す（設定ダイアログを開いて
 	// いないので、選んでいる行に挿し込む意味が無い）。
-	if (handed) fsSelected_ = -1;
+	if (handed) fs_.selected = -1;
 
 	ApplyPickedTree(filer, uri, regrant, fromFiler, handed);
 
@@ -264,16 +269,16 @@ void SettingsUi::ApplyPickedTree(Filer *filer, const std::string &uri,
 		FileSystem *target = vfs_->FindByMountRef(regrant);
 		if (target != 0 && CompareNoCase(target->mountRef(), std::string("saf:") + uri) == 0) {
 			if (target->Reconnect()) {
-				fsError_.clear();
+				fs_.error.clear();
 				if (filer != 0) filer->Refresh();
 				// 起動時の警告に同じ項目があれば、済んだ印に差し替える。
-				for (size_t i = 0; i < startupLines_.size(); i++) {
-					if (CompareNoCase(startupLines_[i].regrantRef, regrant) != 0) continue;
-					startupLines_[i].done = true;
-					startupLines_[i].text = MsgF("FileSystems.Regranted", target->label());
+				for (size_t i = 0; i < info_.startupLines.size(); i++) {
+					if (CompareNoCase(info_.startupLines[i].regrantRef, regrant) != 0) continue;
+					info_.startupLines[i].done = true;
+					info_.startupLines[i].text = MsgF("FileSystems.Regranted", target->label());
 				}
 			} else {
-				fsError_ = Msg("FileSystems.RegrantFailed");
+				fs_.error = Msg("FileSystems.RegrantFailed");
 				if (fromFiler) OpenFileSystemsFor(regrant);
 			}
 			return;
@@ -297,7 +302,7 @@ void SettingsUi::ApplyPickedTree(Filer *filer, const std::string &uri,
 			}
 			// 渡されたものの流れでは一覧を出していないので、誤りの文言は残さない
 			// （次に [ファイルシステムの設定] を開いたときに古い文が出る）。
-			if (!handed) fsError_ = MsgF("AddFs.Duplicate", exists->mountRef());
+			if (!handed) fs_.error = MsgF("AddFs.Duplicate", exists->mountRef());
 			if (filer != 0) filer->Refresh();
 			return;
 		}
@@ -305,19 +310,19 @@ void SettingsUi::ApplyPickedTree(Filer *filer, const std::string &uri,
 
 	FileSystem *made = vfs_->CreateFromMountRef(std::string("saf:") + uri);
 	if (made == 0) {
-		fsError_ = Msg("AddFs.NotFound");
+		fs_.error = Msg("AddFs.NotFound");
 		return;
 	}
 	QuiesceVfsReaders(filer);
 	if (!vfs_->Add(made)) {
-		fsError_ = MsgF("AddFs.Duplicate", made->mountRef());
+		fs_.error = MsgF("AddFs.Duplicate", made->mountRef());
 		delete made;
 		return;
 	}
 	// 選んでいた位置へ挿し込む（[追加] ダイアログと同じ）。
-	const int at = (fsSelected_ >= 0) ? fsSelected_ : vfs_->count();
+	const int at = (fs_.selected >= 0) ? fs_.selected : vfs_->count();
 	vfs_->MountAt(at, made);
-	fsSelected_ = at;
+	fs_.selected = at;
 	changedFields_ |= Settings::kFieldFileSystems;
 	if (filer != 0) filer->Refresh();
 }
@@ -334,17 +339,17 @@ void SettingsUi::ApplyPickedTree(Filer *filer, const std::string &uri,
 //   [キャンセル] / ESC   … 何もしない。
 // ---------------------------------------------------------------------------
 void SettingsUi::BuildHandedWindow(Filer *filer) {
-	if (handedAsk_) {
-		handedAsk_ = false;
+	if (fs_.handed.popup.ask) {
+		fs_.handed.popup.ask = false;
 		// **OS の許可が残っているフォルダなら尋ねない。** 一覧から外して
 		// あっても、ユーザーから見れば「許可済みのフォルダ」なので、黙って
 		// 一覧へ戻して開く（2026-09-18、ユーザーの報告）。
 		{
 			std::string ref;
-			if (MountGrantedTree(filer, handedUri_, &ref)) {
-				handedUri_.clear();
-				handedName_.clear();
-				handedRef_ = ref;
+			if (MountGrantedTree(filer, fs_.handed.uri, &ref)) {
+				fs_.handed.uri.clear();
+				fs_.handed.name.clear();
+				fs_.handed.ref = ref;
 				request_ = kRequestOpenHanded;
 				return;
 			}
@@ -352,9 +357,9 @@ void SettingsUi::BuildHandedWindow(Filer *filer) {
 		ImGui::OpenPopup(kHandedTitle);
 	}
 
-	handedOpen_ = ImGui::IsPopupOpen(kHandedTitle);
-	if (!handedOpen_) {
-		handedClose_ = false;
+	fs_.handed.popup.open = ImGui::IsPopupOpen(kHandedTitle);
+	if (!fs_.handed.popup.open) {
+		fs_.handed.popup.close = false;
 		return;
 	}
 
@@ -364,7 +369,7 @@ void SettingsUi::BuildHandedWindow(Filer *filer) {
 		return;
 	}
 
-	ConfirmText(MsgF("Handed.Question", handedName_).c_str());
+	ConfirmText(MsgF("Handed.Question", fs_.handed.name).c_str());
 	ConfirmNote(Msg("Handed.Note"));
 	ImGui::Separator();
 
@@ -372,12 +377,12 @@ void SettingsUi::BuildHandedWindow(Filer *filer) {
 		// ピッカーは**渡されたファイルのフォルダ**から見せる（親を辿れない
 		// 提供元なら既定の場所から）。出せないときは写して開く
 		// ——何も起きないよりは鳴るほうがよい。
-		if (!safPicking_ && SafAvailable() &&
-		    SafPickTreeAtDoc(openintent::ParentDocUri(handedUri_))) {
-			safPicking_ = true;
-			safHandedUri_ = handedUri_;
-			safRegrantRef_.clear();
-			safRegrantFromFiler_ = false;
+		if (!fs_.saf.picking && SafAvailable() &&
+		    SafPickTreeAtDoc(openintent::ParentDocUri(fs_.handed.uri))) {
+			fs_.saf.picking = true;
+			fs_.saf.handedUri = fs_.handed.uri;
+			fs_.saf.regrantRef.clear();
+			fs_.saf.regrantFromFiler = false;
 		} else {
 			OpenHandedByCopy();
 		}
@@ -389,10 +394,10 @@ void SettingsUi::BuildHandedWindow(Filer *filer) {
 		ImGui::CloseCurrentPopup();
 	}
 	SameLineOrWrap(Msg("Button.Cancel"));
-	if (ImGui::Button(Msg("Button.Cancel")) || handedClose_) {
-		handedClose_ = false;
-		handedUri_.clear();
-		handedName_.clear();
+	if (ImGui::Button(Msg("Button.Cancel")) || fs_.handed.popup.close) {
+		fs_.handed.popup.close = false;
+		fs_.handed.uri.clear();
+		fs_.handed.name.clear();
 		ImGui::CloseCurrentPopup();
 	}
 	ImGui::EndPopup();
@@ -433,20 +438,20 @@ bool SettingsUi::MountGrantedTree(Filer *filer, const std::string &uri, std::str
 
 // ピッカーから戻ったあと。許可が取れていれば saf: の ref で開く。
 void SettingsUi::FinishHandedAfterPick(bool cancelled) {
-	if (handedUri_.empty()) return;
+	if (fs_.handed.uri.empty()) return;
 	if (cancelled) {
 		// **もう一度尋ねる。** 黙って引き下がると、叩いた曲が鳴らない理由が
 		// 分からない（ここで [このまま演奏する] を選び直せる）。
-		handedAsk_ = true;
+		fs_.handed.popup.ask = true;
 		return;
 	}
 	if (vfs_ == 0) return;
 
 	std::string ref;
-	if (openintent::ResolveInTree(*vfs_, handedUri_, &ref)) {
-		handedUri_.clear();
-		handedName_.clear();
-		handedRef_ = ref;
+	if (openintent::ResolveInTree(*vfs_, fs_.handed.uri, &ref)) {
+		fs_.handed.uri.clear();
+		fs_.handed.name.clear();
+		fs_.handed.ref = ref;
 		request_ = kRequestOpenHanded;
 		return;
 	}
@@ -457,27 +462,27 @@ void SettingsUi::FinishHandedAfterPick(bool cancelled) {
 
 // 写して開く。読めない・写せないときは何も起きない（理由はログに出ている）。
 void SettingsUi::OpenHandedByCopy() {
-	if (vfs_ == 0 || handedUri_.empty()) return;
+	if (vfs_ == 0 || fs_.handed.uri.empty()) return;
 	std::string ref;
-	const bool ok = openintent::CopyToUserDir(*vfs_, handedUri_, &ref);
-	handedUri_.clear();
-	handedName_.clear();
+	const bool ok = openintent::CopyToUserDir(*vfs_, fs_.handed.uri, &ref);
+	fs_.handed.uri.clear();
+	fs_.handed.name.clear();
 	if (!ok) return;
-	handedRef_ = ref;
+	fs_.handed.ref = ref;
 	request_ = kRequestOpenHanded;
 }
 
 void SettingsUi::BuildAddFsWindow(Filer *filer) {
-	if (addFsOpen_) {
-		addFsOpen_ = false;
-		addFsPathBuf_[0] = '\0';
-		addFsError_.clear();
+	if (fs_.addFs.popup.ask) {
+		fs_.addFs.popup.ask = false;
+		fs_.addFs.pathBuf[0] = '\0';
+		fs_.addFs.error.clear();
 		ImGui::OpenPopup(kAddFsTitle);
 	}
 
-	addFsShow_ = ImGui::IsPopupOpen(kAddFsTitle);
-	if (!addFsShow_) {
-		addFsClose_ = false;
+	fs_.addFs.popup.open = ImGui::IsPopupOpen(kAddFsTitle);
+	if (!fs_.addFs.popup.open) {
+		fs_.addFs.popup.close = false;
 		return;
 	}
 
@@ -490,46 +495,46 @@ void SettingsUi::BuildAddFsWindow(Filer *filer) {
 
 	ImGui::TextUnformatted(Msg("AddFs.Path"));
 	ImGui::SetNextItemWidth(-FLT_MIN);
-	bool apply = ImGui::InputText("##addfspath", addFsPathBuf_, sizeof(addFsPathBuf_),
+	bool apply = ImGui::InputText("##addfspath", fs_.addFs.pathBuf, sizeof(fs_.addFs.pathBuf),
 	                              ImGuiInputTextFlags_EnterReturnsTrue);
 	TextNote(Msg("AddFs.Hint"));
-	if (!addFsError_.empty()) {
-		TextError(addFsError_.c_str());
+	if (!fs_.addFs.error.empty()) {
+		TextError(fs_.addFs.error.c_str());
 	}
 	ImGui::Separator();
 
 	// OS のダイアログが無い環境（Android など）では打ち込みだけ。
 	if (HasFolderBrowser()) {
 		if (ImGui::Button(Msg("Button.Browse"))) {
-			browseStart_ = TrimSpaces(addFsPathBuf_);
-			pendingBrowse_ = true;
+			fs_.addFs.browseStart = TrimSpaces(fs_.addFs.pathBuf);
+			fs_.addFs.browsePending = true;
 		}
 		ImGui::SameLine();
 	}
 	if (ImGui::Button(Msg("Button.Add"))) apply = true;
 	ImGui::SameLine();
-	if (ImGui::Button(Msg("Button.Cancel")) || addFsClose_) {
-		addFsClose_ = false;
+	if (ImGui::Button(Msg("Button.Cancel")) || fs_.addFs.popup.close) {
+		fs_.addFs.popup.close = false;
 		ImGui::CloseCurrentPopup();
 	}
 
 	if (apply) {
-		const std::string path = TrimSpaces(addFsPathBuf_);
+		const std::string path = TrimSpaces(fs_.addFs.pathBuf);
 		FileSystem *made =
 		    (path.empty() || !IsDirectory(path) || vfs_ == 0)
 		        ? 0
 		        : vfs_->CreateFromMountRef(std::string("dir:") + path);
 		if (made != 0) QuiesceVfsReaders(filer);
 		if (made == 0) {
-			addFsError_ = Msg("AddFs.NotFound");
+			fs_.addFs.error = Msg("AddFs.NotFound");
 		} else if (!vfs_->Add(made)) {
-			addFsError_ = MsgF("AddFs.Duplicate", made->mountRef());
+			fs_.addFs.error = MsgF("AddFs.Duplicate", made->mountRef());
 			delete made;
 		} else {
 			// 選んでいた位置へ挿し込む（filesystem.md）。
-			const int at = (fsSelected_ >= 0) ? fsSelected_ : vfs_->count();
+			const int at = (fs_.selected >= 0) ? fs_.selected : vfs_->count();
 			vfs_->MountAt(at, made);
-			fsSelected_ = at;
+			fs_.selected = at;
 			changedFields_ |= Settings::kFieldFileSystems;
 			if (filer != 0) filer->Refresh();
 			ImGui::CloseCurrentPopup();
@@ -541,14 +546,14 @@ void SettingsUi::BuildAddFsWindow(Filer *filer) {
 
 // 「本当に削除するか」。ファイルシステムの設定の中に入れ子で開く。
 void SettingsUi::BuildFsRemoveWindow(Filer *filer) {
-	if (fsOpenConfirm_) {
-		fsOpenConfirm_ = false;
+	if (fs_.remove.popup.ask) {
+		fs_.remove.popup.ask = false;
 		ImGui::OpenPopup(kFsRemoveTitle);
 	}
 
-	fsConfirmOpen_ = ImGui::IsPopupOpen(kFsRemoveTitle);
-	if (!fsConfirmOpen_) {
-		fsCloseConfirm_ = false;
+	fs_.remove.popup.open = ImGui::IsPopupOpen(kFsRemoveTitle);
+	if (!fs_.remove.popup.open) {
+		fs_.remove.popup.close = false;
 		return;
 	}
 
@@ -559,7 +564,7 @@ void SettingsUi::BuildFsRemoveWindow(Filer *filer) {
 	}
 
 	const FileSystem *sel =
-	    (vfs_ != 0 && fsSelected_ >= 0 && fsSelected_ < vfs_->count()) ? vfs_->at(fsSelected_)
+	    (vfs_ != 0 && fs_.selected >= 0 && fs_.selected < vfs_->count()) ? vfs_->at(fs_.selected)
 	                                                                  : 0;
 	ConfirmText(MsgF("FileSystems.RemoveConfirm", sel != 0 ? sel->label() : std::string())
 	                .c_str());
@@ -570,15 +575,15 @@ void SettingsUi::BuildFsRemoveWindow(Filer *filer) {
 	// ここで尋ねる（2026-09-18、ユーザーの指示）。
 	const bool isSaf = (sel != 0 && SafAvailable() && CompareNoCase(sel->id(), "saf") == 0);
 	if (isSaf) {
-		ImGui::Checkbox(Msg("FileSystems.RemoveRevoke"), &fsRemoveRevoke_);
-		ConfirmNote(Msg(fsRemoveRevoke_ ? "FileSystems.RemoveRevokeNote"
+		ImGui::Checkbox(Msg("FileSystems.RemoveRevoke"), &fs_.remove.revoke);
+		ConfirmNote(Msg(fs_.remove.revoke ? "FileSystems.RemoveRevokeNote"
 		                                : "FileSystems.RemoveKeepNote"));
 	}
 
 	ImGui::Separator();
 	if (ImGui::Button(Msg("Button.Remove"))) {
 		// 許可の返上は**実体を捨てる前に**（mountRef からツリーの URI を取る）。
-		if (isSaf && fsRemoveRevoke_) {
+		if (isSaf && fs_.remove.revoke) {
 			const std::string mountRef = sel->mountRef();
 			const std::string tree = mountRef.substr(mountRef.find(':') + 1);
 			if (SafReleaseTree(tree)) {
@@ -591,16 +596,16 @@ void SettingsUi::BuildFsRemoveWindow(Filer *filer) {
 		// 動的に足したファイルシステムは実体も捨てるので、フォルダと
 		// タイトルを読んでいるスレッドの手が離れるのを待ってからにする。
 		QuiesceVfsReaders(filer);
-		vfs_->RemoveMounted(fsSelected_);
-		if (fsSelected_ >= vfs_->count()) fsSelected_ = vfs_->count() - 1;
-		if (fsSelected_ < 0) fsSelected_ = 0;
+		vfs_->RemoveMounted(fs_.selected);
+		if (fs_.selected >= vfs_->count()) fs_.selected = vfs_->count() - 1;
+		if (fs_.selected < 0) fs_.selected = 0;
 		changedFields_ |= Settings::kFieldFileSystems;
 		if (filer != 0) filer->Refresh();
 		ImGui::CloseCurrentPopup();
 	}
 	ImGui::SameLine();
-	if (ImGui::Button(Msg("Button.Cancel")) || fsCloseConfirm_) {
-		fsCloseConfirm_ = false;
+	if (ImGui::Button(Msg("Button.Cancel")) || fs_.remove.popup.close) {
+		fs_.remove.popup.close = false;
 		ImGui::CloseCurrentPopup();
 	}
 	ImGui::EndPopup();

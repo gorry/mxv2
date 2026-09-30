@@ -71,21 +71,21 @@ public:
 	// F1 は開くだけ。閉じるのは ESC か × ボタン。
 	void OpenSettings() {
 		if (busy()) return;
-		visible_ = true;
+		settings_.visible = true;
 	}
-	bool visible() const { return visible_; }
+	bool visible() const { return settings_.visible; }
 
 	// 縦横切り替えの状態。main が毎フレーム教える（screen_orientation.md）。
 	void SetOrientationState(bool enabled, int orientation) {
-		orientEnabled_ = enabled;
-		orientation_ = orientation;
+		settings_.orientEnabled = enabled;
+		settings_.orientation = orientation;
 	}
 
 	// 設定ウィンドウが閉じた瞬間かどうかを 1 度だけ返す。
 	// 「縦横の切り替えかた」は**閉じてから**効かせる決まりなので、その合図に使う。
 	bool TakeSettingsClosed() {
-		const bool v = settingsClosed_;
-		settingsClosed_ = false;
+		const bool v = settings_.closed;
+		settings_.closed = false;
 		return v;
 	}
 
@@ -93,9 +93,9 @@ public:
 	// F2 も開くだけ。閉じるのは ESC か × ボタン（設定ウィンドウと同じ）。
 	void OpenColors() {
 		if (busy()) return;
-		showColors_ = true;
+		colors_.show = true;
 		// 名前の欄は、開いたときに今のスキン名で埋め直す。
-		skinNameReset_ = true;
+		colors_.skinNameReset = true;
 	}
 
 	// フォルダを選ぶダイアログ (L)。旧 mxv の MX_GetNewDirFileList にあたる。
@@ -104,18 +104,18 @@ public:
 	// dir は最初に見せるフォルダの ref（ふつうはファイラーの今の場所）。
 	void OpenFolder(const std::string &dir) {
 		if (busy()) return;
-		folderTarget_ = kFolderTargetFiler;
-		folderReturnToSettings_ = false;
+		folder_.target = kFolderTargetFiler;
+		folder_.returnTo = kFolderReturnNone;
 		SetFolderDir(dir);
-		showFolder_ = true;
+		folder_.show = true;
 	}
 
 	// ファイルシステムの設定 (F3)。ファイラーのルートに並べる顔ぶれと順番を
 	// 決める。ファイラーの "[Setting]" とコンテキストメニューからも開く。
 	void OpenFileSystems() {
 		if (busy()) return;
-		showFileSystems_ = true;
-		fsSelected_ = 0;
+		fs_.show = true;
+		fs_.selected = 0;
 	}
 	// 同じダイアログを、mountRef のファイルシステムを選んだ状態で開く。
 	// アクセス許可が失われた SAF をファイラーで開こうとしたときに使う
@@ -127,9 +127,9 @@ public:
 	// "Bookmarks>" の中の "[Setting]" からも開く。
 	void OpenBookmarks() {
 		if (busy()) return;
-		showBookmarks_ = true;
-		bmSelected_ = 0;
-		bmError_.clear();
+		bm_.show = true;
+		bm_.selected = 0;
+		bm_.error.clear();
 	}
 
 	// ブックマークの一覧 (M)。ファイラーを "Bookmarks>"（ジャンプ専用の
@@ -142,8 +142,8 @@ public:
 	// 開く（設定ダイアログの [開く] と同じ手順）。実際の処理は次の Build()。
 	void OpenBookmarkRef(const std::string &ref) {
 		if (busy()) return;
-		bmJumpRef_ = ref;
-		bmJumpPending_ = true;
+		bm_.jumpRef = ref;
+		bm_.jumpPending = true;
 	}
 
 	// カレントフォルダをブックマークへ追加する / から削除する (Shift+M)。
@@ -151,7 +151,7 @@ public:
 	// 直に使うので、確認だけが単独のモーダルとして出る。
 	void OpenBookmarkToggle() {
 		if (busy()) return;
-		bmOpenToggle_ = true;
+		bm_.toggle.ask = true;
 	}
 
 	// 終了の確認。Android の戻るキーで、もう戻る先が無いときに出す
@@ -159,7 +159,7 @@ public:
 	// [終了] を選ぶと TakeRequest() が kRequestQuit を返す。
 	void OpenQuitConfirm() {
 		if (busy()) return;
-		quitAsk_ = true;
+		ctx_.quit.ask = true;
 	}
 
 	// GL コンテキストが失われたあと、ImGui が持っているテクスチャを
@@ -169,77 +169,52 @@ public:
 	// 操作方法のダイアログ (F11 / H)。文面は main.cpp の -h と同じもの。
 	void OpenHelp() {
 		if (busy()) return;
-		showHelp_ = true;
+		info_.showHelp = true;
 	}
 
 	// [キャスト]ダイアログ (F9)。Chromecast へ送る（settingsui_cast.cpp）。
 	void OpenCast() {
 		if (busy()) return;
-		showCast_ = true;
+		cast_.show = true;
 	}
 
 	// バージョン情報のダイアログ (F12 / A)。
 	void OpenAbout() {
 		if (busy()) return;
-		showAbout_ = true;
+		info_.showAbout = true;
 	}
 
 	// 開いているダイアログを閉じる。閉じるものが無ければ false。
 	// ESC 用。ImGui はキーボードナビを有効にしていないとポップアップを
 	// ESC で閉じてくれないので、こちらで面倒を見る。
+	// 一番内側のものから閉じる。ダイアログはモーダルで一度に 1 つしか開かない
+	// ので、順番が効くのは入れ子のところだけ: メニュー、更新の知らせ（設定
+	// ウィンドウの中に入れ子で開くことがある）、あとは各ダイアログが自分の
+	// 入れ子の確認（削除・上書き・追加）を先に閉じてから自分を閉じる。
 	bool CloseDialog() {
-		// コンテキストメニューも ESC で閉じる。閉じるのは ImGui の
-		// ポップアップの中からでないとできないので、ここでは印だけ付けて
-		// 実際の始末は Build() に任せる。
-		if (contextMenuOpen_) { closeContextMenu_ = true; return true; }
-		// 上書き確認は配色設定の中に入れ子で開くので、先に閉じる。
-		if (overwriteOpen_) { closeOverwrite_ = true; return true; }
-		// 削除の確認はファイルシステムの設定の中に入れ子で開く。
-		if (fsConfirmOpen_) { fsCloseConfirm_ = true; return true; }
-		// ブックマークも同じ作り。Shift+M の確認だけは単独で開く。
-		if (bmRemoveOpen_) { bmCloseRemove_ = true; return true; }
-		if (pdxRemoveOpen_) { pdxCloseRemove_ = true; return true; }
-		if (bmToggleOpen_) { bmCloseToggle_ = true; return true; }
-		if (quitOpen_) { quitClose_ = true; return true; }
-		// 渡された MDX の「どちらで開くか」。閉じたら何も開かない。
-		if (handedOpen_) { handedClose_ = true; return true; }
-		// 更新の知らせ。設定ウィンドウの中に入れ子で開くこともあるので、
-		// 設定ウィンドウより先に閉じる。
-		if (updateOpen_) { updateClose_ = true; return true; }
-		if (showAbout_) { showAbout_ = false; return true; }
-		if (showCast_) { showCast_ = false; return true; }
-		if (showHelp_) { showHelp_ = false; return true; }
-		// ファイルシステムの追加はその設定ダイアログの中に入れ子で開く。
-		if (addFsShow_) { addFsClose_ = true; return true; }
-		if (showStartup_) { showStartup_ = false; return true; }
-		if (showFileSystems_) { showFileSystems_ = false; return true; }
-		if (showBookmarks_) { showBookmarks_ = false; return true; }
-		if (showPdxPaths_) { showPdxPaths_ = false; return true; }
-		if (showLatency_) { showLatency_ = false; return true; }
-		if (showFolder_) { showFolder_ = false; return true; }
-		if (showColors_) { showColors_ = false; return true; }
-		if (visible_) { visible_ = false; return true; }
-		return false;
+		return ctx_.CloseTop() || update_.CloseTop() || fs_.CloseTop() || bm_.CloseTop() ||
+		       pdx_.CloseTop() || colors_.CloseTop() || info_.CloseTop() || cast_.CloseTop() ||
+		       latency_.CloseTop() || folder_.CloseTop() || settings_.CloseTop();
 	}
 
 	// 右クリックで開くコンテキストメニュー（旧 mxv の TrackPopupMenu 相当）。
 	// 設定ウィンドウが閉じていても出す。
-	void OpenContextMenu() { openContextMenu_ = true; }
+	void OpenContextMenu() { ctx_.openRequested = true; }
 	// 開いていれば閉じる。画面が回転してスキンが替わるときに呼ぶ。
 	// 回転するとメニューが画面をはみ出すことがあり、配置を計算し直して
 	// 出し直すより閉じるほうがスマート（ユーザーの判断）。
 	// 実際に閉じるのは次の Build()。
 	void CloseContextMenu() {
-		if (contextMenuOpen_) closeContextMenu_ = true;
+		if (ctx_.isOpen) ctx_.closeWanted = true;
 	}
 
 	// OS の「フォルダを探す」ダイアログを開いてほしい、という要求。
 	// 開いている間はアプリが止まるので、フレームを描き終えたメインループに
 	// やってもらう（pendingSkin() と同じ作法）。
-	bool pendingBrowse() const { return pendingBrowse_; }
-	void ClearPendingBrowse() { pendingBrowse_ = false; }
+	bool pendingBrowse() const { return fs_.addFs.browsePending; }
+	void ClearPendingBrowse() { fs_.addFs.browsePending = false; }
 	// 最初に見せるフォルダ（打ちかけのパス）。
-	const std::string &browseStart() const { return browseStart_; }
+	const std::string &browseStart() const { return fs_.addFs.browseStart; }
 	// 選ばれた **OS ネイティブのパス** を入力欄へ入れる。
 	void SetBrowsedPath(const std::string &path);
 
@@ -262,10 +237,14 @@ public:
 	// ピッカーを出せないとき・取り消したとき・別のフォルダを選んだときは
 	// [ファイルシステムの設定] をその行と注記つきで開く。
 	void RegrantAccess(const std::string &mountRef);
+	// 同じことを、ダイアログの [許可を取り直す…] から（settingsui_filesystems.cpp）。
+	// ピッカーを出せたら true。fromFiler は RegrantAccess を見ること。
+	bool StartSafRegrant(const std::string &mountRef, bool fromFiler);
+	bool safPicking() const { return fs_.saf.picking; }
 
 	// バージョン情報の見出し（名前・版・ビルド日付・著作権表示）。
 	// 文言は main.cpp が持っているので渡してもらう。
-	void SetAboutHeader(const std::string &text) { aboutHeader_ = text; }
+	void SetAboutHeader(const std::string &text) { info_.aboutHeader = text; }
 
 	// メニューから出た「メインループにやってもらうこと」。読んだら消える。
 	// フォルダの移動と終了はメインループが状態を持っているので、
@@ -287,7 +266,7 @@ public:
 	// kRequestSetFolder の行き先。
 	const std::string &requestedFolder() const { return requestedFolder_; }
 	// kRequestOpenHanded の開くもの (ref)。
-	const std::string &requestedHanded() const { return handedRef_; }
+	const std::string &requestedHanded() const { return fs_.handed.ref; }
 
 	// 外から渡された MDX（openintent.h）が、許可のあるフォルダの外にあった。
 	// **どちらで開くかを尋ねる**（2026-09-18、ユーザーの指示）:
@@ -299,23 +278,26 @@ public:
 	// name は画面に出すファイル名。
 	void OpenHandedChoice(const std::string &uri, const std::string &name) {
 		if (busy() || handedBusy()) return;
-		handedUri_ = uri;
-		handedName_ = name;
-		handedAsk_ = true;
+		fs_.handed.uri = uri;
+		fs_.handed.name = name;
+		fs_.handed.popup.ask = true;
 	}
 	// 尋ねている最中（ピッカーの結果待ちを含む）。次に渡されたものは
 	// これが収まるまで待たせる。
-	bool handedBusy() const { return handedAsk_ || handedOpen_ || !safHandedUri_.empty(); }
+	bool handedBusy() const {
+		return fs_.handed.popup.ask || fs_.handed.popup.open || !fs_.saf.handedUri.empty();
+	}
 
 	// チュートリアル (tutorial.cpp) が吹き出しを描くのに要るもの。
 	// ダイアログの字の倍率、「指で操作する」の判定結果、メニューの開閉。
 	float uiScale() const { return styleScale_; }
 	bool touchUi() const { return touchUi_; }
-	bool contextMenuOpen() const { return contextMenuOpen_; }
+	bool contextMenuOpen() const { return ctx_.isOpen; }
 	// 何かしら開いているか（ダイアログ・メニュー・終了の確認）。
 	// チュートリアルは起動時の警告を閉じてから始めるので、その見張りに使う。
 	bool anyDialogOpen() const {
-		return busy() || contextMenuOpen_ || quitOpen_ || handedOpen_ || updateOpen_;
+		return busy() || ctx_.isOpen || ctx_.quit.open || fs_.handed.popup.open ||
+		       update_.popup.open;
 	}
 
 	// ---- 更新チェック（updatecheck.h） -------------------------------------
@@ -324,13 +306,13 @@ public:
 	// 使える環境か・いま確かめている最中か。main が毎フレーム教える。
 	// 使えない環境では [mxv2 の設定] に [通信] を出さない。
 	void SetUpdateCheckState(bool available, bool running) {
-		updateAvailable_ = available;
-		updateRunning_ = running;
+		update_.available = available;
+		update_.running = running;
 	}
 	// [今すぐ更新チェックを行う] が押されたか（1 度だけ true）。
 	bool TakeUpdateCheckNow() {
-		const bool v = updateCheckNow_;
-		updateCheckNow_ = false;
+		const bool v = update_.checkNow;
+		update_.checkNow = false;
 		return v;
 	}
 	// 結果を見せる。見せるのは「新しい版がある」ときと、[今すぐ…] から
@@ -338,8 +320,8 @@ public:
 	// 他のダイアログが開いていれば、閉じるまで預かる。ただし [今すぐ…] の
 	// 結果で [mxv2 の設定] が開いたままなら、その中に重ねて出す。
 	void ShowUpdateResult(const UpdateResult &r) {
-		updateResult_ = r;
-		updatePending_ = true;
+		update_.result = r;
+		update_.pending = true;
 	}
 
 	// 1 フレーム分の UI を組み立てる。設定の変更はその場で反映する。
@@ -352,7 +334,7 @@ public:
 	// ので、少し待ってから窓へ掛かり、ini にも保存される）。
 	// **フルスクリーン・最大化の間は呼ばないこと**
 	// （keybind.cpp が Screen::windowSizeLocked() で弾いている）。
-	void RequestZoomStep(int step) { zoomStepRequest_ += step; }
+	void RequestZoomStep(int step) { settings_.zoomStepRequest += step; }
 
 	// このフレームでユーザーが触った項目 (Settings::Field のビット和)。
 	// 保存ボタンは無く「触った時点で保存する」ので、メインループがこれを
@@ -378,16 +360,16 @@ public:
 	// カタログから引いた文言を**自分で持っている**ところ（通知のラベルなど）を
 	// メインループに取り直してもらうために使う。
 	bool TakeLocaleChanged() {
-		const bool c = localeChanged_;
-		localeChanged_ = false;
+		const bool c = settings_.localeChanged;
+		settings_.localeChanged = false;
 		return c;
 	}
 
 	// 出力サンプリングレートが選ばれたらここに入る。0 なら変更なし。
 	// レートを変えるには MXDRV とオーディオ装置を開き直すしかないので、
 	// 実際の入れ替えはメインループに任せる（スキンの pendingSkin_ と同じ作法）。
-	int pendingSampleRate() const { return pendingSampleRate_; }
-	void ClearPendingSampleRate() { pendingSampleRate_ = 0; }
+	int pendingSampleRate() const { return settings_.pendingSampleRate; }
+	void ClearPendingSampleRate() { settings_.pendingSampleRate = 0; }
 
 	// 日本語フォントが読めたか。読めなければ ImGui 既定の ASCII フォント。
 	bool hasJapaneseFont() const { return hasJapaneseFont_; }
@@ -444,10 +426,37 @@ private:
 	// 保存したあとそのスキンへ切り替える。
 	void SaveColorsAs(const std::string &name, Settings *settings, DrawScreen *draw);
 
+	// ---- ダイアログごとの状態の共通の型（memo/settingsui-split.md） -------------
+	// 状態は 1 ファイル（settingsui_*.cpp）につき 1 つの struct にまとめ、
+	// SettingsUi はそれを 1 つずつ持つ。struct の中身を別のファイルから直接
+	// 触らない（開く・閉じるは SettingsUi のメンバ関数を通す）。
+
+	// 入れ子で開く確認ダイアログ（上書き・削除・終了・渡されたファイル・更新の
+	// 知らせなど）。ImGui のポップアップは組み立ての途中でしか開閉できないので、
+	// 「次のフレームで開いて」「いま開いている」「ESC で閉じてほしい」の 3 つで
+	// 受け渡す。
+	struct NestedPopup {
+		bool ask;    // 次のフレームで開く
+		bool open;   // いま開いている（ESC の判断に使う）
+		bool close;  // ESC で閉じてほしい
+		NestedPopup() : ask(false), open(false), close(false) {}
+		// CloseDialog() 用。開いていれば閉じる印を付けて true。
+		bool CloseTop() {
+			if (!open) return false;
+			close = true;
+			return true;
+		}
+	};
+	// 設定ウィンドウなどから開き、閉じたら呼び出し元へ戻る往復。モーダルは
+	// 入れ子にしないので、呼び出し元が閉じきってから開き、閉じたら開き直す。
+	struct Handoff {
+		bool openPending;     // 呼び出し元が閉じきったら開く
+		bool returnToCaller;  // 閉じたら呼び出し元を開き直す
+		Handoff() : openPending(false), returnToCaller(false) {}
+		void Start() { openPending = returnToCaller = true; }
+	};
+
 	bool ready_;
-	bool visible_;
-	bool settingsWasVisible_;  // 前のフレームの visible_（閉じた瞬間を拾う）
-	bool settingsClosed_;
 	bool hasJapaneseFont_;
 	// ダイアログのフォントの中身。ImGui のアトラスが参照し続けるので、
 	// 終了まで持つ（FontDataOwnedByAtlas=false で 2 つの源に渡している）。
@@ -475,16 +484,6 @@ private:
 	// マウス座標を「窓の座標」から「実ピクセル」へ直す倍率（ふつう 1 倍）。
 	float inputScale_;
 
-	// 表示倍率 (%) は「入力を確定してから少し待って」適用する。
-	// 操作中に適用するとウィンドウの大きさが変わり、それに合わせて
-	// コントロール自身の座標も変わるので、同じ場所を押しているだけで値が
-	// 行き来してしまう。
-	int pendingZoom_;         // 0 = 適用待ちなし
-	uint32_t zoomApplyAtMs_;  // 0 = 適用待ちなし
-	// キー (Ctrl +/-) から頼まれた増減 (%)。0 = 頼まれていない。
-	// 押しっぱなしのリピートで何回来ても、次の Build() でまとめて足す。
-	int zoomStepRequest_;
-
 	AssetPaths paths_;
 	Vfs *vfs_;
 	// 選べるスキン。縦横切り替え（screen_orientation.md）のために、
@@ -493,32 +492,58 @@ private:
 		std::string ref;
 		bool portrait;  // 正方形は縦扱い
 	};
-	std::vector<SkinItem> skins_;
-	std::string pendingSkin_;
-	int pendingSampleRate_;
-
-	// 縦横切り替えが有効か（起動オプションで決まる）と、いまの向き。
-	// main が毎フレーム渡す。
-	bool orientEnabled_;
-	int orientation_;  // Screen::Orientation
-
 	// スキン 1 つぶんの表示名。頭に縦横の印を付ける。
 	std::string SkinLabel(const SkinItem &item) const;
 	// スキンを選ぶドロップダウン。portraitSlot が true なら縦向きのスキンを
 	// 上へまとめる。選び直されたら true。
 	bool SkinCombo(const char *label, bool portraitSlot, std::string *value);
-
-	// 言語。選べるのは同梱ぶんだけ（Init で数え上げる）。
-	std::vector<LocaleInfo> locales_;
-	// 選ばれた言語を実際に読み込むまでの控え。**設定ウィンドウが閉じきって
-	// から**入れ替える（題名も文言なので、開いたまま替えると ImGui の
-	// ポップアップの id が途中で変わる）。
-	std::string pendingLocale_;
-	bool localeApplyPending_;
-	bool localeChanged_;
 	// 言語を選んだときの控えと、実際の入れ替え。
 	void SelectLocale(Settings *settings, const std::string &name);
 	void ApplyLocale();
+	// 設定ウィンドウを開く・閉じる（別のダイアログとの往復で、閉じきってから
+	// 相手を開くときに使う。settingsui_pdx.cpp / settingsui_latency.cpp）。
+	void SetSettingsVisible(bool v) { settings_.visible = v; }
+
+	// [mxv2 の設定] 本体の状態（settingsui_settings.cpp）。
+	struct SettingsWindowState {
+		bool visible;
+		bool wasVisible;  // 前のフレームの visible（閉じた瞬間を拾う）
+		bool closed;      // 閉じた瞬間（TakeSettingsClosed で 1 度だけ読める）
+		// 表示倍率 (%) は「入力を確定してから少し待って」適用する。
+		// 操作中に適用するとウィンドウの大きさが変わり、それに合わせて
+		// コントロール自身の座標も変わるので、同じ場所を押しているだけで値が
+		// 行き来してしまう。
+		int pendingZoom;         // 0 = 適用待ちなし
+		uint32_t zoomApplyAtMs;  // 0 = 適用待ちなし
+		// キー (Ctrl +/-) から頼まれた増減 (%)。0 = 頼まれていない。
+		// 押しっぱなしのリピートで何回来ても、次の Build() でまとめて足す。
+		int zoomStepRequest;
+		std::vector<SkinItem> skins;
+		int pendingSampleRate;  // 選ばれた出力レート。0 なら変更なし
+		// 縦横切り替えが有効か（起動オプションで決まる）と、いまの向き。
+		// main が毎フレーム渡す。
+		bool orientEnabled;
+		int orientation;  // Screen::Orientation（Screen はここでは前方宣言だけなので
+		                  // 既定値は SettingsUi のコンストラクタが入れる）
+		// 言語。選べるのは同梱ぶんだけ（Init で数え上げる）。
+		std::vector<LocaleInfo> locales;
+		// 選ばれた言語を実際に読み込むまでの控え。**設定ウィンドウが閉じきって
+		// から**入れ替える（題名も文言なので、開いたまま替えると ImGui の
+		// ポップアップの id が途中で変わる）。
+		std::string pendingLocale;
+		bool localeApplyPending;
+		bool localeChanged;
+		bool CloseTop() {
+			if (!visible) return false;
+			visible = false;
+			return true;
+		}
+		SettingsWindowState()
+		    : visible(false), wasVisible(false), closed(false), pendingZoom(0), zoomApplyAtMs(0),
+		      zoomStepRequest(0), pendingSampleRate(0), orientEnabled(false), orientation(0),
+		      localeApplyPending(false), localeChanged(false) {}
+	};
+	SettingsWindowState settings_;
 
 	// ユーザーが触った項目。TakeChangedFields() で取り出す。
 	unsigned changedFields_;
@@ -530,9 +555,9 @@ private:
 	// どれか 1 つでもダイアログが開いているか。モーダルなので、開いている
 	// 間は別のものを開けない（先にそれを閉じてもらう）。
 	bool busy() const {
-		return visible_ || showColors_ || showAbout_ || showCast_ || showFolder_ || showHelp_ ||
-		       showFileSystems_ || showBookmarks_ || showPdxPaths_ || showStartup_ ||
-		       showLatency_;
+		return settings_.visible || colors_.show || folder_.show || fs_.show || bm_.show ||
+		       pdx_.show || latency_.show || cast_.show || info_.showAbout || info_.showHelp ||
+		       info_.showStartup;
 	}
 
 	// 操作方法のダイアログ。
@@ -549,27 +574,35 @@ private:
 	};
 	void LoadHelpRows();
 	void BuildHelpWindow();
-	bool showHelp_;
-	std::vector<HelpRow> helpRows_;
 
 	// 配色設定のダイアログ
 	void BuildColorsWindow(Settings *settings, DrawScreen *draw, Player *player);
 	// その先頭。スキン名・保存・読み直す・参照元のスキン。
 	void BuildSkinSaveRow(Settings *settings, DrawScreen *draw);
-	bool showColors_;
-	// 保存先のスキン名。開いたときに今のスキン名で埋め直す。
-	char skinNameBuf_[128];
-	bool skinNameReset_;
-	std::string saveError_;  // 保存できなかった理由（ダイアログに出す）
-	// 文言は一番下に出るので、出したフレームだけそこまでスクロールする
-	// （ダイアログは縦がいっぱいで、足すと画面の外へ出てしまう）。
-	bool saveErrorFresh_;
 	// 上書き確認。配色設定の中に入れ子で開く。
 	void BuildOverwriteWindow(Settings *settings, DrawScreen *draw);
-	std::string overwriteName_;  // 確認中の名前
-	bool openOverwrite_;         // 次のフレームで開く
-	bool overwriteOpen_;         // いま開いている（ESC の判断に使う）
-	bool closeOverwrite_;        // ESC で閉じてほしい
+	struct ColorsDialogState {
+		bool show;
+		// 保存先のスキン名。開いたときに今のスキン名で埋め直す。
+		char skinNameBuf[128];
+		bool skinNameReset;
+		std::string saveError;  // 保存できなかった理由（ダイアログに出す）
+		// 文言は一番下に出るので、出したフレームだけそこまでスクロールする
+		// （ダイアログは縦がいっぱいで、足すと画面の外へ出てしまう）。
+		bool saveErrorFresh;
+		NestedPopup overwrite;      // 上書き確認
+		std::string overwriteName;  // 確認中の名前
+		bool CloseTop() {
+			if (overwrite.CloseTop()) return true;
+			if (!show) return false;
+			show = false;
+			return true;
+		}
+		ColorsDialogState() : show(false), skinNameReset(true), saveErrorFresh(false) {
+			skinNameBuf[0] = '\0';
+		}
+	};
+	ColorsDialogState colors_;
 
 	// フォルダを選ぶダイアログ。選んだ結果の行き先は 2 つある。
 	//   kFolderTargetFiler … ファイラーを動かす (L キー / メニュー)
@@ -584,14 +617,19 @@ private:
 	// 同じポップアップとして扱われる。
 	const char *folderTitle() const;
 	void BuildFolderWindow(Settings *settings, Filer *filer);
-	FolderTarget folderTarget_;
-	// 設定ウィンドウ / ブックマークの設定から呼ばれたときの往復。モーダルは
-	// 入れ子にせず、呼び出し元が閉じきってからフォルダ選択を出し、閉じたら
-	// 開き直す。どちらへ戻るかは folderTarget_ で分かる。
-	bool folderReturnToSettings_;
-	bool folderReturnToBookmarks_;
-	bool folderReturnToPdx_;
-	bool folderOpenPending_;
+	// ブックマークの設定 / PDX の探索先の [追加…] から。モーダルは入れ子にせず、
+	// 呼び出し元が閉じきってからフォルダ選択を出し（Build()）、閉じたら
+	// returnTo の呼び出し元を開き直す。呼び出し元は自分を閉じること。
+	enum FolderReturn {
+		kFolderReturnNone = 0,
+		kFolderReturnBookmarks,
+		kFolderReturnPdx,
+	};
+	void OpenFolderFor(FolderTarget target, FolderReturn returnTo) {
+		folder_.target = target;
+		folder_.returnTo = returnTo;
+		folder_.openPending = true;
+	}
 	// 子フォルダの一覧だけ作り直す（入力欄には触らない）。**読むのは
 	// 別スレッド**なので、中身が入るのはあとのフレーム (PollFolderDir)。
 	void RelistFolder(const std::string &dir);
@@ -602,44 +640,58 @@ private:
 	void SelectFolderEntry(const std::string &path);
 	// 一覧に出すフォルダを決めて、入力欄もそこへ合わせる。
 	void SetFolderDir(const std::string &dir);
-	bool showFolder_;
-	// 一覧に出しているフォルダの ref。空ならファイルシステムの選択。
-	std::string folderDir_;
-	std::string folderSelected_;               // 一覧で選ばれている行の ref
-	// その中の子フォルダ（表示名と ref）。ファイルシステムの選択のときは
-	// マウントされている FS が並ぶ。
+	// Vfs の一覧 (all_) を触る前に、それを読んでいるスレッドの手を離させる。
+	// 追加 (Vfs::Add) も削除 (RemoveMounted) も、必ずこれを通してから。
+	void QuiesceVfsReaders(Filer *filer);
+	// 曲の読み込みスレッド（QuiesceVfsReaders が止める相手）。
+	SongLoader *songLoader_;
+	// 子フォルダ（表示名と ref）。ファイルシステムの選択のときはマウントされて
+	// いる FS が並ぶ。
 	struct FolderEntry {
 		std::string name;
 		std::string ref;
 	};
-	std::vector<FolderEntry> folderEntries_;
-	// 一覧は別スレッドで読む。外部ファイルシステムでは 1 回の List に
-	// 通信が要るので、打ち込むたびにここで待つと入力ごと固まる。
-	SongLoader *songLoader_;
-	DirLister *folderLister_;
-	// Vfs の一覧 (all_) を触る前に、それを読んでいるスレッドの手を離させる。
-	// 追加 (Vfs::Add) も削除 (RemoveMounted) も、必ずこれを通してから。
-	void QuiesceVfsReaders(Filer *filer);
-	bool folderLoading_;
-	uint32_t folderTicks_;                     // 読み始めた時刻
-	// 開けなかったときの戻り先（打ち込みの途中は開けない場所を通るので、
-	// そのたびに一覧が消えないよう、読めるまで前のものを出しておく）。
-	bool folderHasPrev_;
-	std::string folderPrevDir_;
-	std::string folderPrevSelected_;
-	std::vector<FolderEntry> folderPrevEntries_;
-	std::string folderError_;                  // 開けなかったときの文言
-	std::string requestedFolder_;              // kRequestSetFolder の行き先 (ref)
-	char folderPathBuf_[512];                  // パスの入力欄
+	struct FolderDialogState {
+		bool show;
+		FolderTarget target;
+		FolderReturn returnTo;
+		bool openPending;      // 呼び出し元が閉じきったら開く（OpenFolderFor）
+		// 一覧に出しているフォルダの ref。空ならファイルシステムの選択。
+		std::string dir;
+		std::string selected;  // 一覧で選ばれている行の ref
+		std::vector<FolderEntry> entries;
+		// 一覧は別スレッドで読む。外部ファイルシステムでは 1 回の List に
+		// 通信が要るので、打ち込むたびにここで待つと入力ごと固まる。
+		// 実体は SettingsUi のコンストラクタが作る（ここでは型が不完全）。
+		DirLister *lister;
+		bool loading;
+		uint32_t ticks;        // 読み始めた時刻
+		// 開けなかったときの戻り先（打ち込みの途中は開けない場所を通るので、
+		// そのたびに一覧が消えないよう、読めるまで前のものを出しておく）。
+		bool hasPrev;
+		std::string prevDir;
+		std::string prevSelected;
+		std::vector<FolderEntry> prevEntries;
+		std::string error;  // 開けなかったときの文言
+		char pathBuf[512];  // パスの入力欄
+		bool CloseTop() {
+			if (!show) return false;
+			show = false;
+			return true;
+		}
+		FolderDialogState()
+		    : show(false), target(kFolderTargetFiler), returnTo(kFolderReturnNone),
+		      openPending(false), lister(0), loading(false), ticks(0), hasPrev(false) {
+			pathBuf[0] = '\0';
+		}
+	};
+	FolderDialogState folder_;
 
 	// ファイルシステムの設定 (F3)。マウントする顔ぶれと並び順を決める。
 	// 実体は Vfs のマウント一覧で、変えたら [FileSystem] へ書き戻す。
 	void BuildFileSystemsWindow(Filer *filer);
 	// 削除の確認。このダイアログの中に入れ子で開く。
 	void BuildFsRemoveWindow(Filer *filer);
-	bool showFileSystems_;
-	int fsSelected_;         // 一覧で選んでいる行
-	std::string fsError_;    // 「カレントは削除できない」などの文言
 	// ファイルシステムの追加 (dir:)。場所は OS ネイティブのパスなので、
 	// 打ち込みと **OS の「フォルダを探す」ダイアログ**で決める
 	// （ファイラーのフォルダ選択は ref を選ぶための別物）。
@@ -658,36 +710,59 @@ private:
 	void FinishHandedAfterPick(bool cancelled);
 	// 写して開く（[このまま演奏する] と、許可を取っても見つからなかったとき）。
 	void OpenHandedByCopy();
-	std::string handedUri_;   // 尋ねている相手（渡された URI）
-	std::string handedName_;  // 画面に出す名前
-	std::string handedRef_;   // kRequestOpenHanded の開くもの
-	bool handedAsk_;          // 次のフレームで開く
-	bool handedOpen_;         // いま開いている（ESC の判断に使う）
-	bool handedClose_;        // ESC で閉じてほしい
-	// ピッカーの結果を待っている渡された URI（空なら [追加…] などの普通の選択）。
-	std::string safHandedUri_;
-	bool safPicking_;  // SAF の選択画面を出していて、結果を待っている
-	// [許可を取り直す…] で出した選択画面なら、取り直す相手の mountRef。
-	// 空なら [追加…]（新しくマウントする）。
-	std::string safRegrantRef_;
-	// ファイラー（RegrantAccess）から出したピッカーか。うまくいかなかった
-	// ときに [ファイルシステムの設定] へ落とすかどうかの印。
-	bool safRegrantFromFiler_;
-	bool addFsOpen_;   // 次のフレームで開く
-	bool addFsShow_;   // いま開いている（ESC の判断に使う）
-	bool addFsClose_;  // ESC で閉じてほしい
-	char addFsPathBuf_[512];
-	std::string addFsError_;
-	bool pendingBrowse_;
-	std::string browseStart_;
-
-	// 削除の確認で「OS のアクセス許可も取り消す」を選んでいるか（SAF のとき
-	// だけ出す）。[削除] はマウントを外すだけで許可は残るので、残すと
-	// 「一覧に無いのに許可はある」状態になる（openintent.h の自動マウント）。
-	bool fsRemoveRevoke_;
-	bool fsOpenConfirm_;     // 次のフレームで確認を開く
-	bool fsConfirmOpen_;     // いま開いている（ESC の判断に使う）
-	bool fsCloseConfirm_;    // ESC で閉じてほしい
+	struct FileSystemsState {
+		bool show;
+		int selected;       // 一覧で選んでいる行
+		std::string error;  // 「カレントは削除できない」などの文言
+		// 削除の確認（ダイアログの中に入れ子）。「OS のアクセス許可も取り消す」は
+		// SAF のときだけ出す。[削除] はマウントを外すだけで許可は残るので、残すと
+		// 「一覧に無いのに許可はある」状態になる（openintent.h の自動マウント）。
+		struct Remove {
+			NestedPopup popup;
+			bool revoke;
+			Remove() : revoke(true) {}
+		} remove;
+		// ファイルシステムの追加 (dir:)。場所は OS ネイティブのパスなので、打ち込みと
+		// OS の「フォルダを探す」ダイアログ（browsePending。main が出す）で決める。
+		struct AddFs {
+			NestedPopup popup;
+			char pathBuf[512];
+			std::string error;
+			bool browsePending;
+			std::string browseStart;
+			AddFs() : browsePending(false) { pathBuf[0] = '\0'; }
+		} addFs;
+		// 外から渡された MDX の「どちらで開くか」（OpenHandedChoice）。
+		struct Handed {
+			NestedPopup popup;
+			std::string uri;   // 尋ねている相手（渡された URI）
+			std::string name;  // 画面に出す名前
+			std::string ref;   // kRequestOpenHanded の開くもの
+		} handed;
+		// SAF のピッカー（Android）。
+		struct Saf {
+			bool picking;  // 選択画面を出していて、結果を待っている
+			// 結果を待っている渡された URI（空なら [追加…] などの普通の選択）。
+			std::string handedUri;
+			// [許可を取り直す…] で出した選択画面なら、取り直す相手の mountRef。
+			// 空なら [追加…]（新しくマウントする）。
+			std::string regrantRef;
+			// ファイラー（RegrantAccess）から出したピッカーか。うまくいかなかった
+			// ときに [ファイルシステムの設定] へ落とすかどうかの印。
+			bool regrantFromFiler;
+			Saf() : picking(false), regrantFromFiler(false) {}
+		} saf;
+		bool CloseTop() {
+			if (remove.popup.CloseTop()) return true;
+			if (addFs.popup.CloseTop()) return true;
+			if (handed.popup.CloseTop()) return true;  // 単独で開くが、閉じ方は同じ
+			if (!show) return false;
+			show = false;
+			return true;
+		}
+		FileSystemsState() : show(false), selected(0) {}
+	};
+	FileSystemsState fs_;
 
 	// ブックマークの設定 (F4)。控えるのはフォルダの ref で、実体は
 	// Settings::bookmarks（ファイルシステムの設定と違って Vfs 側には
@@ -701,41 +776,67 @@ private:
 	void BuildBookmarkToggleWindow(Settings *settings, Filer *filer);
 	void BuildQuitWindow();
 	// index のブックマークを開く。ファイルを指していたら「そのファイルの
-	// あるフォルダ」へ直してから開く（開けなければ bmError_ に理由）。
+	// あるフォルダ」へ直してから開く（開けなければ bm_.error に理由）。
 	void OpenBookmark(Settings *settings, int index);
 	// ファイラーの "Bookmarks>" から。OpenBookmark と同じだが、開けない
 	// ときはそのままファイラーに開かせて、あちらの「開けなければ元の場所に
-	// 留まる」に任せる（ダイアログは出ていないので bmError_ は見せられない）。
+	// 留まる」に任せる（ダイアログは出ていないので bm_.error は見せられない）。
 	void JumpToBookmarkRef(Settings *settings, const std::string &ref);
 	// ref をブックマークに控えられるか。ファイルシステムの選択（空）と
 	// "Bookmarks>" 自身は控えられない。
 	bool CanBookmark(const std::string &ref) const;
-	bool bmJumpPending_;       // 次の Build() で bmJumpRef_ へ移る
-	std::string bmJumpRef_;
 	// 同じ場所を指す行を探す。無ければ -1。
 	int FindBookmark(const std::vector<std::string> &list, const std::string &ref) const;
-	bool showBookmarks_;
-	int bmSelected_;           // 一覧で選んでいる行。空のときは -1
-	std::string bmError_;      // 「そのフォルダは見つかりません。」など
-	bool bmOpenRemove_;        // 次のフレームで削除確認を開く
-	bool bmRemoveOpen_;        // いま開いている（ESC の判断に使う）
-	bool bmCloseRemove_;       // ESC で閉じてほしい
+	// フォルダ選択で選んだ ref を、一覧で選んでいた行の位置（無ければ末尾）へ
+	// 挿し、その行を選ぶ（settingsui_folder.cpp から）。
+	void InsertBookmark(std::vector<std::string> *list, const std::string &ref);
+	struct BookmarksState {
+		bool show;
+		int selected;            // 一覧で選んでいる行。空のときは -1
+		std::string error;       // 「そのフォルダは見つかりません。」など
+		NestedPopup remove;      // 削除の確認（ダイアログの中に入れ子）
+		NestedPopup toggle;      // Shift+M の確認（メイン画面から単独で開く）
+		std::string toggleRef;   // Shift+M の確認にかけている場所
+		bool jumpPending;        // 次の Build() で jumpRef へ移る
+		std::string jumpRef;
+		bool CloseTop() {
+			if (remove.CloseTop()) return true;
+			if (toggle.CloseTop()) return true;  // 単独で開くが、閉じ方は同じ
+			if (!show) return false;
+			show = false;
+			return true;
+		}
+		BookmarksState() : show(false), selected(-1), jumpPending(false) {}
+	};
+	BookmarksState bm_;
 	// PDX の探索先の設定。設定ウィンドウの [編集…] から開く。作りはブックマークの
 	// 設定と同じ（一覧・[上へ][下へ][追加…][削除]、削除は入れ子の確認）で、
 	// [開く] は無い。モーダル同士は入れ子にしないので、設定ウィンドウが閉じきって
-	// から開き（pdxOpenPending_）、閉じたら設定ウィンドウを開き直す
-	// （pdxReturnToSettings_。[追加…] のフォルダ選択の往復をまたいでも保つ）。
+	// から開き（pdx_.handoff.openPending）、閉じたら設定ウィンドウを開き直す
+	// （pdx_.handoff.returnToCaller。[追加…] のフォルダ選択の往復をまたいでも保つ）。
 	// 2026-09-16、ユーザーの指示（それまでは設定ウィンドウの打ち込み欄 1 本）。
 	void BuildPdxPathsWindow(Settings *settings, Filer *filer);
 	void BuildPdxRemoveWindow(Settings *settings);
-	bool showPdxPaths_;
-	bool pdxOpenPending_;      // 設定ウィンドウが閉じたら開く
-	bool pdxReturnToSettings_; // 閉じたら設定ウィンドウを開き直す
-	int pdxSelected_;          // 一覧で選んでいる行。空のときは -1
-	std::string pdxError_;
-	bool pdxOpenRemove_;       // 次のフレームで削除確認を開く
-	bool pdxRemoveOpen_;       // いま開いている（ESC の判断に使う）
-	bool pdxCloseRemove_;      // ESC で閉じてほしい
+	// 設定ウィンドウの [編集…] から。設定ウィンドウを閉じ、閉じきったら開く。
+	void OpenPdxPathsFromSettings();
+	// フォルダ選択で選んだ ref を、一覧で選んでいた行の位置（無ければ末尾）へ
+	// 挿し、その行を選ぶ（settingsui_folder.cpp から）。
+	void InsertPdxPath(std::vector<std::string> *list, const std::string &ref);
+	struct PdxPathsState {
+		bool show;
+		Handoff handoff;    // 設定ウィンドウとの往復
+		int selected;       // 一覧で選んでいる行。空のときは -1
+		std::string error;
+		NestedPopup remove; // 削除の確認
+		bool CloseTop() {
+			if (remove.CloseTop()) return true;
+			if (!show) return false;
+			show = false;
+			return true;
+		}
+		PdxPathsState() : show(false), selected(0) {}
+	};
+	PdxPathsState pdx_;
 	// [画面の遅れ]（[演奏]）と [遅延時間]（[Bluetooth（機器名）]）。設定ウィンドウには
 	// 今の値と [設定…] だけを出し、スライダーはこのダイアログに置く。5 秒近い
 	// 遅れの機器があり、1 本のスライダーでは合わせられないので「秒」と「ミリ秒」の
@@ -746,45 +847,49 @@ private:
 		kLatencyTargetDisplay = 0,  // [演奏] の画面の遅れ（手動のとき）
 		kLatencyTargetBluetooth,    // いまつないでいる Bluetooth の機器の遅延時間
 	};
+	// settingsui_latency.cpp。
 	void BuildLatencyWindow(Settings *settings, DrawScreen *draw, Player *player,
 	                        Screen *screen);
 	void OpenLatencyWindow(int target, const std::string &device);
 	const char *LatencyTitle() const;
-	bool showLatency_;
-	bool latencyOpenPending_;       // 設定ウィンドウが閉じたら開く
-	bool latencyReturnToSettings_;  // 閉じたら設定ウィンドウを開き直す
-	int latencyTarget_;             // LatencyTarget
-	std::string latencyDevice_;     // kLatencyTargetBluetooth の機器名（開いたときのもの）
-	bool bmOpenToggle_;        // 次のフレームで Shift+M の確認を開く
-	bool bmToggleOpen_;
-	bool bmCloseToggle_;
-	bool quitAsk_;             // 次のフレームで終了の確認を開く
-	bool quitOpen_;
-	bool quitClose_;
+	struct LatencyDialogState {
+		bool show;
+		Handoff handoff;     // 設定ウィンドウとの往復
+		int target;          // LatencyTarget
+		std::string device;  // kLatencyTargetBluetooth の機器名（開いたときのもの）
+		bool CloseTop() {
+			if (!show) return false;
+			show = false;
+			return true;
+		}
+		LatencyDialogState() : show(false), target(kLatencyTargetDisplay) {}
+	};
+	LatencyDialogState latency_;
 
 	// 更新チェック（settingsui_update.cpp）。
-	bool updateAvailable_;  // [通信] を出すか
-	bool updateRunning_;    // 確かめている最中（[今すぐ…] を押せなくする）
-	bool updateCheckNow_;   // [今すぐ…] が押された
-	UpdateResult updateResult_;
-	bool updatePending_;    // 見せる結果を預かっている
-	bool updateAsk_;        // 次のフレームで開く
-	bool updateOpen_;
-	bool updateClose_;      // ESC で閉じてほしい
-	// [mxv2 の設定] の中に入れ子で開いたか。ImGui のポップアップの id は
-	// 開いた場所の id スタックで決まるので、開いた場所と同じところで組む。
-	bool updateNested_;
+	struct UpdateDialogState {
+		bool available;  // [通信] を出すか
+		bool running;    // 確かめている最中（[今すぐ…] を押せなくする）
+		bool checkNow;   // [今すぐ…] が押された
+		UpdateResult result;
+		bool pending;    // 見せる結果を預かっている
+		NestedPopup popup;
+		// [mxv2 の設定] の中に入れ子で開いたか。ImGui のポップアップの id は
+		// 開いた場所の id スタックで決まるので、開いた場所と同じところで組む。
+		bool nested;
+		bool CloseTop() { return popup.CloseTop(); }
+		UpdateDialogState()
+		    : available(false), running(false), checkNow(false), pending(false), nested(false) {}
+	};
+	UpdateDialogState update_;
 	// [mxv2 の設定] の [通信] と、結果のダイアログ。
 	void BuildNetworkGroup(Settings *settings);
 	void BuildUpdateWindow();
 	// 預かった結果をどこで開くか決める（Build の頭から毎フレーム）。
 	void ScheduleUpdateWindow();
-	std::string bmToggleRef_;  // Shift+M の確認にかけている場所
 
 	// 起動時の警告。ウィンドウが出る前の printf を持ち越したもの。
 	void BuildStartupWindow();
-	bool showStartup_;
-	std::vector<StartupWarning> startupLines_;
 
 	// コンテキストメニュー
 	void BuildContextMenu(Settings *settings, DrawScreen *draw, Player *player,
@@ -803,29 +908,52 @@ private:
 		kCtxPageOther,  // [その他] の中身
 		kCtxPageCount,
 	};
-	int ctxPage_;  // メニューを開くたびに kCtxPageMain へ戻す
-	// ページの切り替えは横スクロールで見せる（2026-09-16、ユーザーの要望。
-	// 下るときは右から、戻るときは左から入ってくる）。各ページは自分の
-	// 子ウィンドウに描く（MenuItem の列幅はウィンドウごとなので、2 ページを
-	// 同じウィンドウに描くと列が揃ってしまう）。遷移中は 2 つの子を
-	// 横にずらして描き、ポップアップの大きさは前→次へ補間する。
-	int ctxSwitchTo_;         // このフレームで押された行き先（無ければ -1）
-	int ctxAnimFrom_;         // 滑り出ていく前のページ（遷移中でなければ -1）
-	bool ctxAnimForward_;     // 下る（次が右から入る）か、戻る（左から）か
-	Uint32 ctxAnimStartMs_;
-	// 各ページの中身の大きさ。描くたびに測り直す（未測は 0）。
-	ImVec2 ctxPageSize_[kCtxPageCount];
-	// 子ウィンドウの列幅が決まっているか。ImGui はウィンドウが出直すたびに
-	// 列幅を測り直すので、最初の 1 フレームはラベルと短縮キーが重なる。
-	// 決まるまではポップアップごと隠す（ポップアップ自身が最初のフレームで
-	// やっているのと同じ）。
-	bool ctxChildWarm_[kCtxPageCount];
-	// 短縮キーの列を出さない。どれかのページが画面の横に入りきらないと
-	// 分かったら立て、メニューを閉じるまで保つ（毎フレーム決め直すと、
-	// 列を消して幅が縮んだ途端に「入る」に戻ってちらつく）。指で操作する
-	// 端末はキーボードが無いことが多いので、消しても失うものは少ない
-	// （2026-09-24、320px 幅の XS17 で "Shift+M" が切れていた）。
-	bool ctxNoShortcut_;
+	struct ContextMenuState {
+		bool openRequested;  // 次のフレームで開く（OpenContextMenu）
+		// 直前のフレームでメニューが開いていたか（ESC を食う判断に使う）と、
+		// ESC で閉じてほしいという印。
+		bool isOpen;
+		bool closeWanted;
+		int page;  // CtxPage。メニューを開くたびに kCtxPageMain へ戻す
+		// ページの切り替えは横スクロールで見せる（2026-09-16、ユーザーの要望。
+		// 下るときは右から、戻るときは左から入ってくる）。各ページは自分の
+		// 子ウィンドウに描く（MenuItem の列幅はウィンドウごとなので、2 ページを
+		// 同じウィンドウに描くと列が揃ってしまう）。遷移中は 2 つの子を
+		// 横にずらして描き、ポップアップの大きさは前→次へ補間する。
+		int switchTo;      // このフレームで押された行き先（無ければ -1）
+		int animFrom;      // 滑り出ていく前のページ（遷移中でなければ -1）
+		bool animForward;  // 下る（次が右から入る）か、戻る（左から）か
+		Uint32 animStartMs;
+		// 各ページの中身の大きさ。描くたびに測り直す（未測は 0）。
+		ImVec2 pageSize[kCtxPageCount];
+		// 子ウィンドウの列幅が決まっているか。ImGui はウィンドウが出直すたびに
+		// 列幅を測り直すので、最初の 1 フレームはラベルと短縮キーが重なる。
+		// 決まるまではポップアップごと隠す（ポップアップ自身が最初のフレームで
+		// やっているのと同じ）。
+		bool childWarm[kCtxPageCount];
+		// 短縮キーの列を出さない。どれかのページが画面の横に入りきらないと
+		// 分かったら立て、メニューを閉じるまで保つ（毎フレーム決め直すと、
+		// 列を消して幅が縮んだ途端に「入る」に戻ってちらつく）。指で操作する
+		// 端末はキーボードが無いことが多いので、消しても失うものは少ない
+		// （2026-09-24、320px 幅の XS17 で "Shift+M" が切れていた）。
+		bool noShortcut;
+		NestedPopup quit;  // 終了の確認（settingsui_menu.cpp）
+		// メニューは ImGui のポップアップの中からしか閉じられないので、印だけ
+		// 付けて実際の始末は Build() に任せる。
+		bool CloseTop() {
+			if (isOpen) { closeWanted = true; return true; }
+			return quit.CloseTop();
+		}
+		ContextMenuState()
+		    : openRequested(false), isOpen(false), closeWanted(false), page(kCtxPageMain),
+		      switchTo(-1), animFrom(-1), animForward(true), animStartMs(0), noShortcut(false) {
+			for (int i = 0; i < kCtxPageCount; i++) {
+				pageSize[i] = ImVec2(0.0f, 0.0f);
+				childWarm[i] = false;
+			}
+		}
+	};
+	ContextMenuState ctx_;
 	// ページへ入る / 戻る項目。サブメニューの見出しと同じ見た目（右端に ▶、
 	// 戻るは ◀）で、押してもポップアップを閉じない。押されたら true。
 	bool CtxPageItem(const char *label, bool back);
@@ -835,36 +963,61 @@ private:
 	// 1 ページぶんの項目。paged でなければ [表示] [その他] は ImGui のサブメニュー。
 	void BuildCtxPageItems(int page, bool paged, Settings *settings, DrawScreen *draw,
 	                       Player *player, Filer *filer);
-	// ページを子ウィンドウに描き、中身の大きさを ctxPageSize_ に測る。
+	// ページを子ウィンドウに描き、中身の大きさを ctx_.pageSize に測る。
 	// 子が丸ごと切り取られて何も描けなかったら false。
 	bool BuildCtxPageChild(int page, const ImVec2 &pos, Settings *settings, DrawScreen *draw,
 	                       Player *player, Filer *filer);
-	bool openContextMenu_;
-	// 直前のフレームでメニューが開いていたか（ESC を食う判断に使う）と、
-	// ESC で閉じてほしいという印。
-	bool contextMenuOpen_;
-	bool closeContextMenu_;
 	Request request_;
+	std::string requestedFolder_;  // kRequestSetFolder の行き先 (ref)
+	// 選ばれたスキン（[mxv2 の設定] と [配色設定] の保存から）。main が画面を
+	// 作り直して ClearPendingSkin() で消す。
+	std::string pendingSkin_;
 	// バージョン情報 (F12)。settingsui_info.cpp。
 	void BuildAboutWindow();
-	bool showAbout_;
+	// settingsui_info.cpp のダイアログ 3 つ（バージョン情報・操作方法・起動時の警告）。
+	struct InfoDialogsState {
+		bool showAbout;
+		std::string aboutHeader;  // 名前・版・ビルド日付・著作権表示
+		std::string aboutText;    // NOTICE の中身（初回に読む）
+		bool showHelp;
+		std::vector<HelpRow> helpRows;
+		bool showStartup;
+		std::vector<StartupWarning> startupLines;
+		bool CloseTop() {
+			if (showAbout) { showAbout = false; return true; }
+			if (showHelp) { showHelp = false; return true; }
+			if (showStartup) { showStartup = false; return true; }
+			return false;
+		}
+		InfoDialogsState() : showAbout(false), showHelp(false), showStartup(false) {}
+	};
+	InfoDialogsState info_;
 
 	// Chromecast へ送る（settingsui_cast.cpp / cast.h）。[表示] の [キャスト…]。
 	void BuildCastWindow(Settings *settings);
-	bool showCast_;
-	bool castWasOpen_;     // 前のフレームで開いていた（開いた・閉じた瞬間を拾う）
-	int castSelected_;     // 一覧で選んでいる行
-	ImVec2 castLastSize_;  // 前のフレームのダイアログの大きさ（変わったら中央へ置き直す）
-	bool castRecenter_;    // 次のフレームで中央へ置き直す
-	bool castScrollY_;     // 前のフレームで縦のスクロールバーが出ていた（その幅を空ける）
+	struct CastDialogState {
+		bool show;
+		bool wasOpen;     // 前のフレームで開いていた（開いた・閉じた瞬間を拾う）
+		int selected;     // 一覧で選んでいる行
+		ImVec2 lastSize;  // 前のフレームのダイアログの大きさ（変わったら中央へ置き直す）
+		bool recenter;    // 次のフレームで中央へ置き直す
+		bool scrollY;     // 前のフレームで縦のスクロールバーが出ていた（その幅を空ける）
+		bool CloseTop() {
+			if (!show) return false;
+			show = false;
+			return true;
+		}
+		CastDialogState()
+		    : show(false), wasOpen(false), selected(-1), lastSize(0.0f, 0.0f), recenter(false),
+		      scrollY(false) {}
+	};
+	CastDialogState cast_;
 	// 中身をドラッグしてスクロール中。ダイアログはモーダルで一度に 1 つしか
 	// 開かないので、どのダイアログでもこの 1 つを使い回す。
 	bool dragScroll_;
 	// そのドラッグで実際にスクロールしたか。一覧の上から掴めるようにした
 	// ぶん、離したときに行を選ばせないための印。
 	bool dragMoved_;
-	std::string aboutHeader_;  // 名前・版・ビルド日付・著作権表示
-	std::string aboutText_;    // NOTICE の中身（初回に読む）
 
 	SettingsUi(const SettingsUi &);
 	SettingsUi &operator=(const SettingsUi &);

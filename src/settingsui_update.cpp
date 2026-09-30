@@ -43,7 +43,7 @@ std::string LocalTimeText(long long t) {
 
 // [mxv2 の設定] の [通信]。更新チェックが使えない環境では見出しごと出さない。
 void SettingsUi::BuildNetworkGroup(Settings *settings) {
-	if (!updateAvailable_) return;
+	if (!update_.available) return;
 	if (!GroupHeader(Msg("Settings.Network"))) return;
 
 	bool on = settings->updateCheck;
@@ -54,7 +54,7 @@ void SettingsUi::BuildNetworkGroup(Settings *settings) {
 
 	// 次の更新チェックの時刻。確かめている最中・OFF・もう過ぎている
 	// （使える状態になりしだい確かめる）ときは、それぞれの言い方にする。
-	if (updateRunning_) {
+	if (update_.running) {
 		TextNote(Msg("Settings.UpdateRunning"));
 	} else if (!settings->updateCheck) {
 		TextNote(Msg("Settings.UpdateOff"));
@@ -66,8 +66,8 @@ void SettingsUi::BuildNetworkGroup(Settings *settings) {
 
 	// 24 時間の間隔を無視してすぐ確かめる。[更新チェックを行う] が OFF でも
 	// 押せる（明示の操作なので）。結果は成功・失敗とも知らせる。
-	ImGui::BeginDisabled(updateRunning_);
-	if (ImGui::Button(Msg("Settings.UpdateCheckNow"))) updateCheckNow_ = true;
+	ImGui::BeginDisabled(update_.running);
+	if (ImGui::Button(Msg("Settings.UpdateCheckNow"))) update_.checkNow = true;
 	ImGui::EndDisabled();
 	GroupTrailingSpace();
 }
@@ -78,35 +78,35 @@ void SettingsUi::BuildNetworkGroup(Settings *settings) {
 void SettingsUi::ScheduleUpdateWindow() {
 	// 入れ子で開いていたのに [mxv2 の設定] が閉じた。子のポップアップも
 	// ImGui が一緒に閉じているので、こちらの控えを戻す。
-	if (updateNested_ && !visible_ && !ImGui::IsPopupOpen(kSettingsTitle)) {
-		updateNested_ = false;
-		updateAsk_ = false;
-		updateOpen_ = false;
-		updateClose_ = false;
+	if (update_.nested && !visible() && !ImGui::IsPopupOpen(kSettingsTitle)) {
+		update_.nested = false;
+		update_.popup.ask = false;
+		update_.popup.open = false;
+		update_.popup.close = false;
 	}
-	if (!updatePending_ || updateOpen_ || updateAsk_) return;
-	if (updateResult_.manual && visible_) {
-		updateNested_ = true;
-		updateAsk_ = true;
-		updatePending_ = false;
+	if (!update_.pending || update_.popup.open || update_.popup.ask) return;
+	if (update_.result.manual && visible()) {
+		update_.nested = true;
+		update_.popup.ask = true;
+		update_.pending = false;
 		return;
 	}
 	if (!anyDialogOpen()) {
-		updateNested_ = false;
-		updateAsk_ = true;
-		updatePending_ = false;
+		update_.nested = false;
+		update_.popup.ask = true;
+		update_.pending = false;
 	}
 }
 
 // 結果のダイアログ。新しい版があるときは [リリースページを開く] を添える。
 void SettingsUi::BuildUpdateWindow() {
-	if (updateAsk_) {
-		updateAsk_ = false;
+	if (update_.popup.ask) {
+		update_.popup.ask = false;
 		ImGui::OpenPopup(kUpdateTitle);
 	}
-	updateOpen_ = ImGui::IsPopupOpen(kUpdateTitle);
-	if (!updateOpen_) {
-		updateClose_ = false;
+	update_.popup.open = ImGui::IsPopupOpen(kUpdateTitle);
+	if (!update_.popup.open) {
+		update_.popup.close = false;
 		return;
 	}
 
@@ -116,7 +116,7 @@ void SettingsUi::BuildUpdateWindow() {
 		return;
 	}
 
-	const UpdateResult &r = updateResult_;
+	const UpdateResult &r = update_.result;
 	switch (r.status) {
 		case UpdateResult::kNewer:
 			ConfirmText(MsgF("Update.Newer", r.latest).c_str());
@@ -141,9 +141,9 @@ void SettingsUi::BuildUpdateWindow() {
 		}
 		SameLineOrWrap(Msg("Button.Close"));
 	}
-	if (ImGui::Button(Msg("Button.Close")) || updateClose_) close = true;
+	if (ImGui::Button(Msg("Button.Close")) || update_.popup.close) close = true;
 	if (close) {
-		updateClose_ = false;
+		update_.popup.close = false;
 		ImGui::CloseCurrentPopup();
 	}
 	ImGui::EndPopup();

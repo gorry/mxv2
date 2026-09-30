@@ -689,8 +689,8 @@ void Screen::SetWindowPosClamped(int x, int y) {
 		return;
 	}
 
-	// SDL の窓の座標はクライアント領域の左上なので、**枠と題名バーのぶんを
-	// 別に見る**。これを忘れると、上端へ寄せたときに題名バーが画面の外へ出る。
+	// アプリケーションウィンドウ（SDL_Window）の座標はクライアント領域の左上
+	// なので、**枠と題名バーのぶんを別に見る**。これを忘れると、上端へ寄せたときに題名バーが画面の外へ出る。
 	int top = 0, left = 0, bottom = 0, right = 0;
 	if (SDL_GetWindowBordersSize(window_, &top, &left, &bottom, &right) != 0) {
 		top = left = bottom = right = 0;
