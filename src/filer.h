@@ -49,7 +49,6 @@ struct FileItemType {
 		Bookmark = 64,
 		// ブックマークの一覧の末尾の "[Setting]"。開くとブックマークの設定。
 		BookmarkSetting = 128,
-
 	};
 };
 
@@ -73,7 +72,6 @@ enum class FilerOpen {
 	// playPath のファイルシステム（mountRef）はアクセス許可が失われている。
 	// [ファイルシステムの設定] を開いて取り直させてほしい（SAF。vfs.h の accessible）。
 	NeedsAccess,
-
 };
 
 class Filer {

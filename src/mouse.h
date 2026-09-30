@@ -36,7 +36,6 @@ enum class MouseRequest {
 	ToggleFontSize,  // ファイラーを長押しした (TAB と同じ)
 	ToggleStatusMode,  // ステータス欄を長押しした（音色データ表示の切り替え）
 	ToggleRegMap,      // 鍵盤を長押しした（OPM レジスタ一覧の表示切り替え）
-
 };
 
 class MouseInput {
@@ -108,7 +107,6 @@ private:
 		Banner,
 		Keyboard,
 		Status,
-	
 	};
 
 	MouseRequest OnButtonDown(int x, int y, int clicks);

@@ -64,7 +64,6 @@ public:
 	enum class Orientation {
 		Portrait = 0,
 		Landscape,
-	
 	};
 
 	// -orientlock の値。0 なら実物（デスクトップではダミー）を見る。
@@ -72,7 +71,6 @@ public:
 		None = 0,
 		Portrait,
 		Landscape,
-	
 	};
 	void SetOrientationLock(OrientationLock lock) { orientLock_ = lock; }
 	OrientationLock orientationLock() const { return orientLock_; }
@@ -102,7 +100,6 @@ public:
 		// 非整数倍のムラが消える。整数倍のときは縮小が 1:1 になるので
 		// 最近傍と同じ結果になる。
 		Sharp,
-	
 	};
 	void SetScaleMode(ScaleMode mode);
 	ScaleMode scaleMode() const { return scaleMode_; }

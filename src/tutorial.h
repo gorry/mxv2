@@ -90,7 +90,6 @@ private:
 			Bookmark,
 			End,
 			Count
-	
 		};
 	};
 

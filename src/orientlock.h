@@ -27,7 +27,6 @@ enum class Request {
 	Portrait,
 	// 横で固定。同じく左右どちら向きでもよい（SENSOR_LANDSCAPE）。
 	Landscape,
-
 };
 
 // この環境で向きを固定できるか。

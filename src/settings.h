@@ -31,7 +31,6 @@ struct Settings {
 			Startup,  // 起動時（と設定を閉じたとき）の向きで決めて、以後は固定
 			Always,   // 向きが変わるたびに切り替える
 			Count
-	
 		};
 	};
 	// ini に書く名前との変換。綴りは大文字小文字を問わない。
@@ -68,10 +67,10 @@ struct Settings {
 	// Alt+Enter でも設定ダイアログでも、最後の状態をここへ写して次の起動へ
 	// 持ち越す。ini は [Screen] FullScreen。**-fullscreen は起動時の値を
 	// 上書きするだけで、そのままでは ini に残らない**（-nofade などと同じ。
-	// 書かれるのは kFieldFullScreen が立ったときだけ）。
+	// 書かれるのは Field::FullScreen が立ったときだけ）。
 	bool fullScreen;
 	// 指で操作する端末向けに、ダイアログの押せるところを広げるか。
-	// kTouchAuto なら Screen::TouchPreferred() に従う（Android は有効）。
+	// TouchUi::Auto なら Screen::TouchPreferred() に従う（Android は有効）。
 	int touchUi;
 	struct TouchUi {
 		enum Type { Auto = 0, On = 1, Off = 2 };
@@ -94,7 +93,6 @@ struct Settings {
 			None = 0,    // しない
 			Cursor = 1,  // カーソル行だけ
 			All = 2,     // 全て
-	
 		};
 	};
 	std::string lastDir;  // 最後に開いていたディレクトリ
@@ -210,7 +208,7 @@ struct Settings {
 	//
 	// **覚えるのは位置だけで、大きさは覚えない**（2026-09-18、ユーザーの判断）。
 	// 起動時のウィンドウは必ず「スキンの宣言サイズ x 表示倍率」にスナップする。
-	// windowW/H は保存経路（SaveFields の kFieldWindowPos）が写さないので
+	// windowW/H は保存経路（SaveFields の Field::WindowPos）が写さないので
 	// ふつうは 0 のままで、ini に手で書いたときだけ「その大きさ以上で開く」
 	// 指定として効く（main.cpp）。
 	int windowX, windowY;
@@ -301,7 +299,6 @@ struct Settings {
 			Pip = 1 << 25,             // [Screen] Pip
 			Cast = 1 << 26,            // [Cast] Quality / MuteLocal / VideoAdvanceMs
 			Bluetooth = 1 << 27,       // [Bluetooth] すべて（機器ごとの値と既定の値）
-	
 		};
 	};
 

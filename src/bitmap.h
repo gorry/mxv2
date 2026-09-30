@@ -26,8 +26,6 @@ struct BlendMode {
 		Sub = 101,
 		Add = 102,
 		Mul = 103,
-
-
 	};
 };
 
@@ -93,13 +91,13 @@ private:
 // アルファ合成テーブルの初期化。ブリッタを使う前に一度呼ぶ。
 void InitBlendTables();
 
-// 矩形塗り潰し。alpha は 0..100 または kBlend*。
+// 矩形塗り潰し。alpha は 0..100 または BlendMode::*。
 void BmpFill(Bitmap *dst, int xdst, int ydst, int width, int height,
              int r, int g, int b, int alpha);
 
 // 乗算で塗り潰したうえで、その結果を alpha (0..100) で元の画素と混ぜる。
 // r,g,b は色ではなく**背景に対するゲイン**（100 が素通し）。alpha=100 なら
-// 素の乗算（kBlendMul）と同じで、0 なら何もしない。
+// 素の乗算（BlendMode::Mul）と同じで、0 なら何もしない。
 // ファイラーのカーソルのように「乗算をどれだけ効かせるか」を持つもの用。
 void BmpFillMul(Bitmap *dst, int xdst, int ydst, int width, int height,
                 int r, int g, int b, int alpha);

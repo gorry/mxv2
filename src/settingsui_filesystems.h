@@ -75,7 +75,7 @@ public:
 		return handed_.popup.ask || handed_.popup.open || !saf_.handedUri.empty();
 	}
 	bool handedOpen() const { return handed_.popup.open; }
-	// kRequestOpenHanded の開くもの (ref)。
+	// Request::OpenHanded の開くもの (ref)。
 	const std::string &handedRef() const { return handed_.ref; }
 	void BuildHandedWindow(SettingsUi &ui, Filer *filer);
 
@@ -124,7 +124,7 @@ private:
 		NestedPopup popup;
 		std::string uri;   // 尋ねている相手（渡された URI）
 		std::string name;  // 画面に出す名前
-		std::string ref;   // kRequestOpenHanded の開くもの
+		std::string ref;   // Request::OpenHanded の開くもの
 	} handed_;
 	// SAF のピッカー（Android）。
 	struct Saf {

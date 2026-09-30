@@ -42,7 +42,6 @@ enum class Request {
 	// Bluetooth の出力機器がつながった。設定の [Bluetooth] ResumeOnReconnect が
 	// 入っていれば、RouteLost で止めたぶんだけ再開する。
 	BluetoothConnected,
-
 };
 
 // 通知に出す文言。SetLabels は Update より先に一度だけ呼ぶ。
@@ -89,9 +88,9 @@ void Update(const State &state);
 // 通知を消してサービスを止める。終了時に呼ぶ。
 void Shutdown();
 
-// 通知から届いた要求を 1 つ取り出す。無ければ kRequestNone。
+// 通知から届いた要求を 1 つ取り出す。無ければ Request::None。
 Request TakeRequest();
-// kRequestSeekTo の行き先 (ms)。
+// Request::SeekTo の行き先 (ms)。
 uint32_t TakeSeekMs();
 
 }  // namespace nowplaying

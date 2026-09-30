@@ -159,7 +159,7 @@ public:
 
 	// 終了の確認。Android の戻るキーで、もう戻る先が無いときに出す
 	// （いきなり閉じると押し間違いで演奏が止まるため）。
-	// [終了] を選ぶと TakeRequest() が kRequestQuit を返す。
+	// [終了] を選ぶと TakeRequest() が Request::Quit を返す。
 	void OpenQuitConfirm() {
 		if (busy()) return;
 		ctx_.AskQuit();
@@ -253,7 +253,6 @@ public:
 		OpenHanded,   // requestedHanded() を「落とされた」のと同じ扱いで開く
 		EnterPip,     // 小窓（ピクチャー・イン・ピクチャー）に入る
 		StopCast,     // [キャストを終了]。手元を一時停止してからキャストを終える
-	
 	};
 	Request TakeRequest() {
 		const Request r = request_;
@@ -261,9 +260,9 @@ public:
 		return r;
 	}
 
-	// kRequestSetFolder の行き先。
+	// Request::SetFolder の行き先。
 	const std::string &requestedFolder() const { return requestedFolder_; }
-	// kRequestOpenHanded の開くもの (ref)。
+	// Request::OpenHanded の開くもの (ref)。
 	const std::string &requestedHanded() const { return fs_.handedRef(); }
 
 	// 外から渡された MDX（openintent.h）が、許可のあるフォルダの外にあった。
@@ -272,7 +271,7 @@ public:
 	//     マウントしてから開く。**同じフォルダの PDX も鳴る**。
 	//   [このまま演奏する]   … ユーザーフォルダへ写して開く。すぐ鳴るが
 	//     **PDX は付いてこない**。
-	// どちらかが決まると TakeRequest() が kRequestOpenHanded を返す。
+	// どちらかが決まると TakeRequest() が Request::OpenHanded を返す。
 	// name は画面に出すファイル名。
 	void OpenHandedChoice(const std::string &uri, const std::string &name) {
 		if (busy() || handedBusy()) return;
@@ -518,7 +517,7 @@ private:
 	// コンテキストメニューと終了の確認。settingsui_menu.h。
 	ContextMenu ctx_;
 	Request request_;
-	std::string requestedFolder_;  // kRequestSetFolder の行き先 (ref)
+	std::string requestedFolder_;  // Request::SetFolder の行き先 (ref)
 	// 選ばれたスキン（[mxv2 の設定] と [配色設定] の保存から）。main が画面を
 	// 作り直して ClearPendingSkin() で消す。
 	std::string pendingSkin_;

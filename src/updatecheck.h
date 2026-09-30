@@ -20,7 +20,6 @@ struct UpdateResult {
 		Failed = 0,  // 通信・解析に失敗した（error に理由。英語のまま）
 		Latest,      // 今の版が最新（か、公開版より新しい手元のビルド）
 		Newer,       // 新しい版が公開されている
-	
 	};
 	Status status;
 	bool manual;              // [今すぐ更新チェックを行う] から始めたか

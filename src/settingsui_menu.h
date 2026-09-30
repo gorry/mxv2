@@ -33,7 +33,6 @@ public:
 			View,   // [表示] の中身
 			Other,  // [その他] の中身
 			Count,
-	
 		};
 	};
 
@@ -55,7 +54,7 @@ public:
 		if (open_) closeWanted_ = true;
 	}
 	// 終了の確認を次のフレームで開く。[終了] で SettingsUi の request_ に
-	// kRequestQuit が積まれる。
+	// Request::Quit が積まれる。
 	void AskQuit() { quit_.ask = true; }
 	bool quitOpen() const { return quit_.open; }
 	// メニューは ImGui のポップアップの中からしか閉じられないので、印だけ
@@ -94,7 +93,7 @@ private:
 	bool openRequested_;
 	bool open_;
 	bool closeWanted_;  // ESC で閉じてほしい
-	int page_;          // Page。メニューを開くたびに kCtxPageMain へ戻す
+	int page_;          // Page。メニューを開くたびに Page::Main へ戻す
 	// ページの切り替えは横スクロールで見せる（2026-09-16、ユーザーの要望。
 	// 下るときは右から、戻るときは左から入ってくる）。各ページは自分の
 	// 子ウィンドウに描く（MenuItem の列幅はウィンドウごとなので、2 ページを

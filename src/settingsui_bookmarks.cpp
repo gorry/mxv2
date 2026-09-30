@@ -2,7 +2,7 @@
 //
 // settingsui.cpp から切り出した。ジャンプ専用の一覧はファイラーの
 // "Bookmarks>" (M)。控えるのはフォルダの ref だけ。実体は Settings::bookmarks で、
-// 触ったら kFieldBookmarks を立ててメインループに ini へ書き戻してもらう。
+// 触ったら Field::Bookmarks を立ててメインループに ini へ書き戻してもらう。
 
 #include "settingsui.h"
 

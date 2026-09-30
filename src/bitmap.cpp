@@ -41,7 +41,7 @@ inline int ClampByte(int v) {
 	return v;
 }
 
-// 1 チャンネル分の合成。mode は 0..100 か kBlend*。
+// 1 チャンネル分の合成。mode は 0..100 か BlendMode::*。
 inline uint8_t BlendChannel(int mode, int d, int s) {
 	if (mode == 100) return (uint8_t)s;
 	if (mode < 100) return (uint8_t)(d - g_alpha[mode * 511 + (d - s)]);

@@ -81,7 +81,6 @@ struct OpmOpGroup {
 		D1LRR,       // $E0+  bit4-7 D1L, bit0-3 RR
 		TL,          // 音色データ $06+op の bit0-6
 		Count
-
 	};
 };
 
@@ -95,7 +94,6 @@ struct OpmGlobalKind {
 		LFOAMD,     // $19 の bit7=0 の書き込みの bit0-6
 		LFOWave,    // $1B bit0-1
 		Count
-
 	};
 };
 

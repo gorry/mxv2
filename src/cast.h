@@ -38,7 +38,6 @@ enum class State {
 	Starting,     // 受信側でアプリを起こし、流れを読み込ませている
 	Casting,      // 受信側で再生している
 	Stopping,     // やめている（受信アプリを止めて切る）
-
 };
 
 // MXV2_CAST 付きでビルドしたか。
@@ -71,10 +70,9 @@ enum class Event {
 	// ResumeRemote() を呼ぶ（止めていた間も流れは進んでいるので、TV に今の位置から
 	// 読み込み直させる）。2026-09-25、ユーザーの指示。
 	RemotePlay,
-
 };
 Event Poll();
-// kEventRemotePlay のあとに。TV に流れを読み込み直させる（TV は数秒読み込み中になる）。
+// Event::RemotePlay のあとに。TV に流れを読み込み直させる（TV は数秒読み込み中になる）。
 void ResumeRemote();
 // 受信側で一時停止されたままか（手元で再開したら ResumeRemote() を呼ぶため）。
 bool RemotePaused();
@@ -100,7 +98,6 @@ struct Quality {
 		High,        // 1920x1080・30fps・4Mbps、音声 192kbps
 		Highest,     // 1920x1080・60fps・6Mbps、音声 192kbps
 		Count
-
 	};
 };
 struct QualityPreset {

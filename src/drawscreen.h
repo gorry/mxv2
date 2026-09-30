@@ -102,7 +102,6 @@ public:
 	enum class StatusMode {
 		Channel = 0,
 		Tone,
-	
 	};
 	StatusMode statusMode() const { return statusMode_; }
 	// 切り替える。欄を下地で消して、新しいモードの 0 表示を敷く。呼んだ側は
@@ -190,8 +189,6 @@ public:
 			Next,
 			Cont,
 			Repeat,
-	
-	
 		};
 	};
 	struct ScrollBarHit {
@@ -202,8 +199,6 @@ public:
 			Thumb,
 			DownPage,
 			DownArrow,
-	
-	
 		};
 	};
 
@@ -247,7 +242,6 @@ public:
 			Drag = 1 << 0,           // つまみをドラッグ中 (位置を固定する)
 			UpArrowDown = 1 << 1,    // 上矢印の押下表示
 			DownArrowDown = 1 << 2,  // 下矢印の押下表示
-	
 		};
 	};
 	void SetScrollBarFlags(int flags) { scrollBarFlags_ = flags; }
@@ -274,7 +268,6 @@ public:
 			PauseLed = 1 << 17,
 			ContLed = 1 << 18,
 			RepeatLed = 1 << 19,
-	
 		};
 	};
 

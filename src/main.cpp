@@ -1234,7 +1234,7 @@ int main(int argc, char **argv) {
 				OpenHandedPath(ctx, &filer, false, ref);
 			} else if (mxv2::SafAvailable()) {
 				// 外にある。**どちらで開くかを尋ねる**（settingsui の
-				// [渡されたファイル]。答えは kRequestOpenHanded で返ってくる）。
+				// [渡されたファイル]。答えは Request::OpenHanded で返ってくる）。
 				ui.OpenHandedChoice(uri, mxv2::openintent::DisplayName(uri));
 			} else if (mxv2::openintent::CopyToUserDir(vfs, uri, &ref)) {
 				// 許可の仕組みが無い環境。写すしかない。

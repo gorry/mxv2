@@ -30,14 +30,12 @@ public:
 		Filer = 0,  // ファイラーを動かす (L キー / メニュー)
 		Pdx,        // PDX の探索先に足す ([PDX の探索先] の [追加…])
 		Bookmark,   // ブックマークに足す ([ブックマークの設定] の [追加])
-	
 	};
 	// 閉じたら開き直す呼び出し元。
 	enum class Return {
 		None = 0,
 		Bookmarks,
 		Pdx,
-	
 	};
 
 	FolderDialog();

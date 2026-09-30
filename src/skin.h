@@ -48,7 +48,6 @@ struct FilerSide {
 		Left,
 		Right,
 		Count
-
 	};
 };
 
@@ -110,7 +109,6 @@ struct StatusItem {
 		OPMLFOAMD,
 		OPMLFOWave,
 		Count
-
 	};
 };
 
