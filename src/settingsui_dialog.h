@@ -24,6 +24,9 @@ class ModalDialog {
 public:
 	ModalDialog() : show_(false) {}
 	bool isOpen() const { return show_; }
+	// 中身（選んでいる行など）を保ったまま開き直す。往復から戻ってきたとき用
+	// （SettingsUi::Build）。初めて開くときは各クラスの Open を使う。
+	void Reopen() { show_ = true; }
 	// SettingsUi::CloseDialog() 用。開いていれば閉じて true。
 	bool CloseTop() {
 		if (!show_) return false;
@@ -75,6 +78,13 @@ struct Handoff {
 	bool returnToCaller;  // 閉じたら呼び出し元を開き直す
 	Handoff() : openPending(false), returnToCaller(false) {}
 	void Start() { openPending = returnToCaller = true; }
+	// 呼び出し元（題名 callerTitle のポップアップ）が閉じきっていたら *show を
+	// 立てて開く。毎フレーム呼ぶ。
+	void OpenWhenCallerClosed(bool *show, const char *callerTitle);
+	// 自分（題名 title）が閉じきったら 1 度だけ true を返す。呼ばれた側は
+	// 呼び出し元を開き直すこと。blocked の間（自分がさらに別のダイアログへ
+	// 出ている間）は返さない。
+	bool TakeReturn(bool show, const char *title, bool blocked);
 };
 
 }  // namespace mxv2

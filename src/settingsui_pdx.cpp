@@ -81,7 +81,7 @@ void PdxPathsDialog::Build(SettingsUi &ui, Settings *settings, Filer *filer) {
 
 	// [追加…] はフォルダ選択ダイアログを経由して、選んだフォルダを選択位置へ
 	// 挿し込む（ブックマークの設定と同じ往復）。開始位置は選んでいる探索先
-	// （Build() の folder_.openPending_ のところ）。
+	// （FolderDialog::PollOpen）。
 	(void)filer;
 	const bool full = (count >= Settings::kMaxPdxPaths);
 	ImGui::SameLine();
@@ -114,6 +114,14 @@ void PdxPathsDialog::OpenFromSettings(SettingsUi &ui) {
 	error_.clear();
 	handoff_.Start();
 	ui.SetSettingsVisible(false);
+}
+
+void PdxPathsDialog::PollOpen() {
+	handoff_.OpenWhenCallerClosed(&show_, kSettingsTitle);
+}
+
+bool PdxPathsDialog::TakeReturn(bool folderBusy) {
+	return handoff_.TakeReturn(show_, kPdxPathsTitle, folderBusy);
 }
 
 void PdxPathsDialog::Insert(std::vector<std::string> *list, const std::string &ref) {

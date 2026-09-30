@@ -71,8 +71,6 @@ public:
 	void BuildQuitWindow(SettingsUi &ui);
 
 private:
-	friend class SettingsUi;
-
 	// ページへ入る / 戻る項目。サブメニューの見出しと同じ見た目（右端に ▶、
 	// 戻るは ◀）で、押してもポップアップを閉じない。押されたら true。
 	bool PageItem(const char *label, bool back);

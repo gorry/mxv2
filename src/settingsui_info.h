@@ -43,6 +43,9 @@ public:
 	void SetAboutHeader(const std::string &text) { aboutHeader_ = text; }
 	// 起動時の警告。空なら何も出ない。SettingsUi::Init() のあとに渡すこと。
 	void SetStartupWarnings(const std::vector<StartupWarning> &lines);
+	// mountRef の許可を取り直せた。起動時の警告に同じ項目があれば、済んだ印を
+	// 付けて文を text に差し替える（FileSystemsDialog から）。
+	void MarkRegranted(const std::string &mountRef, const std::string &text);
 	// 操作方法の行をカタログから読む。起動時と、言語を替えたとき。
 	void LoadHelpRows();
 
@@ -51,9 +54,6 @@ public:
 	void BuildStartup(SettingsUi &ui);
 
 private:
-	friend class SettingsUi;
-	friend class FileSystemsDialog;  // 許可を取り直せた警告の行を書き換える
-
 	// 操作方法の 1 行。中身はメッセージカタログの [HelpKeys] [HelpMouse]
 	// （-h の出力と同じもの）。同梱フォントはプロポーショナルなので、空白で
 	// 桁は揃えられない。「キー名」と「説明」に分けて持っておき、表示するときに

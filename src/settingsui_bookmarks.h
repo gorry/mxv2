@@ -49,10 +49,9 @@ public:
 	void AskToggle() { toggle_.ask = true; }
 	bool toggleOpen() const { return toggle_.open; }
 
-	// RequestJump の行き先へ移る。OpenBookmark と同じだが、開けないときは
-	// そのままファイラーに開かせて、あちらの「開けなければ元の場所に留まる」に
-	// 任せる（ダイアログは出ていないので error_ は見せられない）。
-	void JumpToRef(SettingsUi &ui, Settings *settings, const std::string &ref);
+	// RequestJump で頼まれていれば、その行き先へ移る（SettingsUi::Build から
+	// 毎フレーム）。
+	void PollJump(SettingsUi &ui, Settings *settings);
 	// フォルダ選択で選んだ ref を、一覧で選んでいた行の位置（無ければ末尾）へ
 	// 挿し、その行を選ぶ（FolderDialog から）。
 	void Insert(std::vector<std::string> *list, const std::string &ref);
@@ -63,8 +62,10 @@ public:
 	void BuildToggleWindow(SettingsUi &ui, Settings *settings, Filer *filer);
 
 private:
-	friend class SettingsUi;
-
+	// RequestJump の行き先へ移る。OpenBookmark と同じだが、開けないときは
+	// そのままファイラーに開かせて、あちらの「開けなければ元の場所に留まる」に
+	// 任せる（ダイアログは出ていないので error_ は見せられない）。
+	void JumpToRef(SettingsUi &ui, Settings *settings, const std::string &ref);
 	// index のブックマークを開く。ファイルを指していたら「そのファイルの
 	// あるフォルダ」へ直してから開く（開けなければ error_ に理由）。
 	void OpenBookmark(SettingsUi &ui, Settings *settings, int index);
@@ -76,7 +77,7 @@ private:
 	NestedPopup remove_;     // 削除の確認（ダイアログの中に入れ子）
 	NestedPopup toggle_;     // Shift+M の確認（メイン画面から単独で開く）
 	std::string toggleRef_;  // Shift+M の確認にかけている場所
-	bool jumpPending_;       // 次の Build() で jumpRef_ へ移る
+	bool jumpPending_;       // 次の PollJump で jumpRef_ へ移る
 	std::string jumpRef_;
 };
 

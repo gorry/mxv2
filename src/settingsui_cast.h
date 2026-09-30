@@ -6,8 +6,9 @@
 // ダイアログのクラスの作法（memo/settingsui-split.md）: 状態と補助関数は
 // このクラスの private。共通の道具（SyncModal / BeginDialog / DialogFlags …）と
 // main への出力（changedFields_ / request_）は Build() に渡される SettingsUi を
-// 通して使う（SettingsUi が friend にしてくれている）。SettingsUi 側は往復の
-// 配線のために中を触るので、こちらも SettingsUi を friend にする。
+// 通して使う（SettingsUi が friend にしてくれている）。逆向きは無い:
+// SettingsUi も他のダイアログも、このクラスの中へは public の関数でしか
+// 触らない（往復の配線も PollOpen / TakeReturn のような関数を通す）。
 
 #ifndef MXV2_SETTINGSUI_CAST_H
 #define MXV2_SETTINGSUI_CAST_H
@@ -32,8 +33,6 @@ public:
 	void Build(SettingsUi &ui, Settings *settings);
 
 private:
-	friend class SettingsUi;
-
 	bool wasOpen_;     // 前のフレームで開いていた（開いた・閉じた瞬間を拾う）
 	int selected_;     // 一覧で選んでいる行
 	ImVec2 lastSize_;  // 前のフレームのダイアログの大きさ（変わったら中央へ置き直す）

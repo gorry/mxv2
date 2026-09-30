@@ -424,7 +424,9 @@ bool SettingsUi::Init(Screen *screen, const AssetPaths &paths, std::string *err)
 	settings_.ScanSkins(*this);
 	// 選べる言語。同梱ぶんとユーザーフォルダの locale/ を数え上げる。
 	// **起動時に 1 度だけ**なので、ユーザーが言語を足したら起動し直す。
-	ListLocales(paths_, &settings_.locales_);
+	std::vector<LocaleInfo> locales;
+	ListLocales(paths_, &locales);
+	settings_.SetLocales(locales);
 
 	// 最初のイベントが来る前に倍率を知っておく。
 	inputScale_ = screen->WindowToOutputScale();
@@ -756,11 +758,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 
 	// 待たせていたウィンドウ倍率をここで適用する。フレームの先頭でやるので、
 	// この後の倍率の計算とマウス座標の直しは新しい大きさで揃う。
-	if (settings_.zoomApplyAtMs_ != 0 && SDL_GetTicks() >= settings_.zoomApplyAtMs_) {
-		settings_.zoomApplyAtMs_ = 0;
-		if (settings_.pendingZoom_ > 0) screen->SetZoom(settings_.pendingZoom_);
-		settings_.pendingZoom_ = 0;
-	}
+	settings_.ApplyPendingZoom(screen);
 
 	ImGui_ImplSDLRenderer2_NewFrame();
 	ImGui_ImplSDL2_NewFrame();
@@ -842,8 +840,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	// false にするので、代入を追うのではなく変わり目を見る。**1 フレーム
 	// 遅れて分かる**が、閉じてから効かせたいもの（縦横の切り替えかた）には
 	// それで足りる。
-	if (settings_.wasVisible_ && !settings_.visible_) settings_.closed_ = true;
-	settings_.wasVisible_ = settings_.visible_;
+	settings_.WatchClosed();
 
 	// 右クリックのメニューとバージョン情報は、設定ウィンドウが閉じていても出す。
 	ctx_.Build(*this, settings, draw, player, filer);
@@ -854,50 +851,21 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	// [言語] で選ばれた言語をここで入れ替える。ダイアログの題名も文言なので、
 	// **設定ウィンドウが閉じきってから**でないと、開いている最中に ImGui の
 	// ポップアップの id が変わってしまう（下の [参照...] と同じ作法）。
-	if (settings_.localeApplyPending_ && !ImGui::IsPopupOpen(kSettingsTitle)) {
-		settings_.localeApplyPending_ = false;
-		settings_.ApplyLocale(*this);
-		settings_.SetVisible(true);  // 新しい題名で開き直す
-	}
+	settings_.ApplyPendingLocale(*this);
 
 	// ブックマークの設定 / PDX の探索先の [追加…] から来た往復。
 	// ImGui のポップアップは同じ階層で掛け替えられないので、呼び出し元が
 	// 閉じきってからフォルダ選択を開く。
-	if (folder_.openPending_ && !ImGui::IsPopupOpen(kSettingsTitle) &&
-	    !ImGui::IsPopupOpen(kBookmarksTitle) && !ImGui::IsPopupOpen(kPdxPathsTitle)) {
-		folder_.openPending_ = false;
-		// PDX なら一覧で選んでいた探索先から（読めなければファイラーの今の
-		// 場所から）。ブックマークはファイラーの今の場所から。
-		std::string start = filer->currentRef();
-		if (folder_.target_ == FolderDialog::Target::Pdx && vfs_ != 0 && pdx_.selected_ >= 0 &&
-		    pdx_.selected_ < (int)settings->pdxPaths.size()) {
-			std::string ref;
-			if (vfs_->Resolve(settings->pdxPaths[pdx_.selected_], filer->currentRef(), &ref) &&
-			    vfs_->IsDir(ref)) {
-				start = ref;
-			}
-		}
-		folder_.SetDir(*this, start);
-		folder_.show_ = true;
-	}
-	// 設定ウィンドウの [編集…] から。同じ理由で、設定ウィンドウが閉じきってから。
-	if (pdx_.handoff_.openPending && !ImGui::IsPopupOpen(kSettingsTitle)) {
-		pdx_.handoff_.openPending = false;
-		pdx_.show_ = true;
-	}
-	// [画面の遅れ] / [遅延時間] の [設定…] から。同じく設定ウィンドウが閉じきってから。
-	if (latency_.handoff_.openPending && !ImGui::IsPopupOpen(kSettingsTitle)) {
-		latency_.handoff_.openPending = false;
-		latency_.show_ = true;
-	}
+	folder_.PollOpen(*this, settings, filer);
+	// 設定ウィンドウの [編集…] と [設定…] から。同じ理由で、設定ウィンドウが
+	// 閉じきってから。
+	pdx_.PollOpen();
+	latency_.PollOpen();
 	folder_.Build(*this, settings, filer);
 	fs_.PollSafPicked(*this, filer);
 	fs_.Build(*this, filer);
 	// ファイラーの "Bookmarks>" で選ばれたぶん。
-	if (bm_.jumpPending_) {
-		bm_.jumpPending_ = false;
-		bm_.JumpToRef(*this, settings, bm_.jumpRef_);
-	}
+	bm_.PollJump(*this, settings);
 	bm_.Build(*this, settings, filer);
 	pdx_.Build(*this, settings, filer);
 	latency_.Build(*this, settings, draw, player, screen);
@@ -910,29 +878,13 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	update_.Schedule(*this);
 	if (!update_.nested()) update_.BuildWindow(*this);
 	// フォルダ選択を閉じたら、[追加…] で呼んだ元へ戻る（OpenFolderFor）。
-	if (folder_.returnTo_ != FolderDialog::Return::None && !folder_.show_ &&
-	    !folder_.openPending_ &&
-	    !ImGui::IsPopupOpen(folder_.Title())) {
-		const FolderDialog::Return to = folder_.returnTo_;
-		folder_.returnTo_ = FolderDialog::Return::None;
-		if (to == FolderDialog::Return::Bookmarks) bm_.show_ = true;
-		if (to == FolderDialog::Return::Pdx) pdx_.show_ = true;
-	}
+	const FolderDialog::Return to = folder_.TakeReturn();
+	if (to == FolderDialog::Return::Bookmarks) bm_.Reopen();
+	if (to == FolderDialog::Return::Pdx) pdx_.Reopen();
 	// [PDX の探索先] を閉じたら設定ウィンドウへ戻る。[追加…] のフォルダ選択へ
 	// 出ている間（と、そこから戻ってくる途中）は戻らない。
-	if (pdx_.handoff_.returnToCaller && !pdx_.show_ && !pdx_.handoff_.openPending &&
-	    !folder_.show_ &&
-	    !folder_.openPending_ && folder_.returnTo_ != FolderDialog::Return::Pdx &&
-	    !ImGui::IsPopupOpen(kPdxPathsTitle) &&
-	    !ImGui::IsPopupOpen(folder_.Title())) {
-		pdx_.handoff_.returnToCaller = false;
-		settings_.SetVisible(true);
-	}
-	if (latency_.handoff_.returnToCaller && !latency_.show_ && !latency_.handoff_.openPending &&
-	    !ImGui::IsPopupOpen(latency_.Title())) {
-		latency_.handoff_.returnToCaller = false;
-		settings_.SetVisible(true);
-	}
+	if (pdx_.TakeReturn(folder_.BusyFor(FolderDialog::Return::Pdx))) settings_.SetVisible(true);
+	if (latency_.TakeReturn()) settings_.SetVisible(true);
 
 	settings_.Build(*this, settings, draw, player, filer, screen);
 }

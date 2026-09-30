@@ -68,6 +68,12 @@ void BookmarksDialog::OpenBookmark(SettingsUi &ui, Settings *settings, int index
 	show_ = false;
 }
 
+void BookmarksDialog::PollJump(SettingsUi &ui, Settings *settings) {
+	if (!jumpPending_) return;
+	jumpPending_ = false;
+	JumpToRef(ui, settings, jumpRef_);
+}
+
 void BookmarksDialog::JumpToRef(SettingsUi &ui, Settings *settings, const std::string &ref) {
 	if (ui.vfs_ == 0 || ref.empty()) return;
 	// 行き先の SAF の許可が失われていれば、[ファイルシステムの設定] を

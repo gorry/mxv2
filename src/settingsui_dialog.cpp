@@ -41,4 +41,18 @@ bool NestedPopup::TakeClose() {
 	return true;
 }
 
+void Handoff::OpenWhenCallerClosed(bool *show, const char *callerTitle) {
+	if (!openPending || ImGui::IsPopupOpen(callerTitle)) return;
+	openPending = false;
+	*show = true;
+}
+
+bool Handoff::TakeReturn(bool show, const char *title, bool blocked) {
+	if (!returnToCaller || show || openPending || blocked || ImGui::IsPopupOpen(title)) {
+		return false;
+	}
+	returnToCaller = false;
+	return true;
+}
+
 }  // namespace mxv2

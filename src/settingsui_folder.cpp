@@ -57,6 +57,41 @@ void FolderDialog::Open(SettingsUi &ui, const std::string &dir) {
 	show_ = true;
 }
 
+void FolderDialog::PollOpen(SettingsUi &ui, Settings *settings, Filer *filer) {
+	if (!openPending_ || ImGui::IsPopupOpen(kSettingsTitle) ||
+	    ImGui::IsPopupOpen(kBookmarksTitle) || ImGui::IsPopupOpen(kPdxPathsTitle)) {
+		return;
+	}
+	openPending_ = false;
+	// PDX なら一覧で選んでいた探索先から（読めなければファイラーの今の
+	// 場所から）。ブックマークはファイラーの今の場所から。
+	std::string start = filer->currentRef();
+	const int pdx = ui.pdx_.selected();
+	if (target_ == Target::Pdx && ui.vfs_ != 0 && pdx >= 0 &&
+	    pdx < (int)settings->pdxPaths.size()) {
+		std::string ref;
+		if (ui.vfs_->Resolve(settings->pdxPaths[pdx], filer->currentRef(), &ref) &&
+		    ui.vfs_->IsDir(ref)) {
+			start = ref;
+		}
+	}
+	SetDir(ui, start);
+	show_ = true;
+}
+
+FolderDialog::Return FolderDialog::TakeReturn() {
+	if (returnTo_ == Return::None || show_ || openPending_ || ImGui::IsPopupOpen(Title())) {
+		return Return::None;
+	}
+	const Return to = returnTo_;
+	returnTo_ = Return::None;
+	return to;
+}
+
+bool FolderDialog::BusyFor(Return caller) const {
+	return show_ || openPending_ || returnTo_ == caller || ImGui::IsPopupOpen(Title());
+}
+
 // 子フォルダの一覧だけ作り直す。毎フレーム読み直すと重いので、
 // 行き先が変わったときだけ列挙する。
 // dir が空のときはファイルシステムの選択（マウントされている FS が並ぶ）。

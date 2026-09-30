@@ -69,6 +69,15 @@ void SettingsWindow::ApplyZoomStep(SettingsUi &ui, Settings *settings) {
 	zoomApplyAtMs_ = SDL_GetTicks() + kZoomApplyDelayMs;
 }
 
+// 待たせていたウィンドウ倍率をここで適用する。フレームの先頭でやるので、
+// この後の倍率の計算とマウス座標の直しは新しい大きさで揃う。
+void SettingsWindow::ApplyPendingZoom(Screen *screen) {
+	if (zoomApplyAtMs_ == 0 || SDL_GetTicks() < zoomApplyAtMs_) return;
+	zoomApplyAtMs_ = 0;
+	if (pendingZoom_ > 0) screen->SetZoom(pendingZoom_);
+	pendingZoom_ = 0;
+}
+
 void SettingsWindow::ScanSkins(SettingsUi &ui) {
 	std::vector<std::string> refs;
 	ui.paths_.ListSkinRefs(&refs);
@@ -145,12 +154,16 @@ void SettingsWindow::SelectLocale(SettingsUi &ui, Settings *settings, const std:
 	pendingLocale_ =
 	    name.empty() ? MatchLocale(locales_, Screen::SystemLocale()) : name;
 	localeApplyPending_ = true;
-	// 題名ごと入れ替わるので、いったん閉じる。開き直すのは Build() の頭。
+	// 題名ごと入れ替わるので、いったん閉じる。開き直すのは ApplyPendingLocale。
 	visible_ = false;
 }
 
-// 実際にカタログを読み直す。**設定ウィンドウが閉じている間に呼ぶこと。**
-void SettingsWindow::ApplyLocale(SettingsUi &ui) {
+// 実際にカタログを読み直す。設定ウィンドウが閉じきるまで待つ。
+void SettingsWindow::ApplyPendingLocale(SettingsUi &ui) {
+	if (!localeApplyPending_ || ImGui::IsPopupOpen(kSettingsTitle)) return;
+	localeApplyPending_ = false;
+	visible_ = true;  // 新しい題名で開き直す（読めなくても元の題名で開き直す）
+
 	const std::string want = pendingLocale_;
 	pendingLocale_.clear();
 	if (want.empty()) return;

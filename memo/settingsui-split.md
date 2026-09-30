@@ -396,3 +396,25 @@ CloseDialog() の 11 連結を `for (Dialog *d : dialogs_)` に畳めること�
 - 確認: Windows Debug / Android release ビルド通過。Windows（ud2）で設定→PDX→フォルダ→ESC→×、
   [画面の遅れ] の往復、F4 の削除確認（ESC で 1 段ずつ）、F2、終了の確認、F12。Pixel 7a で F4 の
   削除確認、Shift+M の確認、設定→PDX→フォルダ→戻る。ログに例外なし。
+
+### 第 4 段: 片方向の friend にする（2026-10-01）
+
+第 3 段までは、SettingsUi が 11 クラスを friend にし、各クラスも `friend class SettingsUi` に
+していた（相互 friend）。後者をすべて外し、FileSystemsDialog → InfoDialogs の friend も外した。
+残る friend は「ダイアログ → SettingsUi」の片方向だけ（共通の道具と main への出力を使うため）。
+SettingsUi もダイアログ同士も、相手の中へは public の関数でしか触らない。
+
+コンパイラに越境を列挙させたら、settingsui.cpp / settingsui.h / settingsui_filesystems.cpp の
+3 ファイルだけだった。置き換え:
+- 往復: `Handoff::OpenWhenCallerClosed(&show_, callerTitle)` / `TakeReturn(show, title, blocked)`
+  （settingsui_dialog.cpp）。pdx / latency は `PollOpen()` / `TakeReturn(...)`。folder は
+  `PollOpen(ui, settings, filer)`（開く位置の計算ごと移した）/ `TakeReturn()` / `BusyFor(caller)`。
+  戻ってきたときの `show_ = true` は `ModalDialog::Reopen()`（中身は保つ。Open は選択を戻す）。
+- bm: `PollJump(ui, settings)`。JumpToRef は private へ。
+- settings: `WatchClosed()` / `ApplyPendingZoom(screen)` / `ApplyPendingLocale(ui)` / `SetLocales()`。
+- update: `SetState()` / `TakeCheckNow()` / `Show(result)`。`anyDialogOpen` は `update_.isOpen()`。
+- info: `MarkRegranted(mountRef, text)`（起動時の警告の行を書き換える）。
+- 外から使われなくなった FolderDialog::Title / SetDir も private へ。
+
+Build() の中の呼び出し順は変えていない（条件式をそのまま関数へ移しただけ）。
+Windows Debug / Android release ビルド通過。

@@ -39,8 +39,6 @@ public:
 	void Build(SettingsUi &ui, Settings *settings, DrawScreen *draw, Player *player);
 
 private:
-	friend class SettingsUi;
-
 	// その先頭。スキン名・保存・読み直す・参照元のスキン。
 	void BuildSkinSaveRow(SettingsUi &ui, Settings *settings, DrawScreen *draw);
 	// 上書き確認。配色設定の中に入れ子で開く。

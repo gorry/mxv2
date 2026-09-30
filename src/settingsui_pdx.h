@@ -36,14 +36,20 @@ public:
 	}
 	// 設定ウィンドウの [編集…] から。設定ウィンドウを閉じ、閉じきったら開く。
 	void OpenFromSettings(SettingsUi &ui);
+	// 設定ウィンドウとの往復（SettingsUi::Build から毎フレーム）。PollOpen は
+	// 設定ウィンドウが閉じきったら開く。TakeReturn は自分が閉じきったら 1 度だけ
+	// true を返す（呼んだ側が設定ウィンドウを開き直す）。folderBusy の間
+	// （[追加…] のフォルダ選択へ出ている間と、そこから戻ってくる途中）は返さない。
+	void PollOpen();
+	bool TakeReturn(bool folderBusy);
+	// 一覧で選んでいる行。空のときは -1（FolderDialog が最初に見せる場所に使う）。
+	int selected() const { return selected_; }
 	// フォルダ選択で選んだ ref を、一覧で選んでいた行の位置（無ければ末尾）へ
 	// 挿し、その行を選ぶ（FolderDialog から）。
 	void Insert(std::vector<std::string> *list, const std::string &ref);
 	void Build(SettingsUi &ui, Settings *settings, Filer *filer);
 
 private:
-	friend class SettingsUi;
-
 	// 「本当に削除するか」。このダイアログの中に入れ子で開く。
 	void BuildRemoveWindow(SettingsUi &ui, Settings *settings);
 

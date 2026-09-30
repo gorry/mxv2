@@ -28,6 +28,23 @@ public:
 	// （SettingsUi::Build と SettingsWindow::Build が見る）。
 	bool nested() const { return nested_; }
 
+	// 使える環境か・いま確かめている最中か（main が毎フレーム教える）。
+	void SetState(bool available, bool running) {
+		available_ = available;
+		running_ = running;
+	}
+	// [今すぐ…] が押されたか（1 度だけ true）。
+	bool TakeCheckNow() {
+		const bool v = checkNow_;
+		checkNow_ = false;
+		return v;
+	}
+	// 結果を預かる。どこで開くかは Schedule が決める。
+	void Show(const UpdateResult &r) {
+		result_ = r;
+		pending_ = true;
+	}
+
 	// [mxv2 の設定] の [通信] グループ（SettingsWindow から）。
 	void BuildNetworkGroup(SettingsUi &ui, Settings *settings);
 	// 預かった結果をどこで開くか決める（SettingsUi::Build の頭から毎フレーム）。
@@ -37,11 +54,9 @@ public:
 	void BuildWindow(SettingsUi &ui);
 
 private:
-	friend class SettingsUi;
-
 	bool available_;  // [通信] を出すか（main が毎フレーム教える）
 	bool running_;    // 確かめている最中（[今すぐ…] を押せなくする）
-	bool checkNow_;   // [今すぐ…] が押された（SettingsUi::TakeUpdateCheckNow が読む）
+	bool checkNow_;   // [今すぐ…] が押された（TakeCheckNow が読む）
 	UpdateResult result_;
 	bool pending_;    // 見せる結果を預かっている
 	NestedPopup popup_;

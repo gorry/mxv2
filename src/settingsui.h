@@ -290,7 +290,7 @@ public:
 	// チュートリアルは起動時の警告を閉じてから始めるので、その見張りに使う。
 	bool anyDialogOpen() const {
 		return busy() || ctx_.isOpen() || ctx_.quitOpen() || fs_.handedOpen() ||
-		       update_.popup_.open;
+		       update_.isOpen();
 	}
 
 	// ---- 更新チェック（updatecheck.h） -------------------------------------
@@ -299,23 +299,15 @@ public:
 	// 使える環境か・いま確かめている最中か。main が毎フレーム教える。
 	// 使えない環境では [mxv2 の設定] に [通信] を出さない。
 	void SetUpdateCheckState(bool available, bool running) {
-		update_.available_ = available;
-		update_.running_ = running;
+		update_.SetState(available, running);
 	}
 	// [今すぐ更新チェックを行う] が押されたか（1 度だけ true）。
-	bool TakeUpdateCheckNow() {
-		const bool v = update_.checkNow_;
-		update_.checkNow_ = false;
-		return v;
-	}
+	bool TakeUpdateCheckNow() { return update_.TakeCheckNow(); }
 	// 結果を見せる。見せるのは「新しい版がある」ときと、[今すぐ…] から
 	// 始めたときの結果（最新だった・失敗した）。どれを渡すかは main が決める。
 	// 他のダイアログが開いていれば、閉じるまで預かる。ただし [今すぐ…] の
 	// 結果で [mxv2 の設定] が開いたままなら、その中に重ねて出す。
-	void ShowUpdateResult(const UpdateResult &r) {
-		update_.result_ = r;
-		update_.pending_ = true;
-	}
+	void ShowUpdateResult(const UpdateResult &r) { update_.Show(r); }
 
 	// 1 フレーム分の UI を組み立てる。設定の変更はその場で反映する。
 	// 非表示のときも ImGui のフレームは回す必要があるので毎フレーム呼ぶ。
@@ -411,8 +403,8 @@ private:
 	bool BeginModal(const char *title, bool *show, float w, float h, ImGuiWindowFlags extra = 0);
 
 	// ダイアログのクラスは SettingsUi の中（共通の道具・main への出力・
-	// 他のダイアログ）に手が届く。逆に SettingsUi も各クラスの中を触る
-	// （往復の配線）ので、向こうも SettingsUi を friend にしている。
+	// 他のダイアログ）に手が届く。**逆向きは friend にしない**: SettingsUi も
+	// ダイアログ同士も、相手の中へは public の関数でしか触らない。
 	friend class CastDialog;
 	friend class UpdateDialog;
 	friend class InfoDialogs;
@@ -473,7 +465,7 @@ private:
 	// どれか 1 つでもダイアログが開いているか。モーダルなので、開いている
 	// 間は別のものを開けない（先にそれを閉じてもらう）。
 	bool busy() const {
-		return settings_.visible_ || colors_.isOpen() || folder_.isOpen() || fs_.isOpen() ||
+		return settings_.isOpen() || colors_.isOpen() || folder_.isOpen() || fs_.isOpen() ||
 		       bm_.isOpen() ||
 		       pdx_.isOpen() || latency_.isOpen() || cast_.isOpen() || info_.isOpen();
 	}

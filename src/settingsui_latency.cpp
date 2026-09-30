@@ -85,6 +85,14 @@ void LatencyDialog::Open(SettingsUi &ui, Target target, const std::string &devic
 	ui.SetSettingsVisible(false);
 }
 
+void LatencyDialog::PollOpen() {
+	handoff_.OpenWhenCallerClosed(&show_, kSettingsTitle);
+}
+
+bool LatencyDialog::TakeReturn() {
+	return handoff_.TakeReturn(show_, Title(), false);
+}
+
 void LatencyDialog::Build(SettingsUi &ui, Settings *settings, DrawScreen *draw, Player *player,
                           Screen *screen) {
 	const char *title = Title();

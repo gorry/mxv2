@@ -36,14 +36,16 @@ public:
 	// [設定…] から。設定ウィンドウを閉じ、閉じきったら開く。device は
 	// Target::Bluetooth のときの機器名。
 	void Open(SettingsUi &ui, Target target, const std::string &device);
+	// 設定ウィンドウとの往復（SettingsUi::Build から毎フレーム）。作法は
+	// PdxPathsDialog::PollOpen / TakeReturn と同じ。
+	void PollOpen();
+	bool TakeReturn();
 	// ダイアログの題名。target で変わる。
 	const char *Title() const;
 	void Build(SettingsUi &ui, Settings *settings, DrawScreen *draw, Player *player,
 	           Screen *screen);
 
 private:
-	friend class SettingsUi;
-
 	Handoff handoff_;     // 設定ウィンドウとの往復
 	Target target_;
 	std::string device_;  // Target::Bluetooth の機器名（開いたときのもの）

@@ -62,6 +62,14 @@ void InfoDialogs::SetStartupWarnings(const std::vector<StartupWarning> &lines) {
 	showStartup_ = !startupLines_.empty();
 }
 
+void InfoDialogs::MarkRegranted(const std::string &mountRef, const std::string &text) {
+	for (size_t i = 0; i < startupLines_.size(); i++) {
+		if (CompareNoCase(startupLines_[i].regrantRef, mountRef) != 0) continue;
+		startupLines_[i].done = true;
+		startupLines_[i].text = text;
+	}
+}
+
 // 起動時の警告。ウィンドウが出る前に起きたこと（ini から捨てた項目、
 // スキンやフォントの取りこぼし）を、最初のフレームでまとめて見せる。
 // ログにも同じものが出ているので、閉じたら二度と出さない。

@@ -266,11 +266,7 @@ void FileSystemsDialog::ApplyPickedTree(SettingsUi &ui, Filer *filer, const std:
 				error_.clear();
 				if (filer != 0) filer->Refresh();
 				// 起動時の警告に同じ項目があれば、済んだ印に差し替える。
-				for (size_t i = 0; i < ui.info_.startupLines_.size(); i++) {
-					if (CompareNoCase(ui.info_.startupLines_[i].regrantRef, regrant) != 0) continue;
-					ui.info_.startupLines_[i].done = true;
-					ui.info_.startupLines_[i].text = MsgF("FileSystems.Regranted", target->label());
-				}
+				ui.info_.MarkRegranted(regrant, MsgF("FileSystems.Regranted", target->label()));
 			} else {
 				error_ = Msg("FileSystems.RegrantFailed");
 				if (fromFiler) OpenFor(ui, regrant);

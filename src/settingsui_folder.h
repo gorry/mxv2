@@ -44,25 +44,32 @@ public:
 	// ファイラーを動かすために開く。dir は最初に見せるフォルダの ref
 	// （ふつうはファイラーの今の場所）。
 	void Open(SettingsUi &ui, const std::string &dir);
-	// [追加…] から。呼び出し元が閉じきったら SettingsUi::Build が開く。
+	// [追加…] から。呼び出し元が閉じきったら PollOpen が開く。
 	// 呼び出し元は自分を閉じること。
 	void OpenFor(Target target, Return returnTo) {
 		target_ = target;
 		returnTo_ = returnTo;
 		openPending_ = true;
 	}
-	// ダイアログの題名。"###" 以降が ImGui の id なので、見出しを変えても
-	// 同じポップアップとして扱われる。
-	const char *Title() const;
+	// OpenFor で頼まれたぶんを、呼び出し元が閉じきってから開く
+	// （SettingsUi::Build から毎フレーム）。
+	void PollOpen(SettingsUi &ui, Settings *settings, Filer *filer);
+	// 閉じきったら、開き直す呼び出し元を 1 度だけ返す。無ければ Return::None。
+	Return TakeReturn();
+	// caller のためにまだ出ているか（開く待ち・開いている・戻る途中）。
+	// caller は、これが false になるまで自分の呼び出し元へ戻らない。
+	bool BusyFor(Return caller) const;
 	// 一覧を読んでいるスレッドの手を離させる（Vfs の一覧を触る前に。
 	// FileSystemsDialog::QuiesceVfsReaders から）。
 	void Quiesce();
-	// 一覧に出すフォルダを決めて、入力欄もそこへ合わせる。
-	void SetDir(SettingsUi &ui, const std::string &dir);
 	void Build(SettingsUi &ui, Settings *settings, Filer *filer);
 
 private:
-	friend class SettingsUi;
+	// ダイアログの題名。"###" 以降が ImGui の id なので、見出しを変えても
+	// 同じポップアップとして扱われる。
+	const char *Title() const;
+	// 一覧に出すフォルダを決めて、入力欄もそこへ合わせる。
+	void SetDir(SettingsUi &ui, const std::string &dir);
 
 	// 子フォルダ（表示名と ref）。ファイルシステムの選択のときはマウントされて
 	// いる FS が並ぶ。
@@ -82,7 +89,7 @@ private:
 
 	Target target_;
 	Return returnTo_;
-	bool openPending_;      // 呼び出し元が閉じきったら開く（OpenFor）
+	bool openPending_;      // 呼び出し元が閉じきったら開く（OpenFor → PollOpen）
 	// 一覧に出しているフォルダの ref。空ならファイルシステムの選択。
 	std::string dir_;
 	std::string selected_;  // 一覧で選ばれている行の ref

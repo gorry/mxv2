@@ -37,8 +37,14 @@ public:
 		visible_ = false;
 		return true;
 	}
+	// 閉じた瞬間を拾う（SettingsUi::Build から毎フレーム）。× でも ESC でも
+	// ImGui が visible_ を false にするので、代入を追うのではなく変わり目を見る。
+	void WatchClosed() {
+		if (wasVisible_ && !visible_) closed_ = true;
+		wasVisible_ = visible_;
+	}
 	// 閉じた瞬間かどうかを 1 度だけ返す。「縦横の切り替えかた」は**閉じてから**
-	// 効かせる決まりなので、その合図に使う（SettingsUi::Build が立てる）。
+	// 効かせる決まりなので、その合図に使う（WatchClosed が立てる）。
 	bool TakeClosed() {
 		const bool v = closed_;
 		closed_ = false;
@@ -57,6 +63,9 @@ public:
 	// RequestZoomStep で頼まれた増減を settings へ入れる。SettingsUi::Build の
 	// 頭から 1 回だけ呼ぶ（倍率まわりを 1 か所に集める）。
 	void ApplyZoomStep(SettingsUi &ui, Settings *settings);
+	// 待たせていたウィンドウ倍率を、時刻が来ていれば screen へ掛ける。
+	// SettingsUi::Build の頭（ApplyZoomStep の次）から毎フレーム呼ぶ。
+	void ApplyPendingZoom(Screen *screen);
 	// 言語が入れ替わったフレームで 1 度だけ true。読んだら消える。
 	bool TakeLocaleChanged() {
 		const bool c = localeChanged_;
@@ -68,16 +77,16 @@ public:
 	void ClearPendingSampleRate() { pendingSampleRate_ = 0; }
 	// スキンの一覧を取り直す（フォルダを足したとき用）。
 	void ScanSkins(SettingsUi &ui);
-	// [言語] で選ばれた言語を実際に読み込む。**設定ウィンドウが閉じきって
-	// から**（題名も文言なので、開いたまま替えると ImGui のポップアップの id が
-	// 途中で変わる）。SettingsUi::Build が呼ぶ。
-	void ApplyLocale(SettingsUi &ui);
+	// 選べる言語（SettingsUi::Init で数え上げたもの）。
+	void SetLocales(const std::vector<LocaleInfo> &locales) { locales_ = locales; }
+	// [言語] で選ばれた言語があれば、実際に読み込んで新しい題名で開き直す。
+	// **設定ウィンドウが閉じきってから**（題名も文言なので、開いたまま替えると
+	// ImGui のポップアップの id が途中で変わる）。SettingsUi::Build から毎フレーム。
+	void ApplyPendingLocale(SettingsUi &ui);
 	void Build(SettingsUi &ui, Settings *settings, DrawScreen *draw, Player *player, Filer *filer,
 	           Screen *screen);
 
 private:
-	friend class SettingsUi;
-
 	// 選べるスキン。縦横切り替え（screen_orientation.md）のために、
 	// 名前だけでなく**縦横どちら向けか**も持つ。
 	struct SkinItem {
@@ -89,7 +98,7 @@ private:
 	// スキンを選ぶドロップダウン。portraitSlot が true なら縦向きのスキンを
 	// 上へまとめる。選び直されたら true。
 	bool SkinCombo(SettingsUi &ui, const char *label, bool portraitSlot, std::string *value);
-	// 言語を選んだときの控え（入れ替えは ApplyLocale）。
+	// 言語を選んだときの控え（入れ替えは ApplyPendingLocale）。
 	void SelectLocale(SettingsUi &ui, Settings *settings, const std::string &name);
 
 	bool visible_;

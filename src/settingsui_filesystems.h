@@ -80,8 +80,6 @@ public:
 	void BuildHandedWindow(SettingsUi &ui, Filer *filer);
 
 private:
-	friend class SettingsUi;
-
 	// 削除の確認。このダイアログの中に入れ子で開く。
 	void BuildRemoveWindow(SettingsUi &ui, Filer *filer);
 	void BuildAddWindow(SettingsUi &ui, Filer *filer);
