@@ -29,12 +29,10 @@ public:
 		// 名前の欄は、開いたときに今のスキン名で埋め直す。
 		skinNameReset_ = true;
 	}
-	// ModalDialog::CloseTop を隠す。入れ子の確認を先に閉じる。
+	// SettingsUi::CloseDialog() 用。入れ子の確認を先に閉じる。
 	bool CloseTop() {
 		if (overwrite_.CloseTop()) return true;
-		if (!show_) return false;
-		show_ = false;
-		return true;
+		return CloseSelf();
 	}
 	void Build(SettingsUi &ui, Settings *settings, DrawScreen *draw, Player *player);
 

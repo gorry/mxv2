@@ -5,7 +5,7 @@
 //
 // 11 個のダイアログで繰り返していた定型を 3 つ、ここに括り出してある
 // （memo/settingsui-split.md の第 3 段）:
-//   ModalDialog   … show_ / isOpen / CloseTop の 3 行
+//   ModalDialog   … show_ / isOpen / CloseSelf の 3 行
 //   NestedPopup   … 入れ子の確認の開き方・閉じ方（Begin / CancelButton）
 //   モーダルの開き方（SyncModal + 置き場所 + 大きさ + BeginDialog）は
 //   SettingsUi::BeginModal。
@@ -18,8 +18,14 @@ namespace mxv2 {
 class SettingsUi;
 
 // 「開いているか」を bool 1 つで表せるモーダルのダイアログの土台。仮想関数は
-// 持たない（SettingsUi は具象型で持つ）。入れ子の確認を持つクラスは CloseTop を
-// 自分で定義し直して、先に入れ子を閉じる（隠すだけ。仮想ではない）。
+// 持たない（SettingsUi は具象型で持つ）。
+//
+// SettingsUi::CloseDialog() が呼ぶ CloseTop は**土台には置かず**、派生クラスが
+// それぞれ public に定義する（入れ子の確認を持つクラスは、それを先に閉じて
+// から CloseSelf）。土台に置くと派生側の定義は「隠す」だけになり、
+// ModalDialog 越しに呼ぶと入れ子を閉じ損ねる。置かなければ、そう書いた時点で
+// コンパイルが通らない。同じ理由で、土台のまま持つ・消すこともできない
+// （デストラクタが protected）。
 class ModalDialog {
 public:
 	ModalDialog() : show_(false) {}
@@ -27,14 +33,16 @@ public:
 	// 中身（選んでいる行など）を保ったまま開き直す。往復から戻ってきたとき用
 	// （SettingsUi::Build）。初めて開くときは各クラスの Open を使う。
 	void Reopen() { show_ = true; }
-	// SettingsUi::CloseDialog() 用。開いていれば閉じて true。
-	bool CloseTop() {
+
+protected:
+	~ModalDialog() {}
+	// 自分だけを閉じる。開いていれば閉じて true（派生クラスの CloseTop から）。
+	bool CloseSelf() {
 		if (!show_) return false;
 		show_ = false;
 		return true;
 	}
 
-protected:
 	bool show_;
 };
 

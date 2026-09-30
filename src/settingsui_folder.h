@@ -44,6 +44,8 @@ public:
 	// ファイラーを動かすために開く。dir は最初に見せるフォルダの ref
 	// （ふつうはファイラーの今の場所）。
 	void Open(SettingsUi &ui, const std::string &dir);
+	// SettingsUi::CloseDialog() 用。開いていれば閉じて true。
+	bool CloseTop() { return CloseSelf(); }
 	// [追加…] から。呼び出し元が閉じきったら PollOpen が開く。
 	// 呼び出し元は自分を閉じること。
 	void OpenFor(Target target, Return returnTo) {

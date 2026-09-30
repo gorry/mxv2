@@ -418,3 +418,15 @@ SettingsUi もダイアログ同士も、相手の中へは public の関数で�
 
 Build() の中の呼び出し順は変えていない（条件式をそのまま関数へ移しただけ）。
 Windows Debug / Android release ビルド通過。
+
+### 第 5 段: CloseTop を土台から外す（2026-10-01）
+
+第 3 段の ModalDialog は public な CloseTop を持ち、入れ子のある 4 クラスが同名で**隠して**
+いた。具象型で呼ぶ限り正しいが、`ModalDialog &` 越しに呼ぶと入れ子を閉じ損ねる罠が残る。
+仮想関数は持たない方針のまま、罠をコンパイルエラーに変えた:
+- 土台の CloseTop を protected の `CloseSelf()` に改名。public な CloseTop は土台に無い。
+- 7 つの派生クラスがそれぞれ public な CloseTop を持つ（cast / latency / folder は
+  `return CloseSelf();` の 1 行、bm / pdx / colors / fs は入れ子を閉じてから CloseSelf）。
+- 土台のデストラクタを protected に（土台のまま持つ・土台越しに delete するのも弾く）。
+- 確認: `ModalDialog &d = pdx; d.CloseTop();` と `delete (ModalDialog *)p;` を一時的に書いて
+  C2039 / C2248 で止まるのを見てから消した。

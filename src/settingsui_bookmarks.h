@@ -30,13 +30,11 @@ public:
 		selected_ = 0;
 		error_.clear();
 	}
-	// ModalDialog::CloseTop を隠す。入れ子の確認を先に閉じる。
+	// SettingsUi::CloseDialog() 用。入れ子の確認を先に閉じる。
 	bool CloseTop() {
 		if (remove_.CloseTop()) return true;
 		if (toggle_.CloseTop()) return true;  // 単独で開くが、閉じ方は同じ
-		if (!show_) return false;
-		show_ = false;
-		return true;
+		return CloseSelf();
 	}
 	// ファイラーの "Bookmarks>" で選んだブックマークへ、次の Build() で移る。
 	void RequestJump(const std::string &ref) {

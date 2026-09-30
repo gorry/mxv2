@@ -27,12 +27,10 @@ class PdxPathsDialog : public ModalDialog {
 public:
 	PdxPathsDialog() : selected_(0) {}
 
-	// ModalDialog::CloseTop を隠す。入れ子の確認を先に閉じる。
+	// SettingsUi::CloseDialog() 用。入れ子の確認を先に閉じる。
 	bool CloseTop() {
 		if (remove_.CloseTop()) return true;
-		if (!show_) return false;
-		show_ = false;
-		return true;
+		return CloseSelf();
 	}
 	// 設定ウィンドウの [編集…] から。設定ウィンドウを閉じ、閉じきったら開く。
 	void OpenFromSettings(SettingsUi &ui);

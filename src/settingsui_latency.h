@@ -36,6 +36,8 @@ public:
 	// [設定…] から。設定ウィンドウを閉じ、閉じきったら開く。device は
 	// Target::Bluetooth のときの機器名。
 	void Open(SettingsUi &ui, Target target, const std::string &device);
+	// SettingsUi::CloseDialog() 用。開いていれば閉じて true。
+	bool CloseTop() { return CloseSelf(); }
 	// 設定ウィンドウとの往復（SettingsUi::Build から毎フレーム）。作法は
 	// PdxPathsDialog::PollOpen / TakeReturn と同じ。
 	void PollOpen();

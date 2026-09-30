@@ -29,6 +29,8 @@ public:
 	      scrollY_(false) {}
 
 	void Open() { show_ = true; }
+	// SettingsUi::CloseDialog() 用。開いていれば閉じて true。
+	bool CloseTop() { return CloseSelf(); }
 	// 1 フレームぶん。設定ウィンドウが閉じていても毎フレーム呼ぶ。
 	void Build(SettingsUi &ui, Settings *settings);
 
