@@ -200,7 +200,8 @@ test-windows: build-windows test-ui-windows
 # tools/uitest.ini から作り直す（普段の mxv2.ini には触らない）。-multi は、
 # 手元で mxv2 が動いていてもそちらへ渡さず、自分で走らせるため。
 # mxv2_uitest は ALL から外してあるので（普段の build を遅くしないため）、
-# ここで名指しでビルドする。
+# ここで名指しでビルドする。空の skin/Default は [配色設定] の上書きの確認を
+# 出すため（スキンは同梱のほうを assets:Default で名指しする。tools/uitest.cpp）。
 UITEST_USERDIR := $(WIN_BUILD_DIR)/uitest-userdir
 EXE_UITEST := $(WIN_OUT_DIR)/mxv2_uitest.exe
 
@@ -212,7 +213,8 @@ test-ui-windows: build-windows
 	cmake -E rm -rf "$(UITEST_USERDIR)"
 	$(MKDIR_P) "$(UITEST_USERDIR)"
 	cmake -E copy tools/uitest.ini "$(UITEST_USERDIR)/mxv2.ini"
-	"$(EXE_UITEST)" -multi -userdir "$(UITEST_USERDIR)" -skin Default -locale ja-JP
+	$(MKDIR_P) "$(UITEST_USERDIR)/skin/Default"
+	"$(EXE_UITEST)" -multi -userdir "$(UITEST_USERDIR)" -skin assets:Default -locale ja-JP
 
 # ---------------------------------------------------------------------------
 # 演奏時間の測定とシークの負荷を測る（mxv2_benchmark）

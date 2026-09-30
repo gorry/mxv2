@@ -21,6 +21,8 @@
 #include "imgui.h"
 #include "imgui_internal.h"
 
+#include "cast.h"
+#include "fileutil.h"
 #include "message.h"
 #include "settingsui.h"
 #include "settingsui_internal.h"
@@ -159,7 +161,7 @@ ImGuiWindow *TopPopup() {
 	return (w != 0) ? w->RootWindow : 0;
 }
 
-void PushKey(SDL_Window *window, SDL_Keycode sym) {
+void PushKey(SDL_Window *window, SDL_Keycode sym, Uint16 mod) {
 	SDL_Event ev;
 	SDL_zero(ev);
 	ev.type = SDL_KEYDOWN;
@@ -167,6 +169,7 @@ void PushKey(SDL_Window *window, SDL_Keycode sym) {
 	ev.key.state = SDL_PRESSED;
 	ev.key.keysym.sym = sym;
 	ev.key.keysym.scancode = SDL_GetScancodeFromKey(sym);
+	ev.key.keysym.mod = mod;
 	SDL_PushEvent(&ev);
 	ev.type = SDL_KEYUP;
 	ev.key.state = SDL_RELEASED;
@@ -175,13 +178,46 @@ void PushKey(SDL_Window *window, SDL_Keycode sym) {
 
 // ---- 手順を作る ---------------------------------------------------------
 
-Step Key(SDL_Keycode sym, const char *name) {
+// キーを 1 回押す。SDL のイベントとして積むので、本物と同じく main の
+// keybind（と ESC なら SettingsUi::CloseDialog）を通る。
+Step Key(SDL_Keycode sym, const char *name, Uint16 mod = KMOD_NONE) {
 	Step s;
 	s.name = std::string("key ") + name;
-	s.tick = [sym](Env &env, int) {
-		PushKey(env.window, sym);
+	s.tick = [sym, mod](Env &env, int) {
+		PushKey(env.window, sym, mod);
 		return 1;
 	};
+	return s;
+}
+
+// SettingsUi の公開 API を直に呼ぶ（main が呼ぶものの代わり。起動時の警告・
+// 更新チェックの結果・渡されたファイル・バナーからのメニュー）。
+Step Call(const std::string &name, std::function<void(Env &)> fn) {
+	Step s;
+	s.name = "call " + name;
+	s.tick = [fn](Env &env, int) {
+		fn(env);
+		return 1;
+	};
+	return s;
+}
+
+// 入力欄へ文字を打つ。先に Click で入力欄を掴んでおくこと。
+Step Type(const std::string &name, std::function<std::string(Env &)> text) {
+	Step s;
+	s.name = "type " + name;
+	s.tick = [text](Env &env, int) {
+		ImGui::GetIO().AddInputCharactersUTF8(text(env).c_str());
+		return 1;
+	};
+	return s;
+}
+
+// n フレーム待つ（メニューのページ送りのように、動きが収まるのを待つとき）。
+Step Frames(int n) {
+	Step s;
+	s.name = "wait frames";
+	s.tick = [n](Env &, int frame) { return (frame + 1 >= n) ? 1 : 0; };
 	return s;
 }
 
@@ -312,11 +348,19 @@ Step Click(const std::string &name, Label label, bool onlyIfClosed = false) {
 
 // ---- 筋書き -------------------------------------------------------------
 // ini は Makefile の test-ui が用意する（PDX の探索先 1 件、画面の遅れは手動、
-// ブックマークは初回の既定 "assets:" 1 件）。
+// ブックマークは初回の既定 "assets:" 1 件）。スキンは assets:Default で、
+// ユーザーフォルダに空の skin/Default を置いてある（[配色設定] の [保存] で
+// 上書きの確認を出すため。確認は必ず取り消すので、中身は書かれない）。
+
+// 待つ並びを短く書く。
+std::vector<Title> Popups(Title a, Title b = 0) {
+	std::vector<Title> v(1, a);
+	if (b != 0) v.push_back(b);
+	return v;
+}
 
 void BuildScenario() {
 	std::vector<Step> &s = gSteps;
-	const std::vector<Title> none;
 	std::vector<Title> settings(1, &kSettingsTitle);
 	std::vector<Title> pdx(1, &kPdxPathsTitle);
 	std::vector<Title> pdxRemove;
@@ -330,6 +374,14 @@ void BuildScenario() {
 	bmRemove.push_back(&kBmRemoveTitle);
 	std::vector<Title> bmFolder(1, &kBookmarkFolderTitle);
 
+	// 起動時の警告（main が SetStartupWarnings で渡すもの）→ [閉じる]。
+	s.push_back(Call("SetStartupWarnings", [](Env &env) {
+		std::vector<SettingsUi::StartupWarning> w(1);
+		w[0].text = "uitest";
+		env.ui->SetStartupWarnings(w);
+	}));
+	s.push_back(WaitPopups("startup", Popups(&kStartupTitle)));
+	s.push_back(Click("[Close] (startup)", MsgLabel("Button.Close")));
 	s.push_back(WaitNothingOpen());
 
 	// 設定 → [PDX の探索先] → 削除の確認（ESC で 1 段だけ閉じる）→ [追加…] の
@@ -386,6 +438,156 @@ void BuildScenario() {
 	s.push_back(Key(SDLK_ESCAPE, "ESC"));
 	s.push_back(WaitNothingOpen());
 
+	// ---- 行き来の無い（入れ子だけの）ダイアログ -------------------------
+
+	// [配色設定] (F2) → [保存] で上書きの確認 → ESC で確認だけ閉じる → もう一度 →
+	// [キャンセル] → ESC で閉じる。
+	s.push_back(Key(SDLK_F2, "F2"));
+	s.push_back(WaitPopups("colors", Popups(&kColorsTitle)));
+	s.push_back(Click("[Save] (colors)", MsgLabel("Button.Save")));
+	s.push_back(WaitPopups("colors > overwrite", Popups(&kColorsTitle, &kOverwriteTitle)));
+	s.push_back(Key(SDLK_ESCAPE, "ESC"));
+	s.push_back(WaitPopups("colors", Popups(&kColorsTitle)));
+	s.push_back(Click("[Save] (colors)", MsgLabel("Button.Save")));
+	s.push_back(WaitPopups("colors > overwrite", Popups(&kColorsTitle, &kOverwriteTitle)));
+	s.push_back(Click("[Cancel]", MsgLabel("Button.Cancel")));
+	s.push_back(WaitPopups("colors", Popups(&kColorsTitle)));
+	s.push_back(Key(SDLK_ESCAPE, "ESC"));
+	s.push_back(WaitNothingOpen());
+
+	// [ファイルシステムの設定] (F3) → [追加…] を ESC で閉じる → もう一度開いて
+	// 実在のフォルダ（この実行ファイルの場所）を打ち込んで [追加] → 足した行
+	// （選んでいた先頭に入る）の [削除] で確認 → ESC → もう一度 → 確認の [削除]
+	// で本当に外す → ESC で閉じる。ini は使い捨ての -userdir のもの。
+	s.push_back(Key(SDLK_F3, "F3"));
+	s.push_back(WaitPopups("filesystems", Popups(&kFileSystemsTitle)));
+	s.push_back(Click("[Add] (fs)", MsgLabel("Button.AddFs")));
+	s.push_back(WaitPopups("filesystems > add", Popups(&kFileSystemsTitle, &kAddFsTitle)));
+	s.push_back(Key(SDLK_ESCAPE, "ESC"));
+	s.push_back(WaitPopups("filesystems", Popups(&kFileSystemsTitle)));
+	s.push_back(Click("[Add] (fs)", MsgLabel("Button.AddFs")));
+	s.push_back(WaitPopups("filesystems > add", Popups(&kFileSystemsTitle, &kAddFsTitle)));
+	s.push_back(Click("path field", []() { return std::string("##addfspath"); }));
+	s.push_back(Type("executable dir", [](Env &) { return ExecutableDir(); }));
+	s.push_back(Click("[Add] (fs > add)", MsgLabel("Button.Add")));
+	s.push_back(WaitPopups("filesystems (added)", Popups(&kFileSystemsTitle)));
+	s.push_back(Click("[Remove] (fs)", MsgLabel("Button.Remove")));
+	s.push_back(WaitPopups("filesystems > remove", Popups(&kFileSystemsTitle, &kFsRemoveTitle)));
+	s.push_back(Key(SDLK_ESCAPE, "ESC"));
+	s.push_back(WaitPopups("filesystems", Popups(&kFileSystemsTitle)));
+	s.push_back(Click("[Remove] (fs)", MsgLabel("Button.Remove")));
+	s.push_back(WaitPopups("filesystems > remove", Popups(&kFileSystemsTitle, &kFsRemoveTitle)));
+	s.push_back(Click("[Remove] (fs > remove)", MsgLabel("Button.Remove")));
+	s.push_back(WaitPopups("filesystems (removed)", Popups(&kFileSystemsTitle)));
+	s.push_back(Key(SDLK_ESCAPE, "ESC"));
+	s.push_back(WaitNothingOpen());
+
+	// フォルダを選ぶ (L)。ファイラーを動かすほう。
+	s.push_back(Key(SDLK_l, "L"));
+	s.push_back(WaitPopups("folder", Popups(&kFolderTitle)));
+	s.push_back(Key(SDLK_ESCAPE, "ESC"));
+	s.push_back(WaitNothingOpen());
+
+	// Shift+M。今の場所（初回は assets:、既定のブックマークにある）を外すかの確認。
+	s.push_back(Key(SDLK_m, "Shift+M", KMOD_LSHIFT));
+	s.push_back(WaitPopups("bookmark toggle", Popups(&kBmToggleTitle)));
+	s.push_back(Click("[Cancel]", MsgLabel("Button.Cancel")));
+	s.push_back(WaitNothingOpen());
+	s.push_back(Key(SDLK_m, "Shift+M", KMOD_LSHIFT));
+	s.push_back(WaitPopups("bookmark toggle", Popups(&kBmToggleTitle)));
+	s.push_back(Key(SDLK_ESCAPE, "ESC"));
+	s.push_back(WaitNothingOpen());
+
+	// [操作方法] (F11 / H) と [バージョン情報] (F12 / A)。
+	s.push_back(Key(SDLK_F11, "F11"));
+	s.push_back(WaitPopups("help", Popups(&kHelpTitle)));
+	s.push_back(Key(SDLK_ESCAPE, "ESC"));
+	s.push_back(WaitNothingOpen());
+	s.push_back(Key(SDLK_h, "H"));
+	s.push_back(WaitPopups("help", Popups(&kHelpTitle)));
+	s.push_back(Key(SDLK_ESCAPE, "ESC"));
+	s.push_back(WaitNothingOpen());
+	s.push_back(Key(SDLK_F12, "F12"));
+	s.push_back(WaitPopups("about", Popups(&kAboutTitle)));
+	s.push_back(Key(SDLK_ESCAPE, "ESC"));
+	s.push_back(WaitNothingOpen());
+	s.push_back(Key(SDLK_a, "A"));
+	s.push_back(WaitPopups("about", Popups(&kAboutTitle)));
+	s.push_back(Key(SDLK_ESCAPE, "ESC"));
+	s.push_back(WaitNothingOpen());
+
+	// 終了の確認。何も開いていないときの ESC と Q で出る。[終了] は押さない。
+	s.push_back(Key(SDLK_ESCAPE, "ESC"));
+	s.push_back(WaitPopups("quit", Popups(&kQuitTitle)));
+	s.push_back(Click("[Cancel]", MsgLabel("Button.Cancel")));
+	s.push_back(WaitNothingOpen());
+	s.push_back(Key(SDLK_q, "Q"));
+	s.push_back(WaitPopups("quit", Popups(&kQuitTitle)));
+	s.push_back(Key(SDLK_ESCAPE, "ESC"));
+	s.push_back(WaitNothingOpen());
+
+	// [キャスト] (F9)。組み込んでいないビルドでは F9 が効かないので飛ばす。
+	if (cast::Available()) {
+		s.push_back(Key(SDLK_F9, "F9"));
+		s.push_back(WaitPopups("cast", Popups(&kCastTitle)));
+		s.push_back(Click("[Close] (cast)", MsgLabel("Button.Close")));
+		s.push_back(WaitNothingOpen());
+	}
+
+	// ---- メインループが開くもの ------------------------------------------
+
+	// 更新チェックの結果。何も開いていなければすぐ出る。
+	UpdateResult newer;
+	newer.status = UpdateResult::Status::Newer;
+	newer.latest = "v9.9.9";
+	s.push_back(Call("ShowUpdateResult", [newer](Env &env) { env.ui->ShowUpdateResult(newer); }));
+	s.push_back(WaitPopups("update", Popups(&kUpdateTitle)));
+	s.push_back(Click("[Close] (update)", MsgLabel("Button.Close")));
+	s.push_back(WaitNothingOpen());
+	// 設定ウィンドウが開いている間は預かり、閉じたら出る。
+	s.push_back(Key(SDLK_F1, "F1"));
+	s.push_back(WaitPopups("settings", settings));
+	s.push_back(Call("ShowUpdateResult", [newer](Env &env) { env.ui->ShowUpdateResult(newer); }));
+	s.push_back(WaitPopups("settings (update held)", settings));
+	s.push_back(Key(SDLK_ESCAPE, "ESC"));
+	s.push_back(WaitPopups("update", Popups(&kUpdateTitle)));
+	s.push_back(Key(SDLK_ESCAPE, "ESC"));
+	s.push_back(WaitNothingOpen());
+
+	// 渡されたファイル（Android で外から MDX を渡されたときの問い）。
+	s.push_back(Call("OpenHandedChoice", [](Env &env) {
+		env.ui->OpenHandedChoice("content://uitest/song.mdx", "song.mdx");
+	}));
+	s.push_back(WaitPopups("handed", Popups(&kHandedTitle)));
+	s.push_back(Click("[Cancel]", MsgLabel("Button.Cancel")));
+	s.push_back(WaitNothingOpen());
+
+	// コンテキストメニュー（バナーの長押し・右クリック）。項目から開く / ページを
+	// 送ってから開く / ESC で閉じる。
+	const std::function<bool(Env &)> menuOpen = [](Env &env) {
+		std::vector<ImGuiWindow *> now;
+		return env.ui->contextMenuOpen() && OpenPopups(&now) && now.size() == 1;
+	};
+	const std::function<std::string(Env &)> describe = [](Env &) { return DescribePopups(); };
+	s.push_back(Call("OpenContextMenu", [](Env &env) { env.ui->OpenContextMenu(); }));
+	s.push_back(WaitUntil("context menu", menuOpen, describe));
+	s.push_back(Click("[Settings] (menu)", MsgLabel("Menu.Settings")));
+	s.push_back(WaitPopups("settings", settings));
+	s.push_back(Key(SDLK_ESCAPE, "ESC"));
+	s.push_back(WaitNothingOpen());
+	s.push_back(Call("OpenContextMenu", [](Env &env) { env.ui->OpenContextMenu(); }));
+	s.push_back(WaitUntil("context menu", menuOpen, describe));
+	s.push_back(Click("[Other] (menu)", MsgLabel("Menu.Other")));
+	s.push_back(Frames(30));  // ページ送りの動きが収まるまで
+	s.push_back(Click("[About] (menu)", MsgLabel("Menu.About")));
+	s.push_back(WaitPopups("about", Popups(&kAboutTitle)));
+	s.push_back(Key(SDLK_ESCAPE, "ESC"));
+	s.push_back(WaitNothingOpen());
+	s.push_back(Call("OpenContextMenu", [](Env &env) { env.ui->OpenContextMenu(); }));
+	s.push_back(WaitUntil("context menu", menuOpen, describe));
+	s.push_back(Key(SDLK_ESCAPE, "ESC"));
+	s.push_back(WaitNothingOpen());
+
 	// [言語] を English に替える。設定ウィンドウはいったん閉じ、新しい題名で
 	// 開き直る（SettingsWindow::ApplyPendingLocale）。
 	std::shared_ptr<std::string> before(new std::string());
@@ -433,9 +635,10 @@ void Finish(bool failed) {
 bool AfterBuild(SettingsUi *ui, SDL_Window *window) {
 	if (!gStarted) {
 		gStarted = true;
-		GImGui->TestEngineHookItems = true;
 		BuildScenario();
 	}
+	// ImGui の作り直し（端末のリセットなど）で消えても戻るよう、毎フレーム立てる。
+	GImGui->TestEngineHookItems = true;
 	gItems.swap(gCollecting);
 	gCollecting.clear();
 	if (gDone) return true;
