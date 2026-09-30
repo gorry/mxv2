@@ -434,6 +434,55 @@ else()
 endif()
 
 # ---------------------------------------------------------------------------
+# mxv2_uitest（tools/uitest.cpp）
+#   設定 UI のダイアログの行き来（設定 → PDX → フォルダ選択 → 戻る など）を、
+#   本物のアプリで確かめる。mxv2 と同じソースを MXV2_UITEST 付きでビルドし、
+#   main.cpp のメインループから 1 フレームごとに筋書きを進める。部品の位置は
+#   ImGui のテストエンジン用フック（IMGUI_ENABLE_TEST_ENGINE）で集めるので、
+#   ImGui もその定義付きで別にビルドする（構造体の形が変わるため、mxv2 側の
+#   ソースにも同じ定義が要る。PUBLIC で伝わる）。
+#   Makefile の test-ui から SDL の dummy ドライバで走らせる（ウィンドウは出ない）。
+#   コンソールで結果を読むので、GUI アプリにはしない。
+# ---------------------------------------------------------------------------
+if(WIN32)
+	add_library(imgui_uitest STATIC
+		"${IMGUI_DIR}/imgui.cpp"
+		"${IMGUI_DIR}/imgui_draw.cpp"
+		"${IMGUI_DIR}/imgui_tables.cpp"
+		"${IMGUI_DIR}/imgui_widgets.cpp"
+		"${IMGUI_DIR}/backends/imgui_impl_sdl2.cpp"
+		"${IMGUI_DIR}/backends/imgui_impl_sdlrenderer2.cpp"
+	)
+	target_include_directories(imgui_uitest PUBLIC "${IMGUI_DIR}" "${IMGUI_DIR}/backends")
+	target_link_libraries(imgui_uitest PUBLIC sdl2)
+	target_compile_definitions(imgui_uitest PUBLIC IMGUI_ENABLE_TEST_ENGINE)
+	if(MSVC)
+		target_compile_options(imgui_uitest PRIVATE /W0)
+		target_compile_definitions(imgui_uitest PRIVATE _CRT_SECURE_NO_WARNINGS)
+	endif()
+
+	add_executable(mxv2_uitest ${MXV2_SOURCES} tools/uitest.cpp)
+	target_include_directories(mxv2_uitest PRIVATE
+		"${CMAKE_CURRENT_SOURCE_DIR}/src" "${CMAKE_CURRENT_SOURCE_DIR}/tools" "${MXV2_GENERATED_DIR}")
+	target_link_libraries(mxv2_uitest PRIVATE portable_mdx sdl2 imgui_uitest
+		ole32 shell32 cfgmgr32 winhttp)
+	target_compile_definitions(mxv2_uitest PRIVATE MXV2_UITEST)
+	if(_mxv2_cast)
+		target_link_libraries(mxv2_uitest PRIVATE sdlcastg_sdl)
+		target_compile_definitions(mxv2_uitest PRIVATE MXV2_CAST)
+	endif()
+	if(MSVC)
+		target_compile_definitions(mxv2_uitest PRIVATE _CRT_SECURE_NO_WARNINGS)
+		target_compile_options(mxv2_uitest PRIVATE /W3)
+	endif()
+	# assets/ と SDL2.dll は mxv2 のビルドが同じフォルダへ置く。
+	add_dependencies(mxv2_uitest mxv2)
+	# mxv2 のソースをまるごともう 1 度ビルドするので、普段の build には入れない
+	# （make test-ui が名指しでビルドする）。
+	set_target_properties(imgui_uitest mxv2_uitest PROPERTIES EXCLUDE_FROM_ALL TRUE)
+endif()
+
+# ---------------------------------------------------------------------------
 # 検証用ツール
 #   mxv2 のデコード分割が波形を変えないことを確認する。SDL 不要。
 # ---------------------------------------------------------------------------

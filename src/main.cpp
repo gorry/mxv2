@@ -53,6 +53,10 @@
 #include "keybind.h"
 #include "playctl.h"
 
+#ifdef MXV2_UITEST
+#include "uitest.h"  // tools/uitest.h（テスト用のビルド mxv2_uitest のときだけ）
+#endif
+
 using namespace mxv2::app;
 
 namespace {
@@ -1385,6 +1389,9 @@ int main(int argc, char **argv) {
 		ui.SetOrientationState(orientEnabled, orientNow);
 		ui.SetUpdateCheckState(updateAvailable, updateChecker.running());
 		ui.Build(&settings, &draw, &player, &filer, &screen);
+#ifdef MXV2_UITEST
+		if (mxv2::uitest::AfterBuild(&ui, screen.window())) quit = true;
+#endif
 
 		// チュートリアル（tutorial.md）。ImGui のフレームの中で、ダイアログの
 		// あとに描く（幕は背景の描画リストに置くので順番は問わない）。
@@ -1621,5 +1628,9 @@ int main(int argc, char **argv) {
 	player.Close();
 	screen.Close();
 	SDL_Quit();
+#ifdef MXV2_UITEST
+	return mxv2::uitest::ExitCode();
+#else
 	return EXIT_SUCCESS;
+#endif
 }

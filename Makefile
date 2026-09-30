@@ -191,8 +191,28 @@ TESTDATA_MDX := $(wildcard testdata/*.mdx)
 TESTDATA_CMDS := $(foreach f,$(TESTDATA_MDX),"$(EXE_CHUNKTEST)" "$(f)" &&)
 
 .PHONY: test-windows
-test-windows: build-windows
+test-windows: build-windows test-ui-windows
 	$(TESTDATA_CMDS) cd .
+
+# 設定 UI のダイアログの行き来を確かめる（mxv2_uitest。tools/uitest.cpp）。
+# SDL の dummy ドライバで走らせるのでウィンドウは出ない（GUI アプリを起動する
+# ときの確認は要らない）。設定は使い捨ての -userdir に置き、毎回
+# tools/uitest.ini から作り直す（普段の mxv2.ini には触らない）。-multi は、
+# 手元で mxv2 が動いていてもそちらへ渡さず、自分で走らせるため。
+# mxv2_uitest は ALL から外してあるので（普段の build を遅くしないため）、
+# ここで名指しでビルドする。
+UITEST_USERDIR := $(WIN_BUILD_DIR)/uitest-userdir
+EXE_UITEST := $(WIN_OUT_DIR)/mxv2_uitest.exe
+
+.PHONY: test-ui-windows
+test-ui-windows: export SDL_VIDEODRIVER := dummy
+test-ui-windows: export SDL_AUDIODRIVER := dummy
+test-ui-windows: build-windows
+	cmake --build $(WIN_BUILD_DIR) --config $(CONFIG) --target mxv2_uitest --parallel
+	cmake -E rm -rf "$(UITEST_USERDIR)"
+	$(MKDIR_P) "$(UITEST_USERDIR)"
+	cmake -E copy tools/uitest.ini "$(UITEST_USERDIR)/mxv2.ini"
+	"$(EXE_UITEST)" -multi -userdir "$(UITEST_USERDIR)" -skin Default -locale ja-JP
 
 # ---------------------------------------------------------------------------
 # 演奏時間の測定とシークの負荷を測る（mxv2_benchmark）
@@ -525,6 +545,7 @@ uninstall: uninstall-windows
 clean: clean-windows
 run: run-windows
 test: test-windows
+test-ui: test-ui-windows
 arc: arc-windows
 else
 configure: configure-android
@@ -551,7 +572,8 @@ help:
 	@echo   uninstall  remove what install put there
 	@echo   clean      remove build output for the selected TARGET
 	@echo   run        run the built target, with OPTION appended
-	@echo   test       win32/win64: run mxv2_chunktest against testdata/
+	@echo   test       win32/win64: run mxv2_chunktest against testdata/, then test-ui
+	@echo   test-ui    win32/win64: drive the settings dialogs headless (mxv2_uitest)
 	@echo              android: placeholder Gradle unit test (see notes)
 	@echo   arc        release build, then put a distributable into Release/:
 	@echo              win32/win64: ^<ShortText^>_^<TARGET^>_^<Version^>.zip
