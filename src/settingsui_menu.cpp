@@ -45,10 +45,10 @@ const Uint32 kCtxSlideMs = 180;
 // **[表示] のサブメニューは 2026-09-15 に足した**（ユーザーの指示）。2 段目は
 // 音色データ表示（tonedata.md）とレジスタ一覧（regmap.md）の ON/OFF で、
 // ページへ入る / 戻る項目（settingsui.h の CtxPage）。
-bool SettingsUi::CtxPageItem(const char *label, bool back) {
+bool ContextMenu::PageItem(const char *label, bool back) {
 	// 矢印は BeginMenu が描くのと同じ場所（印の列 MenuColumns.OffsetMark）に、
 	// 同じ RenderArrow で描く。列の位置は前のフレームの並びから決まるが、
-	// 列が決まるまでは隠している（ctx_.childWarm）ので、ずれては見えない。
+	// 列が決まるまでは隠している（ctx_.childWarm_）ので、ずれては見えない。
 	ImGuiWindow *window = ImGui::GetCurrentWindow();
 	const ImVec2 pos = window->DC.CursorPos;
 	const float fontSize = ImGui::GetFontSize();
@@ -73,9 +73,8 @@ bool SettingsUi::CtxPageItem(const char *label, bool back) {
 	return pressed;
 }
 
-bool SettingsUi::CtxMenuItem(const char *label, const char *shortcut, bool selected,
-                             bool enabled) {
-	if (ctx_.noShortcut) shortcut = NULL;
+bool ContextMenu::MenuItem(const char *label, const char *shortcut, bool selected, bool enabled) {
+	if (noShortcut_) shortcut = NULL;
 	if (!ImGui::MenuItem(label, shortcut, selected, enabled)) return false;
 	// ImGui の自動クローズは「自分がポップアップであるとき」だけ効く
 	// （Selectable の window->Flags & ImGuiWindowFlags_Popup）。ページの
@@ -85,36 +84,36 @@ bool SettingsUi::CtxMenuItem(const char *label, const char *shortcut, bool selec
 }
 
 // 1 ページぶんの項目。
-void SettingsUi::BuildCtxPageItems(int page, bool paged, Settings *settings, DrawScreen *draw,
-                                   Player *player, Filer *filer) {
+void ContextMenu::BuildPageItems(SettingsUi &ui, int page, bool paged, Settings *settings,
+                                 DrawScreen *draw, Player *player, Filer *filer) {
 	if (page == kCtxPageView) {
 		// [表示] … 表示の ON/OFF。チェックが今の状態。
 		const bool tone = (draw->statusMode() == DrawScreen::kStatusModeTone);
-		if (CtxMenuItem(Msg("Menu.ToneData"), "F7", tone, true)) {
+		if (MenuItem(Msg("Menu.ToneData"), "F7", tone, true)) {
 			// ステータス欄の長押しと同じ経路（値の積み直しまで）。
 			draw->ToggleStatusMode();
 			if (player != 0) player->RequestStatusRefresh();
 		}
-		if (CtxMenuItem(Msg("Menu.RegMap"), "F8", draw->regMapVisible(), true)) {
+		if (MenuItem(Msg("Menu.RegMap"), "F8", draw->regMapVisible(), true)) {
 			draw->ToggleRegMap();
 		}
 		// 小窓で表示（Android だけ。memo/pip.md）。設定が「しない」でも
 		// ここからは入れる。出すものが無い（曲を持っていない）ときは押せない。
 		if (pip::Available() &&
-		    CtxMenuItem(Msg("Menu.Pip"), NULL, false, player != 0 && player->playing())) {
-			request_ = kRequestEnterPip;
+		    MenuItem(Msg("Menu.Pip"), NULL, false, player != 0 && player->playing())) {
+			ui.request_ = SettingsUi::kRequestEnterPip;
 		}
 		// Chromecast へ送る（MXV2_CAST 付きでビルドしたときだけ）。送っている間は
 		// チェックが付く。押すとダイアログ（送り先を選ぶ・やめる）。
 		if (cast::Available() &&
-		    CtxMenuItem(Msg("Menu.Cast"), "F9", cast::GetState() != cast::kIdle, true)) {
-			OpenCast();
+		    MenuItem(Msg("Menu.Cast"), "F9", cast::GetState() != cast::kIdle, true)) {
+			ui.OpenCast();
 		}
 		if (paged) {
 			ImGui::Separator();
-			if (CtxPageItem(Msg("Menu.Back"), true)) {
-				ctx_.switchTo = kCtxPageMain;
-				ctx_.animForward = false;
+			if (PageItem(Msg("Menu.Back"), true)) {
+				switchTo_ = kCtxPageMain;
+				animForward_ = false;
 			}
 		}
 		return;
@@ -124,13 +123,13 @@ void SettingsUi::BuildCtxPageItems(int page, bool paged, Settings *settings, Dra
 		// 指示）。横画面の携帯でメニューが縦に収まらず（ジェスチャー
 		// ナビゲーションの帯ぶん短い Pixel 8 Pro でスクロールバーが出た）、
 		// 項目を減らすために畳んだ。
-		if (CtxMenuItem(Msg("Menu.Help"), "F11", false, true)) OpenHelp();
-		if (CtxMenuItem(Msg("Menu.About"), "F12", false, true)) OpenAbout();
+		if (MenuItem(Msg("Menu.Help"), "F11", false, true)) ui.OpenHelp();
+		if (MenuItem(Msg("Menu.About"), "F12", false, true)) ui.OpenAbout();
 		if (paged) {
 			ImGui::Separator();
-			if (CtxPageItem(Msg("Menu.Back"), true)) {
-				ctx_.switchTo = kCtxPageMain;
-				ctx_.animForward = false;
+			if (PageItem(Msg("Menu.Back"), true)) {
+				switchTo_ = kCtxPageMain;
+				animForward_ = false;
 			}
 		}
 		return;
@@ -140,11 +139,11 @@ void SettingsUi::BuildCtxPageItems(int page, bool paged, Settings *settings, Dra
 	// 移動（フォルダを開く / ブックマークを開く / ブックマークに追加）→
 	// 設定 4 つ → 操作方法・バージョン情報 →（デスクトップのみ）終了。
 	// [フォルダを開く…] はモバイルには置かない（2026-09-15、ユーザーの指示）。
-	if (!Screen::IsMobile() && CtxMenuItem(Msg("Menu.Folder"), "L", false, true)) {
-		OpenFolder(filer->currentRef());
+	if (!Screen::IsMobile() && MenuItem(Msg("Menu.Folder"), "L", false, true)) {
+		ui.OpenFolder(filer->currentRef());
 	}
 	// ファイラーの "Bookmarks>"（ジャンプ専用）。設定ダイアログは下の段。
-	if (CtxMenuItem(Msg("Menu.BookmarkList"), "M", false, true)) OpenBookmarkList();
+	if (MenuItem(Msg("Menu.BookmarkList"), "M", false, true)) ui.OpenBookmarkList();
 	{
 		// カレントを控える / 控えを外す。どちらも確認してから実行するので、
 		// ここでは印を立てるだけ（メニューの中で OpenPopup すると入れ子の
@@ -155,47 +154,47 @@ void SettingsUi::BuildCtxPageItems(int page, bool paged, Settings *settings, Dra
 		// （2026-09-16、ユーザーの指示。前日に削除を外したのは勘違いだったとのこと）。
 		// 追加も削除もできる状態は無い（控え済みなら削除しかできない）。
 		const std::string cur = filer->currentRef();
-		const bool has = (FindBookmark(settings->bookmarks, cur) >= 0);
-		if (CtxMenuItem(has ? Msg("Menu.BookmarkRemove") : Msg("Menu.BookmarkAdd"), "Shift+M",
-		                false, CanBookmark(cur))) {
-			OpenBookmarkToggle();
+		const bool has = (ui.FindBookmark(settings->bookmarks, cur) >= 0);
+		if (MenuItem(has ? Msg("Menu.BookmarkRemove") : Msg("Menu.BookmarkAdd"), "Shift+M",
+		                false, ui.CanBookmark(cur))) {
+			ui.OpenBookmarkToggle();
 		}
 	}
 
 	ImGui::Separator();
 	// [表示] … 2 段目。指で操作するときはページ、それ以外はサブメニュー。
 	if (paged) {
-		if (CtxPageItem(Msg("Menu.View"), false)) {
-			ctx_.switchTo = kCtxPageView;
-			ctx_.animForward = true;
+		if (PageItem(Msg("Menu.View"), false)) {
+			switchTo_ = kCtxPageView;
+			animForward_ = true;
 		}
 	} else if (ImGui::BeginMenu(Msg("Menu.View"))) {
-		BuildCtxPageItems(kCtxPageView, false, settings, draw, player, filer);
+		BuildPageItems(ui, kCtxPageView, false, settings, draw, player, filer);
 		ImGui::EndMenu();
 	}
 
 	ImGui::Separator();
-	if (CtxMenuItem(Msg("Menu.Settings"), "F1", false, true)) OpenSettings();
+	if (MenuItem(Msg("Menu.Settings"), "F1", false, true)) ui.OpenSettings();
 	// F2 と同じ経路を通す（スキン名の欄を埋め直すため）。
-	if (CtxMenuItem(Msg("Menu.Colors"), "F2", false, true)) OpenColors();
-	if (CtxMenuItem(Msg("Menu.FileSystems"), "F3", false, true)) OpenFileSystems();
-	if (CtxMenuItem(Msg("Menu.Bookmarks"), "F4", false, true)) OpenBookmarks();
+	if (MenuItem(Msg("Menu.Colors"), "F2", false, true)) ui.OpenColors();
+	if (MenuItem(Msg("Menu.FileSystems"), "F3", false, true)) ui.OpenFileSystems();
+	if (MenuItem(Msg("Menu.Bookmarks"), "F4", false, true)) ui.OpenBookmarks();
 
 	ImGui::Separator();
 	// [その他] … 2 段目。
 	if (paged) {
-		if (CtxPageItem(Msg("Menu.Other"), false)) {
-			ctx_.switchTo = kCtxPageOther;
-			ctx_.animForward = true;
+		if (PageItem(Msg("Menu.Other"), false)) {
+			switchTo_ = kCtxPageOther;
+			animForward_ = true;
 		}
 	} else if (ImGui::BeginMenu(Msg("Menu.Other"))) {
-		BuildCtxPageItems(kCtxPageOther, false, settings, draw, player, filer);
+		BuildPageItems(ui, kCtxPageOther, false, settings, draw, player, filer);
 		ImGui::EndMenu();
 	}
 	// [終了] はモバイルには置かない（区切り線ごと）。
 	if (Screen::CanQuitApp()) {
 		ImGui::Separator();
-		if (CtxMenuItem(Msg("Menu.Quit"), NULL, false, true)) request_ = kRequestQuit;
+		if (MenuItem(Msg("Menu.Quit"), NULL, false, true)) ui.request_ = SettingsUi::kRequestQuit;
 	}
 }
 
@@ -203,20 +202,20 @@ void SettingsUi::BuildCtxPageItems(int page, bool paged, Settings *settings, Dra
 // 見えない状態で測るときだけ）。中身の大きさは MenuItem の列幅
 // （MenuColumns.NextTotalWidth。このフレームの項目から即決まる）と、
 // カーソルの進んだ高さから取る。
-bool SettingsUi::BuildCtxPageChild(int page, const ImVec2 &pos, Settings *settings,
-                                   DrawScreen *draw, Player *player, Filer *filer) {
+bool ContextMenu::BuildPageChild(SettingsUi &ui, int page, const ImVec2 &pos, Settings *settings,
+                                 DrawScreen *draw, Player *player, Filer *filer) {
 	static const char *const kNames[kCtxPageCount] = {"##ctxpage0", "##ctxpage1", "##ctxpage2"};
 	ImGui::SetCursorPos(pos);
-	ImGui::BeginChild(kNames[page], ctx_.pageSize[page], ImGuiChildFlags_None,
+	ImGui::BeginChild(kNames[page], pageSize_[page], ImGuiChildFlags_None,
 	                  ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 	ImGuiWindow *cw = ImGui::GetCurrentWindow();
 	const bool drawn = !cw->SkipItems;
 	if (drawn) {
-		BuildCtxPageItems(page, true, settings, draw, player, filer);
+		BuildPageItems(ui, page, true, settings, draw, player, filer);
 		const ImVec2 measured((float)cw->DC.MenuColumns.NextTotalWidth,
 		                      cw->DC.CursorMaxPos.y - cw->DC.CursorStartPos.y);
-		if (measured.x > 0.0f && measured.y > 0.0f) ctx_.pageSize[page] = measured;
-		ctx_.childWarm[page] = true;
+		if (measured.x > 0.0f && measured.y > 0.0f) pageSize_[page] = measured;
+		childWarm_[page] = true;
 	}
 	ImGui::EndChild();
 	return drawn;
@@ -224,12 +223,12 @@ bool SettingsUi::BuildCtxPageChild(int page, const ImVec2 &pos, Settings *settin
 
 // コンテキストメニューの項目。BuildContextMenu がポップアップを開いた中から
 // 呼ぶ。閉じるフレームには呼ばない（BuildContextMenu のコメント）。
-void SettingsUi::BuildContextMenuItems(Settings *settings, DrawScreen *draw, Player *player,
-                                       Filer *filer) {
+void ContextMenu::BuildItems(SettingsUi &ui, Settings *settings, DrawScreen *draw, Player *player,
+                             Filer *filer) {
 	// デスクトップ（マウス）は ImGui のサブメニューをそのまま使う。
-	const bool paged = touchUi_;
+	const bool paged = ui.touchUi_;
 	if (!paged) {
-		BuildCtxPageItems(kCtxPageMain, false, settings, draw, player, filer);
+		BuildPageItems(ui, kCtxPageMain, false, settings, draw, player, filer);
 		return;
 	}
 
@@ -245,10 +244,10 @@ void SettingsUi::BuildContextMenuItems(Settings *settings, DrawScreen *draw, Pla
 
 	// 遷移の進み具合（ease-out）。
 	float t = 1.0f;
-	if (ctx_.animFrom >= 0) {
-		const float p = (float)(now - ctx_.animStartMs) / (float)kCtxSlideMs;
+	if (animFrom_ >= 0) {
+		const float p = (float)(now - animStartMs_) / (float)kCtxSlideMs;
 		if (p >= 1.0f) {
-			ctx_.animFrom = -1;
+			animFrom_ = -1;
 		} else {
 			const float q = 1.0f - p;
 			t = 1.0f - q * q * q;
@@ -256,25 +255,25 @@ void SettingsUi::BuildContextMenuItems(Settings *settings, DrawScreen *draw, Pla
 	}
 
 	// 列幅の決まっていない子を出すフレームはポップアップごと隠す
-	// （settingsui.h の ctx_.childWarm）。隠れていても項目は組まれるので測れる。
-	if (!ctx_.childWarm[ctx_.page] || (ctx_.animFrom >= 0 && !ctx_.childWarm[ctx_.animFrom])) {
+	// （settingsui.h の ctx_.childWarm_）。隠れていても項目は組まれるので測れる。
+	if (!childWarm_[page_] || (animFrom_ >= 0 && !childWarm_[animFrom_])) {
 		popup->HiddenFramesCannotSkipItems = 1;
 	}
 
 	ImVec2 size;
-	if (ctx_.animFrom < 0) {
-		if (!BuildCtxPageChild(ctx_.page, start, settings, draw, player, filer)) {
+	if (animFrom_ < 0) {
+		if (!BuildPageChild(ui, page_, start, settings, draw, player, filer)) {
 			// 子が丸ごと切り取られた（開いた最初のフレームはポップアップに
 			// 大きさが無い）。項目をポップアップへ直に組んで大きさだけ測る。
 			// 隠れているフレームなので見えない。
 			ImGui::SetCursorPos(start);
-			BuildCtxPageItems(ctx_.page, true, settings, draw, player, filer);
+			BuildPageItems(ui, page_, true, settings, draw, player, filer);
 			const ImVec2 measured((float)popup->DC.MenuColumns.NextTotalWidth,
 			                      popup->DC.CursorMaxPos.y - popup->DC.CursorStartPos.y);
-			if (measured.x > 0.0f && measured.y > 0.0f) ctx_.pageSize[ctx_.page] = measured;
+			if (measured.x > 0.0f && measured.y > 0.0f) pageSize_[page_] = measured;
 		}
-		size = ctx_.pageSize[ctx_.page];
-		if (ctx_.switchTo >= 0) {
+		size = pageSize_[page_];
+		if (switchTo_ >= 0) {
 			// 行き先のページを見えない状態で 1 度描いて、大きさを測り、列幅を
 			// 決めておく。遷移はこの次のフレームから。Alpha は 0 にしない
 			// （ImGui は Alpha 0 で Begin したウィンドウを隠して項目を飛ばすので
@@ -282,49 +281,49 @@ void SettingsUi::BuildContextMenuItems(Settings *settings, DrawScreen *draw, Pla
 			ImGui::PushStyleVar(ImGuiStyleVar_Alpha, 1.0f / 1024.0f);
 			ImGui::PushStyleVar(ImGuiStyleVar_DisabledAlpha, 1.0f);
 			ImGui::BeginDisabled();
-			BuildCtxPageChild(ctx_.switchTo, start, settings, draw, player, filer);
+			BuildPageChild(ui, switchTo_, start, settings, draw, player, filer);
 			ImGui::EndDisabled();
 			ImGui::PopStyleVar(2);
-			ctx_.animFrom = ctx_.page;
-			ctx_.page = ctx_.switchTo;
-			ctx_.switchTo = -1;
-			ctx_.animStartMs = now;
+			animFrom_ = page_;
+			page_ = switchTo_;
+			switchTo_ = -1;
+			animStartMs_ = now;
 		}
 	} else {
 		// 遷移中。大きさは前→次へ補間し、その矩形の中に 2 ページを横に
 		// ずらして描く。押せないように（見た目は変えずに）無効にしておく。
-		const ImVec2 &a = ctx_.pageSize[ctx_.animFrom];
-		const ImVec2 &b = ctx_.pageSize[ctx_.page];
+		const ImVec2 &a = pageSize_[animFrom_];
+		const ImVec2 &b = pageSize_[page_];
 		size = ImVec2(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
-		const float dir = ctx_.animForward ? 1.0f : -1.0f;
+		const float dir = animForward_ ? 1.0f : -1.0f;
 		const float offFrom = -dir * t * size.x;
 		const float offTo = dir * (1.0f - t) * size.x;
 		// 2 ページは幅が違うので、ずらした矩形どうしが重なる。子ウィンドウに
 		// 背景は無いので重なった所は両方の字が見えてしまう。境目（下るときは
 		// 次のページの左端、戻るときは前のページの左端）で左右に分け、
 		// 出ていくページと入ってくるページをそれぞれ自分の側だけに描く。
-		const float boundary = ctx_.animForward ? offTo : offFrom;
+		const float boundary = animForward_ ? offTo : offFrom;
 		const ImVec2 clipMin = startScreen;
 		const ImVec2 clipMid(startScreen.x + boundary, startScreen.y);
 		const ImVec2 clipMax(startScreen.x + size.x, startScreen.y + size.y);
 		ImGui::PushStyleVar(ImGuiStyleVar_DisabledAlpha, 1.0f);
 		ImGui::BeginDisabled();
 		// 出ていくページ。下るときは左側、戻るときは右側。
-		if (ctx_.animForward) {
+		if (animForward_) {
 			ImGui::PushClipRect(clipMin, ImVec2(clipMid.x, clipMax.y), true);
 		} else {
 			ImGui::PushClipRect(clipMid, clipMax, true);
 		}
-		BuildCtxPageChild(ctx_.animFrom, ImVec2(start.x + offFrom, start.y), settings, draw, player,
+		BuildPageChild(ui, animFrom_, ImVec2(start.x + offFrom, start.y), settings, draw, player,
 		                  filer);
 		ImGui::PopClipRect();
 		// 入ってくるページ。その反対側。
-		if (ctx_.animForward) {
+		if (animForward_) {
 			ImGui::PushClipRect(clipMid, clipMax, true);
 		} else {
 			ImGui::PushClipRect(clipMin, ImVec2(clipMid.x, clipMax.y), true);
 		}
-		BuildCtxPageChild(ctx_.page, ImVec2(start.x + offTo, start.y), settings, draw, player,
+		BuildPageChild(ui, page_, ImVec2(start.x + offTo, start.y), settings, draw, player,
 		                  filer);
 		ImGui::PopClipRect();
 		ImGui::EndDisabled();
@@ -332,18 +331,18 @@ void SettingsUi::BuildContextMenuItems(Settings *settings, DrawScreen *draw, Pla
 	}
 
 	// 短縮キーの列ごと画面の横に入りきらないページがあれば、列を外して
-	// 測り直す（ctx_.noShortcut）。ImGui はポップアップを画面の幅で
+	// 測り直す（ctx_.noShortcut_）。ImGui はポップアップを画面の幅で
 	// 切り詰めるので、放っておくと右端の短縮キーが途中で切れる。測った幅は
 	// 切り詰める前の中身の幅なので、ここで比べられる。
-	if (!ctx_.noShortcut) {
+	if (!noShortcut_) {
 		const ImGuiStyle &style = ImGui::GetStyle();
 		const float availW = ImGui::GetIO().DisplaySize.x - style.DisplaySafeAreaPadding.x * 2.0f -
 		                     style.WindowPadding.x * 2.0f;
 		for (int i = 0; i < kCtxPageCount; i++) {
-			if (ctx_.pageSize[i].x > availW) {
-				ctx_.noShortcut = true;
+			if (pageSize_[i].x > availW) {
+				noShortcut_ = true;
 				// 列幅を決め直すので、決まるまでまた隠す。
-				for (int j = 0; j < kCtxPageCount; j++) ctx_.childWarm[j] = false;
+				for (int j = 0; j < kCtxPageCount; j++) childWarm_[j] = false;
 				popup->HiddenFramesCannotSkipItems = 1;
 				break;
 			}
@@ -358,25 +357,25 @@ void SettingsUi::BuildContextMenuItems(Settings *settings, DrawScreen *draw, Pla
 }
 
 // 長押しの代わり。横幅 480px 程度までは短縮キーの列ごと収まる。それより
-// 狭い画面では列を外す（ctx_.noShortcut）。縦は ApplyScale が行を詰めて収める。
-void SettingsUi::BuildContextMenu(Settings *settings, DrawScreen *draw, Player *player,
-                                  Filer *filer) {
+// 狭い画面では列を外す（ctx_.noShortcut_）。縦は ApplyScale が行を詰めて収める。
+void ContextMenu::Build(SettingsUi &ui, Settings *settings, DrawScreen *draw, Player *player,
+                        Filer *filer) {
 	// バナーを押したときはこちらから開ける（右クリックできない環境向け）。
 	// BeginPopupContextVoid と同じ id なので、下の Begin がそのまま拾う。
-	if (ctx_.openRequested) {
-		ctx_.openRequested = false;
+	if (openRequested_) {
+		openRequested_ = false;
 		ImGui::OpenPopup("##mxv2ctx");
 	}
 	// 開いていない間に 1 ページ目へ戻しておく（右クリックで開く経路は
 	// BeginPopupContextVoid の中なので、開く前に見るのが確実）。
 	if (!ImGui::IsPopupOpen("##mxv2ctx")) {
-		ctx_.page = kCtxPageMain;
-		ctx_.switchTo = -1;
-		ctx_.animFrom = -1;
+		page_ = kCtxPageMain;
+		switchTo_ = -1;
+		animFrom_ = -1;
 		// 子ウィンドウはポップアップと一緒に出直すので、列幅も決め直し。
-		for (int i = 0; i < kCtxPageCount; i++) ctx_.childWarm[i] = false;
+		for (int i = 0; i < kCtxPageCount; i++) childWarm_[i] = false;
 		// 短縮キーの列を出すかも開くたびに決め直す（回転で幅が変わる）。
-		ctx_.noShortcut = false;
+		noShortcut_ = false;
 	}
 
 	// どのウィンドウにも属さない場所での右クリック用の API を使う。
@@ -388,8 +387,8 @@ void SettingsUi::BuildContextMenu(Settings *settings, DrawScreen *draw, Player *
 		// 素通りしてしまう（そのまま終了に使われていた）。main から
 		// CloseDialog() 経由で来た印をここで始末する。CloseCurrentPopup は
 		// ポップアップの中でしか呼べないので、この位置でないといけない。
-		if (ctx_.closeWanted) {
-			ctx_.closeWanted = false;
+		if (closeWanted_) {
+			closeWanted_ = false;
 			ImGui::CloseCurrentPopup();
 			// 項目は出さずにここで抜ける。続けて BuildContextMenuItems を通すと、
 			// [表示] などのサブメニューが開いていたときに、閉じたそのフレームで
@@ -402,7 +401,7 @@ void SettingsUi::BuildContextMenu(Settings *settings, DrawScreen *draw, Player *
 			// 一切効かなくなる（2026-09-16、横画面でサブメニューを出したまま
 			// 縦にすると操作不能、とユーザーの報告）。
 		} else {
-			BuildContextMenuItems(settings, draw, player, filer);
+			BuildItems(ui, settings, draw, player, filer);
 		}
 		ImGui::EndPopup();
 	}
@@ -410,27 +409,27 @@ void SettingsUi::BuildContextMenu(Settings *settings, DrawScreen *draw, Player *
 	// メニューが開いているかを覚えておく。ESC を「メニューを閉じる」に
 	// 使ってよいかの判断に要る。id は BeginPopupContextVoid が今のウィンドウの
 	// id スタックから作るので、同じ場所で聞かないと食い違う。
-	ctx_.isOpen = ImGui::IsPopupOpen("##mxv2ctx");
-	if (!ctx_.isOpen) ctx_.closeWanted = false;
+	open_ = ImGui::IsPopupOpen("##mxv2ctx");
+	if (!open_) closeWanted_ = false;
 }
 
 // 終了の確認。Android の戻るキーで、ダイアログも戻る先も無いときに出す。
 // メイン画面から直に開くので、単独のモーダルとして扱う。
-void SettingsUi::BuildQuitWindow() {
-	if (ctx_.quit.ask) {
-		ctx_.quit.ask = false;
+void ContextMenu::BuildQuitWindow(SettingsUi &ui) {
+	if (quit_.ask) {
+		quit_.ask = false;
 		ImGui::OpenPopup(kQuitTitle);
 	}
 
-	ctx_.quit.open = ImGui::IsPopupOpen(kQuitTitle);
-	if (!ctx_.quit.open) {
-		ctx_.quit.close = false;
+	quit_.open = ImGui::IsPopupOpen(kQuitTitle);
+	if (!quit_.open) {
+		quit_.close = false;
 		return;
 	}
 
-	CenterNextWindow(placeCond());
+	CenterNextWindow(ui.placeCond());
 	if (!ImGui::BeginPopupModal(kQuitTitle, NULL,
-	                            DialogFlags() | ImGuiWindowFlags_AlwaysAutoResize)) {
+	                            ui.DialogFlags() | ImGuiWindowFlags_AlwaysAutoResize)) {
 		return;
 	}
 
@@ -441,12 +440,12 @@ void SettingsUi::BuildQuitWindow() {
 	const bool enter =
 	    ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter);
 	if (ImGui::Button(Msg("Button.Quit")) || enter) {
-		request_ = kRequestQuit;
+		ui.request_ = SettingsUi::kRequestQuit;
 		ImGui::CloseCurrentPopup();
 	}
 	ImGui::SameLine();
-	if (ImGui::Button(Msg("Button.Cancel")) || ctx_.quit.close) {
-		ctx_.quit.close = false;
+	if (ImGui::Button(Msg("Button.Cancel")) || quit_.close) {
+		quit_.close = false;
 		ImGui::CloseCurrentPopup();
 	}
 	ImGui::EndPopup();

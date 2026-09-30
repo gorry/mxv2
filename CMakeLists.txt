@@ -239,6 +239,18 @@ set(MXV2_SOURCES
 	src/settings.h
 	src/settingsui.h
 	src/settingsui_internal.h
+	src/settingsui_dialog.h
+	src/settingsui_bookmarks.h
+	src/settingsui_cast.h
+	src/settingsui_colors.h
+	src/settingsui_filesystems.h
+	src/settingsui_folder.h
+	src/settingsui_info.h
+	src/settingsui_latency.h
+	src/settingsui_menu.h
+	src/settingsui_pdx.h
+	src/settingsui_settings.h
+	src/settingsui_update.h
 	src/singleinstance.h
 	src/skin.h
 	src/songloader.h

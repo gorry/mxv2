@@ -57,29 +57,29 @@ std::string LoadAboutText() {
 // パスの打ち込みと子フォルダの一覧を持つ自前のダイアログにしてある。
 // 決まった行き先は request_ に積んで、実際の移動はメインループに任せる
 // （ファイラーの持ち物はあちらなので、コンテキストメニューと同じ作法）。
-void SettingsUi::SetStartupWarnings(const std::vector<StartupWarning> &lines) {
-	info_.startupLines = lines;
-	info_.showStartup = !info_.startupLines.empty();
+void InfoDialogs::SetStartupWarnings(const std::vector<StartupWarning> &lines) {
+	startupLines_ = lines;
+	showStartup_ = !startupLines_.empty();
 }
 
 // 起動時の警告。ウィンドウが出る前に起きたこと（ini から捨てた項目、
 // スキンやフォントの取りこぼし）を、最初のフレームでまとめて見せる。
 // ログにも同じものが出ているので、閉じたら二度と出さない。
-void SettingsUi::BuildStartupWindow() {
-	if (!SyncModal(kStartupTitle, &info_.showStartup)) return;
+void InfoDialogs::BuildStartup(SettingsUi &ui) {
+	if (!ui.SyncModal(kStartupTitle, &showStartup_)) return;
 
-	CenterNextWindow(placeCond());
-	ImGui::SetNextWindowSize(DialogSize(520.0f, 280.0f), placeCond());
+	CenterNextWindow(ui.placeCond());
+	ImGui::SetNextWindowSize(ui.DialogSize(520.0f, 280.0f), ui.placeCond());
 
-	if (!BeginDialog(kStartupTitle, &info_.showStartup, DialogFlags())) {
+	if (!ui.BeginDialog(kStartupTitle, &showStartup_, ui.DialogFlags())) {
 		return;
 	}
 
 	{
 		const float foot = ImGui::GetFrameHeightWithSpacing();
 		ImGui::BeginChild("##startup", ImVec2(0, -foot), ImGuiChildFlags_Borders);
-		for (size_t i = 0; i < info_.startupLines.size(); i++) {
-			const StartupWarning &w = info_.startupLines[i];
+		for (size_t i = 0; i < startupLines_.size(); i++) {
+			const StartupWarning &w = startupLines_[i];
 			ImGui::Bullet();
 			TextWrappedKinsoku(w.text.c_str());
 			// アクセス許可が失われた SAF なら、その場で取り直せるボタンを
@@ -88,56 +88,58 @@ void SettingsUi::BuildStartupWindow() {
 			if (!w.regrantRef.empty() && !w.done) {
 				ImGui::PushID((int)i);
 				ImGui::Indent();
-				ImGui::BeginDisabled(safPicking() || !SafAvailable());
-				if (ImGui::Button(Msg("Button.Regrant"))) StartSafRegrant(w.regrantRef, false);
+				ImGui::BeginDisabled(ui.safPicking() || !SafAvailable());
+				if (ImGui::Button(Msg("Button.Regrant"))) {
+					ui.fs_.StartSafRegrant(ui, w.regrantRef, false);
+				}
 				ImGui::EndDisabled();
 				ImGui::Unindent();
 				ImGui::PopID();
 			}
 		}
-		DragToScroll(&dragScroll_, &dragMoved_, false, false);
+		DragToScroll(&ui.dragScroll_, &ui.dragMoved_, false, false);
 		ImGui::EndChild();
 	}
-	if (ImGui::Button(Msg("Button.Close"), ImVec2(-FLT_MIN, 0.0f))) info_.showStartup = false;
+	if (ImGui::Button(Msg("Button.Close"), ImVec2(-FLT_MIN, 0.0f))) showStartup_ = false;
 
 	ImGui::EndPopup();
 }
 
 // [操作方法] の中身をカタログから作る。-h の出力と同じ一覧
 // （[HelpKeys] [HelpMouse] [HelpPad]）を、見出しを挟んで並べたもの。
-void SettingsUi::LoadHelpRows() {
+void InfoDialogs::LoadHelpRows() {
 	static const char *kParts[3][2] = {
 		{ "Help.Keys", "HelpKeys" },
 		{ "Help.Mouse", "HelpMouse" },
 		{ "Help.Pad", "HelpPad" },
 	};
 
-	info_.helpRows.clear();
+	helpRows_.clear();
 	for (int i = 0; i < 3; i++) {
 		HelpRow head;
 		head.header = true;
 		head.key = Msg(kParts[i][0]);
-		info_.helpRows.push_back(head);
+		helpRows_.push_back(head);
 
 		const std::vector<MsgRow> &rows = MsgList(kParts[i][1]);
 		for (size_t j = 0; j < rows.size(); j++) {
 			HelpRow row;
 			row.key = rows[j].key;
 			row.desc = rows[j].value;
-			info_.helpRows.push_back(row);
+			helpRows_.push_back(row);
 		}
 	}
 }
 
 // 操作方法のダイアログ (F11 / H)。中身は -h で出すものと同じ文面で、
 // main.cpp から SetHelpText() で渡してもらう（文面を二重に持たない）。
-void SettingsUi::BuildHelpWindow() {
-	if (!SyncModal(kHelpTitle, &info_.showHelp)) return;
+void InfoDialogs::BuildHelp(SettingsUi &ui) {
+	if (!ui.SyncModal(kHelpTitle, &showHelp_)) return;
 
-	CenterNextWindow(placeCond());
-	ImGui::SetNextWindowSize(DialogSize(560.0f, 460.0f), placeCond());
+	CenterNextWindow(ui.placeCond());
+	ImGui::SetNextWindowSize(ui.DialogSize(560.0f, 460.0f), ui.placeCond());
 
-	if (BeginDialog(kHelpTitle, &info_.showHelp, DialogFlags())) {
+	if (ui.BeginDialog(kHelpTitle, &showHelp_, ui.DialogFlags())) {
 		ImGui::BeginChild("##help", ImVec2(0, 0), ImGuiChildFlags_None, ImGuiWindowFlags_None);
 
 		// キー名の桁を揃えて 2 段組で出す。空白で揃えないのは、同梱フォントが
@@ -152,9 +154,9 @@ void SettingsUi::BuildHelpWindow() {
 		const float avail = ImGui::GetContentRegionAvail().x;
 		const float unit = ImGui::CalcTextSize(" ").x;  // 字下げと段間に使う
 		float keyW = 0.0f;
-		for (size_t i = 0; i < info_.helpRows.size(); i++) {
-			if (info_.helpRows[i].header) continue;
-			const float k = ImGui::CalcTextSize(info_.helpRows[i].key.c_str()).x;
+		for (size_t i = 0; i < helpRows_.size(); i++) {
+			if (helpRows_[i].header) continue;
+			const float k = ImGui::CalcTextSize(helpRows_[i].key.c_str()).x;
 			if (k > keyW) keyW = k;
 		}
 		const float keyWMax = avail * 0.4f;
@@ -166,8 +168,8 @@ void SettingsUi::BuildHelpWindow() {
 		if (descW < unit) descW = unit;
 		const float spacingY = ImGui::GetStyle().ItemSpacing.y;
 
-		for (size_t i = 0; i < info_.helpRows.size(); i++) {
-			const HelpRow &row = info_.helpRows[i];
+		for (size_t i = 0; i < helpRows_.size(); i++) {
+			const HelpRow &row = helpRows_[i];
 			if (row.header) {
 				if (i != 0) ImGui::Spacing();
 				ImGui::TextUnformatted(row.key.c_str());
@@ -199,27 +201,27 @@ void SettingsUi::BuildHelpWindow() {
 			}
 		}
 
-		DragToScroll(&dragScroll_, &dragMoved_, false, false);
+		DragToScroll(&ui.dragScroll_, &ui.dragMoved_, false, false);
 		ImGui::EndChild();
 		ImGui::EndPopup();
 	}
 }
 
 // バージョン情報 (F12)。見出しは main から渡されたもの、本文は NOTICE。
-void SettingsUi::BuildAboutWindow() {
-	if (SyncModal(kAboutTitle, &info_.showAbout)) {
+void InfoDialogs::BuildAbout(SettingsUi &ui) {
+	if (ui.SyncModal(kAboutTitle, &showAbout_)) {
 		// NOTICE は初めて開くときに読む（メニューからでも F12 からでも通る）。
-		if (info_.aboutText.empty()) info_.aboutText = LoadAboutText();
+		if (aboutText_.empty()) aboutText_ = LoadAboutText();
 
 		// 設定ウィンドウと同じく、開くたびに画面の中央から出す。
 		// 大きさは画面からはみ出さないように詰める。スキンの横幅の下限は
 		// 480px なので、既定の 560px はそのままでは入らない。
-		CenterNextWindow(placeCond());
-		ImGui::SetNextWindowSize(DialogSize(560.0f, 420.0f), placeCond());
-		if (BeginDialog(kAboutTitle, &info_.showAbout, DialogFlags())) {
+		CenterNextWindow(ui.placeCond());
+		ImGui::SetNextWindowSize(ui.DialogSize(560.0f, 420.0f), ui.placeCond());
+		if (ui.BeginDialog(kAboutTitle, &showAbout_, ui.DialogFlags())) {
 			// 見出し（名前・版・著作権の 2 行）は折り返す。320px 幅の携帯
 			// (XS17) の縦画面で右が切れていた（2026-09-24、ユーザーの指示）。
-			TextWrappedKinsoku(info_.aboutHeader.c_str());
+			TextWrappedKinsoku(aboutHeader_.c_str());
 			// GitHub のページと、そこにある NOTICE をブラウザで開く。
 			if (ImGui::Button(Msg("About.OpenGitHub"))) OpenUrl(kProjectUrl);
 			SameLineOrWrap(Msg("About.OpenNotice"));
@@ -242,11 +244,11 @@ void SettingsUi::BuildAboutWindow() {
 			const float avail = ImGui::GetContentRegionAvail().x;
 			const bool shrink = (rulerW > avail && avail > 0.0f && rulerW > 0.0f);
 			if (shrink) ImGui::PushFont(NULL, ImGui::GetStyle().FontSizeBase * avail / rulerW);
-			ImGui::TextUnformatted(info_.aboutText.c_str());
+			ImGui::TextUnformatted(aboutText_.c_str());
 			if (shrink) ImGui::PopFont();
 
 			// 本文はドラッグでスクロールする。子ウィンドウなのでタイトルバーは無い。
-			DragToScroll(&dragScroll_, &dragMoved_, false, false);
+			DragToScroll(&ui.dragScroll_, &ui.dragMoved_, false, false);
 
 			ImGui::EndChild();
 			ImGui::EndPopup();

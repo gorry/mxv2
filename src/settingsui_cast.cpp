@@ -37,24 +37,24 @@ void QualityLabel(const char *name, const cast::QualityPreset &p, char *out, siz
 
 }  // namespace
 
-void SettingsUi::BuildCastWindow(Settings *settings) {
+void CastDialog::Build(SettingsUi &ui, Settings *settings) {
 	if (!cast::Available()) {
-		cast_.show = false;
+		show_ = false;
 		return;
 	}
-	const bool open = SyncModal(kCastTitle, &cast_.show);
+	const bool open = ui.SyncModal(kCastTitle, &show_);
 	// 開いた瞬間に探し始め、閉じたらやめる（mDNS の問い合わせと、Android の
 	// マルチキャストのロックを持ち続けないため）。
-	if (open && !cast_.wasOpen) {
+	if (open && !wasOpen_) {
 		cast::StartDiscovery();
-		cast_.selected = -1;
-		cast_.lastSize = ImVec2(0.0f, 0.0f);
-		cast_.recenter = false;
-		cast_.scrollY = false;
-	} else if (!open && cast_.wasOpen) {
+		selected_ = -1;
+		lastSize_ = ImVec2(0.0f, 0.0f);
+		recenter_ = false;
+		scrollY_ = false;
+	} else if (!open && wasOpen_) {
 		cast::StopDiscovery();
 	}
-	cast_.wasOpen = open;
+	wasOpen_ = open;
 	if (!open) return;
 
 	// 幅は決め、高さは中身に合わせる（一覧は 4 行ぶん。送り先はふつう数台なので
@@ -63,8 +63,8 @@ void SettingsUi::BuildCastWindow(Settings *settings) {
 	// 大きさは中身任せなので、画面を回して 2 列 ⇔ 1 列が替わると、置き直した次の
 	// フレームで大きさが変わり、下へはみ出した（横画面で開いてから縦画面にしたとき。
 	// 2026-09-25、ユーザーの指摘）。大きさが変わったフレームの次は中央へ置き直す。
-	CenterNextWindow(cast_.recenter ? ImGuiCond_Always : placeCond());
-	cast_.recenter = false;
+	CenterNextWindow(recenter_ ? ImGuiCond_Always : ui.placeCond());
+	recenter_ = false;
 	// 画面の縁の余白（DisplaySafeAreaPadding）の内側に収める。画面の幅ちょうどに
 	// すると、ImGui が「収まらない」とみて、中身は収まっているのに縦のスクロール
 	// バーを出した（Pixel 7a、2026-09-25）。
@@ -81,26 +81,26 @@ void SettingsUi::BuildCastWindow(Settings *settings) {
 	                         st.WindowPadding.y * 4.0f + st.ItemSpacing.y * 2.0f;
 	const bool wide = io.DisplaySize.x > io.DisplaySize.y &&
 	                  oneColumnH > io.DisplaySize.y - st.DisplaySafeAreaPadding.y * 2.0f;
-	float width = DialogSize(480.0f, 360.0f).x * (wide ? 2.0f : 1.0f);
+	float width = ui.DialogSize(480.0f, 360.0f).x * (wide ? 2.0f : 1.0f);
 	const float maxW = io.DisplaySize.x - st.DisplaySafeAreaPadding.x * 2.0f;
 	if (width > maxW) width = maxW;
 	// 高さが画面に収まらず縦のスクロールバーが出ると、ImGui はその幅を中身の幅に
 	// **足して**ウィンドウを広げる。画面いっぱいの幅だと、中央に置いたウィンドウの左右が画面から
 	// 切れた（r77 の 480x640 縦画面、2026-09-30）。出ていたら、そのぶん中身を詰める。
-	if (cast_.scrollY) width -= st.ScrollbarSize;
+	if (scrollY_) width -= st.ScrollbarSize;
 	// 幅は中身の幅で決める（SetNextWindowContentSize。高さは 0＝中身任せ）。
 	// SetNextWindowSizeConstraints で幅を決めると、中身が収まっているのに縦の
 	// スクロールバーが出た（Pixel 7a、2026-09-25）。
 	ImGui::SetNextWindowContentSize(ImVec2(width - st.WindowPadding.x * 2.0f, 0.0f));
-	if (!BeginDialog(kCastTitle, &cast_.show,
-	                            DialogFlags() | ImGuiWindowFlags_AlwaysAutoResize)) {
+	if (!ui.BeginDialog(kCastTitle, &show_,
+	                            ui.DialogFlags() | ImGuiWindowFlags_AlwaysAutoResize)) {
 		return;
 	}
 
 	const cast::State state = cast::GetState();
 	const bool idle = (state == cast::kIdle);
 	const std::vector<cast::Device> devices = cast::Devices();
-	if (cast_.selected >= (int)devices.size()) cast_.selected = -1;
+	if (selected_ >= (int)devices.size()) selected_ = -1;
 	// 送っている間は、送り先の行に印を付ける（名前で探す）。
 	int castingIndex = -1;
 	if (!idle) {
@@ -133,23 +133,23 @@ void SettingsUi::BuildCastWindow(Settings *settings) {
 			char label[256];
 			snprintf(label, sizeof(label), "%s  (%s)##cast%d", devices[i].name.c_str(),
 			         devices[i].model.c_str(), i);
-			const bool selected = idle ? (i == cast_.selected) : (i == castingIndex);
+			const bool selected = idle ? (i == selected_) : (i == castingIndex);
 			if (ImGui::Selectable(label, selected, ImGuiSelectableFlags_AllowDoubleClick) &&
-			    !dragMoved_ && idle) {
-				cast_.selected = i;
+			    !ui.dragMoved_ && idle) {
+				selected_ = i;
 				if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) startIndex = i;
 			}
 			if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", devices[i].address.c_str());
 		}
 		ImGui::EndDisabled();
-		DragToScroll(&dragScroll_, &dragMoved_, false, true);
+		DragToScroll(&ui.dragScroll_, &ui.dragMoved_, false, true);
 		ImGui::EndChild();
 	}
 
 	// [送る] と [キャストを終了] は同じ場所。
 	if (idle) {
-		ImGui::BeginDisabled(cast_.selected < 0);
-		if (ImGui::Button(Msg("Cast.Start"), ImVec2(-FLT_MIN, 0.0f))) startIndex = cast_.selected;
+		ImGui::BeginDisabled(selected_ < 0);
+		if (ImGui::Button(Msg("Cast.Start"), ImVec2(-FLT_MIN, 0.0f))) startIndex = selected_;
 		ImGui::EndDisabled();
 		if (startIndex >= 0 && startIndex < (int)devices.size()) {
 			cast::SetQuality(settings->castQuality);
@@ -159,7 +159,9 @@ void SettingsUi::BuildCastWindow(Settings *settings) {
 	} else {
 		ImGui::BeginDisabled(state == cast::kStopping);
 		// 終えるのはメインループ（先に手元を一時停止する。main.cpp の kRequestStopCast）。
-		if (ImGui::Button(Msg("Cast.Stop"), ImVec2(-FLT_MIN, 0.0f))) request_ = kRequestStopCast;
+		if (ImGui::Button(Msg("Cast.Stop"), ImVec2(-FLT_MIN, 0.0f))) {
+			ui.request_ = SettingsUi::kRequestStopCast;
+		}
 		ImGui::EndDisabled();
 	}
 
@@ -224,7 +226,7 @@ void SettingsUi::BuildCastWindow(Settings *settings) {
 				QualityLabel(Msg(kKeys[i]), cast::GetQualityPreset(i), label, sizeof(label));
 				if (ImGui::Selectable(label, selected)) {
 					settings->castQuality = i;
-					changedFields_ |= Settings::kFieldCast;
+					ui.changedFields_ |= Settings::kFieldCast;
 					cast::SetQuality(i);
 				}
 				if (selected) ImGui::SetItemDefaultFocus();
@@ -237,7 +239,7 @@ void SettingsUi::BuildCastWindow(Settings *settings) {
 	bool mute = settings->castMuteLocal;
 	if (ImGui::Checkbox(Msg("Cast.MuteLocal"), &mute)) {
 		settings->castMuteLocal = mute;
-		changedFields_ |= Settings::kFieldCast;
+		ui.changedFields_ |= Settings::kFieldCast;
 		cast::SetMuteLocal(mute);
 	}
 	// 映像を早める量。鍵盤が音より遅れて見えるときに、見ながら合わせる。
@@ -249,7 +251,7 @@ void SettingsUi::BuildCastWindow(Settings *settings) {
 		ImGui::SetNextItemWidth(-FLT_MIN);
 		if (ImGui::SliderInt("##castadvance", &ms, 0, Settings::kCastAdvanceMsMax, "%d ms")) {
 			settings->castVideoAdvanceMs = ms;
-			changedFields_ |= Settings::kFieldCast;
+			ui.changedFields_ |= Settings::kFieldCast;
 			cast::SetVideoAdvanceMs(ms);
 		}
 		// すぐ効くが、TV は流れを数秒溜めて再生しているので、見えるのはそのあと
@@ -262,17 +264,17 @@ void SettingsUi::BuildCastWindow(Settings *settings) {
 		const std::string stats = cast::StatsText();
 		ImGui::TextDisabled("%s", stats.empty() ? " " : stats.c_str());
 	}
-	if (ImGui::Button(Msg("Button.Close"))) cast_.show = false;
+	if (ImGui::Button(Msg("Button.Close"))) show_ = false;
 	if (twoColumns) ImGui::EndTable();
 	const ImVec2 size = ImGui::GetWindowSize();
-	if (cast_.lastSize.x > 0.0f && (size.x != cast_.lastSize.x || size.y != cast_.lastSize.y)) {
-		cast_.recenter = true;
+	if (lastSize_.x > 0.0f && (size.x != lastSize_.x || size.y != lastSize_.y)) {
+		recenter_ = true;
 	}
-	cast_.lastSize = size;
+	lastSize_ = size;
 	const bool scrollY = ImGui::GetScrollMaxY() > 0.0f;
-	if (scrollY != cast_.scrollY) {
-		cast_.scrollY = scrollY;
-		cast_.recenter = true;
+	if (scrollY != scrollY_) {
+		scrollY_ = scrollY;
+		recenter_ = true;
 	}
 	ImGui::EndPopup();
 }

@@ -46,28 +46,33 @@ float FramesToMs(int frames, const Player *player) {
 
 }  // namespace settingsui
 
+SettingsWindow::SettingsWindow()
+    : visible_(false), wasVisible_(false), closed_(false), pendingZoom_(0), zoomApplyAtMs_(0),
+      zoomStepRequest_(0), pendingSampleRate_(0), orientEnabled_(false),
+      orientation_(Screen::kLandscape), localeApplyPending_(false), localeChanged_(false) {}
+
 // キー (Ctrl +/-) から頼まれた倍率の増減を入れる。1 段は keybind.cpp の
 // kZoomKeyStep で、端は Screen::kZoomMin / kZoomMax で止まる。ウィンドウへ掛けるのは
 // ダイアログと同じく kZoomApplyDelayMs だけ待ってから（押しっぱなしで
 // リピートしても、手が止まってから 1 回だけ作り直す）。
-void SettingsUi::ApplyZoomStep(Settings *settings) {
-	if (settings_.zoomStepRequest == 0) return;
-	int zoom = settings->zoomPercent + settings_.zoomStepRequest;
-	settings_.zoomStepRequest = 0;
+void SettingsWindow::ApplyZoomStep(SettingsUi &ui, Settings *settings) {
+	if (zoomStepRequest_ == 0) return;
+	int zoom = settings->zoomPercent + zoomStepRequest_;
+	zoomStepRequest_ = 0;
 	if (zoom < Screen::kZoomMin) zoom = Screen::kZoomMin;
 	if (zoom > Screen::kZoomMax) zoom = Screen::kZoomMax;
 	if (zoom == settings->zoomPercent) return;
 	settings->zoomPercent = zoom;
-	changedFields_ |= Settings::kFieldZoom;
-	settings_.pendingZoom = zoom;
-	settings_.zoomApplyAtMs = SDL_GetTicks() + kZoomApplyDelayMs;
+	ui.changedFields_ |= Settings::kFieldZoom;
+	pendingZoom_ = zoom;
+	zoomApplyAtMs_ = SDL_GetTicks() + kZoomApplyDelayMs;
 }
 
-void SettingsUi::ScanSkins() {
+void SettingsWindow::ScanSkins(SettingsUi &ui) {
 	std::vector<std::string> refs;
-	paths_.ListSkinRefs(&refs);
+	ui.paths_.ListSkinRefs(&refs);
 
-	settings_.skins.clear();
+	skins_.clear();
 	for (size_t i = 0; i < refs.size(); i++) {
 		SkinItem item;
 		item.ref = refs[i];
@@ -79,17 +84,17 @@ void SettingsUi::ScanSkins() {
 		Skin s;
 		std::string err;
 		item.portrait = true;
-		if (s.Load(paths_, item.ref, &err)) item.portrait = (s.screenW <= s.screenH);
-		settings_.skins.push_back(item);
+		if (s.Load(ui.paths_, item.ref, &err)) item.portrait = (s.screenW <= s.screenH);
+		skins_.push_back(item);
 	}
 }
 
 // 頭に付ける印は縦長四角形 (U+25AF) / 横長四角形 (U+25AD)。同梱フォントには
 // 両方あるが、それが失われて ImGui の既定フォント（ASCII だけ）に落ちたときは
 // 出せないので "|" / "-" にする（screen_orientation.md）。
-std::string SettingsUi::SkinLabel(const SkinItem &item) const {
+std::string SettingsWindow::SkinLabel(SettingsUi &ui, const SkinItem &item) const {
 	const char *mark;
-	if (hasJapaneseFont_) {
+	if (ui.hasJapaneseFont_) {
 		mark = item.portrait ? "\xe2\x96\xaf" : "\xe2\x96\xad";
 	} else {
 		mark = item.portrait ? "|" : "-";
@@ -99,11 +104,12 @@ std::string SettingsUi::SkinLabel(const SkinItem &item) const {
 
 // スロットに合う向きのスキンを上へまとめて出す（screen_orientation.md）。
 // 合わないほうも選べる——余白が出るだけで、ユーザーの選択として許す。
-bool SettingsUi::SkinCombo(const char *label, bool portraitSlot, std::string *value) {
+bool SettingsWindow::SkinCombo(SettingsUi &ui, const char *label, bool portraitSlot,
+                               std::string *value) {
 	std::string shown = *value;
-	for (size_t i = 0; i < settings_.skins.size(); i++) {
-		if (settings_.skins[i].ref == *value) {
-			shown = SkinLabel(settings_.skins[i]);
+	for (size_t i = 0; i < skins_.size(); i++) {
+		if (skins_[i].ref == *value) {
+			shown = SkinLabel(ui, skins_[i]);
 			break;
 		}
 	}
@@ -112,11 +118,11 @@ bool SettingsUi::SkinCombo(const char *label, bool portraitSlot, std::string *va
 	if (ImGui::BeginCombo(label, shown.c_str())) {
 		for (int pass = 0; pass < 2; pass++) {
 			const bool want = (pass == 0) ? portraitSlot : !portraitSlot;
-			for (size_t i = 0; i < settings_.skins.size(); i++) {
-				if (settings_.skins[i].portrait != want) continue;
-				const bool selected = (settings_.skins[i].ref == *value);
-				if (ImGui::Selectable(SkinLabel(settings_.skins[i]).c_str(), selected)) {
-					*value = settings_.skins[i].ref;
+			for (size_t i = 0; i < skins_.size(); i++) {
+				if (skins_[i].portrait != want) continue;
+				const bool selected = (skins_[i].ref == *value);
+				if (ImGui::Selectable(SkinLabel(ui, skins_[i]).c_str(), selected)) {
+					*value = skins_[i].ref;
 					changed = true;
 				}
 				if (selected) ImGui::SetItemDefaultFocus();
@@ -130,25 +136,25 @@ bool SettingsUi::SkinCombo(const char *label, bool portraitSlot, std::string *va
 // [言語] で選ばれたときの控え。name が空なら「自動」で、動作環境の言語に
 // 一番近い同梱ぶんを読む（ini に残すのは空のままなので、別の端末へ持って
 // いってもその環境の言語になる）。
-void SettingsUi::SelectLocale(Settings *settings, const std::string &name) {
+void SettingsWindow::SelectLocale(SettingsUi &ui, Settings *settings, const std::string &name) {
 	if (settings->locale == name) return;
 	settings->locale = name;
-	changedFields_ |= Settings::kFieldLocale;
+	ui.changedFields_ |= Settings::kFieldLocale;
 
-	settings_.pendingLocale =
-	    name.empty() ? MatchLocale(settings_.locales, Screen::SystemLocale()) : name;
-	settings_.localeApplyPending = true;
+	pendingLocale_ =
+	    name.empty() ? MatchLocale(locales_, Screen::SystemLocale()) : name;
+	localeApplyPending_ = true;
 	// 題名ごと入れ替わるので、いったん閉じる。開き直すのは Build() の頭。
-	settings_.visible = false;
+	visible_ = false;
 }
 
 // 実際にカタログを読み直す。**設定ウィンドウが閉じている間に呼ぶこと。**
-void SettingsUi::ApplyLocale() {
-	const std::string want = settings_.pendingLocale;
-	settings_.pendingLocale.clear();
+void SettingsWindow::ApplyLocale(SettingsUi &ui) {
+	const std::string want = pendingLocale_;
+	pendingLocale_.clear();
 	if (want.empty()) return;
 
-	if (!LoadMessages(paths_, want)) {
+	if (!LoadMessages(ui.paths_, want)) {
 		// カタログが読めなかった。前の言語の文言がそのまま残るので、
 		// 画面は動き続ける（この 1 本だけ英語で知らせる）。
 		printf("warning  : message catalog not found: locale %s\n", want.c_str());
@@ -157,26 +163,26 @@ void SettingsUi::ApplyLocale() {
 	// 覚えている文言を取り直す。題名はポインタ、操作方法の一覧は写しで
 	// 持っているので、どちらも作り直しが要る。
 	ResetTitles();
-	LoadHelpRows();
-	settings_.localeChanged = true;
+	ui.info_.LoadHelpRows();
+	localeChanged_ = true;
 }
 
 // 設定ウィンドウ本体。Build() のフレーム処理から切り出したもの。
-void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Player *player,
-                                     Filer *filer, Screen *screen) {
+void SettingsWindow::Build(SettingsUi &ui, Settings *settings, DrawScreen *draw, Player *player,
+                           Filer *filer, Screen *screen) {
 	// ここから下は設定ウィンドウ。モーダルなので、開いている間はメイン画面も
 	// 他のダイアログも操作できない。
-	if (!SyncModal(kSettingsTitle, &settings_.visible)) return;
+	if (!ui.SyncModal(kSettingsTitle, &visible_)) return;
 
 	// 開くたびに画面の中央から出す。出したあとは掴んで動かせる（パソコンのみ。
 	// DialogFlags）。倍率や表示サイズが変わったフレームだけは矩形ごと
 	// 作り直す（placeCond）。
-	CenterNextWindow(placeCond());
-	ImGui::SetNextWindowSize(DialogSize(380, 464), placeCond());
+	CenterNextWindow(ui.placeCond());
+	ImGui::SetNextWindowSize(ui.DialogSize(380, 464), ui.placeCond());
 
-	// p_open に settings_.visible をそのまま渡す。× で閉じられたときは ImGui が
+	// p_open に settings_.visible_ をそのまま渡す。× で閉じられたときは ImGui が
 	// false にして閉じてくれるし、F1 で false にした場合も同じ経路で閉じる。
-	if (!BeginDialog(kSettingsTitle, &settings_.visible, DialogFlags())) {
+	if (!ui.BeginDialog(kSettingsTitle, &visible_, ui.DialogFlags())) {
 		return;
 	}
 
@@ -214,19 +220,19 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 		// 別のことなので）。
 		const std::string cur = settings->locale;
 		const char *label = Msg("Settings.LanguageAuto");
-		for (size_t i = 0; i < settings_.locales.size(); i++) {
-			if (settings_.locales[i].name == cur) label = settings_.locales[i].displayName.c_str();
+		for (size_t i = 0; i < locales_.size(); i++) {
+			if (locales_[i].name == cur) label = locales_[i].displayName.c_str();
 		}
 		// 見出しと同じ文言なので、id は "###" で分ける。
 		if (ImGui::BeginCombo(L("Settings.Language", "###language").c_str(), label)) {
 			if (ImGui::Selectable(Msg("Settings.LanguageAuto"), cur.empty())) {
-				SelectLocale(settings, std::string());
+				SelectLocale(ui, settings, std::string());
 			}
 			if (cur.empty()) ImGui::SetItemDefaultFocus();
-			for (size_t i = 0; i < settings_.locales.size(); i++) {
-				const bool selected = (settings_.locales[i].name == cur);
-				if (ImGui::Selectable(settings_.locales[i].displayName.c_str(), selected)) {
-					SelectLocale(settings, settings_.locales[i].name);
+			for (size_t i = 0; i < locales_.size(); i++) {
+				const bool selected = (locales_[i].name == cur);
+				if (ImGui::Selectable(locales_[i].displayName.c_str(), selected)) {
+					SelectLocale(ui, settings, locales_[i].name);
 				}
 				if (selected) ImGui::SetItemDefaultFocus();
 			}
@@ -263,15 +269,15 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 				if (zoom < Screen::kZoomMin) zoom = Screen::kZoomMin;
 				if (zoom > Screen::kZoomMax) zoom = Screen::kZoomMax;
 				settings->zoomPercent = zoom;
-				changedFields_ |= Settings::kFieldZoom;
+				ui.changedFields_ |= Settings::kFieldZoom;
 			}
 			// 触られるたびに期限を先送りする（デバウンス）。こうすると
 			// -/+ の連打でも、桁を打っている途中でも、手が止まってから適用される。
 			// InputInt の -/+ ボタンでは IsItemDeactivatedAfterEdit() が来ないので、
 			// edited だけに頼らず両方を見る。
 			if (edited || ImGui::IsItemDeactivatedAfterEdit()) {
-				settings_.pendingZoom = settings->zoomPercent;
-				settings_.zoomApplyAtMs = SDL_GetTicks() + kZoomApplyDelayMs;
+				pendingZoom_ = settings->zoomPercent;
+				zoomApplyAtMs_ = SDL_GetTicks() + kZoomApplyDelayMs;
 			}
 			// ここは Button で置くこと。SmallButton は FramePadding.y が 0 なので
 			// [再読込] など他のボタンより背が低くなり、指で操作するときの
@@ -279,9 +285,9 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 			SameLineOrWrap(Msg("Settings.ZoomSystem"));
 			if (ImGui::Button(Msg("Settings.ZoomSystem"))) {
 				settings->zoomPercent = Screen::SystemZoomPercent();
-				changedFields_ |= Settings::kFieldZoom;
-				settings_.pendingZoom = settings->zoomPercent;
-				settings_.zoomApplyAtMs = SDL_GetTicks() + kZoomApplyDelayMs;
+				ui.changedFields_ |= Settings::kFieldZoom;
+				pendingZoom_ = settings->zoomPercent;
+				zoomApplyAtMs_ = SDL_GetTicks() + kZoomApplyDelayMs;
 			}
 			ImGui::EndDisabled();
 			// なぜ触れないのかを添える（グレーなだけだと理由が分からない）。
@@ -297,7 +303,7 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 				screen->SetFullScreen(full);
 				// 掛けられなかったときのために、フラグではなく実際の状態を写す。
 				settings->fullScreen = screen->fullScreen();
-				changedFields_ |= Settings::kFieldFullScreen;
+				ui.changedFields_ |= Settings::kFieldFullScreen;
 			}
 		}
 
@@ -326,7 +332,7 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 					if (ImGui::Selectable(kItems[i].label, selected)) {
 						screen->SetScaleMode(kItems[i].mode);
 						settings->scaleFilter = Screen::ScaleModeName(kItems[i].mode);
-					changedFields_ |= Settings::kFieldFilter;
+					ui.changedFields_ |= Settings::kFieldFilter;
 					}
 					if (selected) ImGui::SetItemDefaultFocus();
 				}
@@ -349,20 +355,20 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 					const bool selected = (i == mode);
 					if (ImGui::Selectable(Msg(kKeys[i]), selected)) {
 						settings->touchUi = i;
-						changedFields_ |= Settings::kFieldTouchUi;
+						ui.changedFields_ |= Settings::kFieldTouchUi;
 					}
 					if (selected) ImGui::SetItemDefaultFocus();
 				}
 				ImGui::EndCombo();
 			}
 			// いま効いているか。自動のときに端末をどう見ているかが分かる。
-			if (touchUi_) {
+			if (ui.touchUi_) {
 				const float mmPerPx = 1.0f / Screen::PixelsPerMm();
 				// 行の高さは実際の値を出す（縦の短い画面では kTouchTargetMm より
 				// 詰めているため。ApplyScale）。
-				TextNote(MsgF("Settings.TouchNow", MsgNum("%.1f", touchMinPx_ * mmPerPx),
-				              MsgNum("%d", (int)(touchMinPx_ + 0.5f)),
-				              MsgNum("%.1f", touchFontPx_ * mmPerPx))
+				TextNote(MsgF("Settings.TouchNow", MsgNum("%.1f", ui.touchMinPx_ * mmPerPx),
+				              MsgNum("%d", (int)(ui.touchMinPx_ + 0.5f)),
+				              MsgNum("%.1f", ui.touchFontPx_ * mmPerPx))
 				             .c_str());
 			} else {
 				TextNote(Msg("Settings.TouchOffNow"));
@@ -382,7 +388,7 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 					const bool selected = (i == mode);
 					if (ImGui::Selectable(Msg(kKeys[i]), selected)) {
 						settings->pipMode = i;
-						changedFields_ |= Settings::kFieldPip;
+						ui.changedFields_ |= Settings::kFieldPip;
 					}
 					if (selected) ImGui::SetItemDefaultFocus();
 				}
@@ -401,16 +407,16 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 	// 画面サイズごと変わりうるので、選ばれた名前を置いておいて実際の
 	// 作り直しはメインループに任せる。
 	if (GroupHeader(Msg("Settings.SkinGroup"))) {
-		if (!settings_.orientEnabled) {
+		if (!orientEnabled_) {
 			// 縦横切り替えが無効なときは今までどおり。**印も並べ替えも
 			// しない**——縦横の区別が意味を持たないので、名前の順のまま出す。
 			if (ImGui::BeginCombo(Msg("Settings.Skin"), settings->skinName.c_str())) {
-				for (size_t i = 0; i < settings_.skins.size(); i++) {
-					const bool selected = (settings_.skins[i].ref == settings->skinName);
-					if (ImGui::Selectable(settings_.skins[i].ref.c_str(), selected)) {
-						settings->skinName = settings_.skins[i].ref;
-						pendingSkin_ = settings->skinName;
-						changedFields_ |= Settings::kFieldSkin;
+				for (size_t i = 0; i < skins_.size(); i++) {
+					const bool selected = (skins_[i].ref == settings->skinName);
+					if (ImGui::Selectable(skins_[i].ref.c_str(), selected)) {
+						settings->skinName = skins_[i].ref;
+						ui.pendingSkin_ = settings->skinName;
+						ui.changedFields_ |= Settings::kFieldSkin;
 					}
 					if (selected) ImGui::SetItemDefaultFocus();
 				}
@@ -418,22 +424,22 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 			}
 			SameLineOrWrap(Msg("Button.Rescan"));
 			if (ImGui::Button(Msg("Button.Rescan"))) {
-				ScanSkins();
-				pendingSkin_ = settings->skinName;
+				ScanSkins(ui);
+				ui.pendingSkin_ = settings->skinName;
 			}
 		} else {
 			// いま出ている向きのほうを選び直したときだけ、その場で作り直す。
 			// もう片方は ini を書き換えるだけ（次にその向きになったら効く）。
-			if (SkinCombo(Msg("Settings.SkinPortrait"), true, &settings->skinPortrait)) {
-				changedFields_ |= Settings::kFieldOrientSkin;
-				if (settings_.orientation == Screen::kPortrait) {
-					pendingSkin_ = settings->skinPortrait;
+			if (SkinCombo(ui, Msg("Settings.SkinPortrait"), true, &settings->skinPortrait)) {
+				ui.changedFields_ |= Settings::kFieldOrientSkin;
+				if (orientation_ == Screen::kPortrait) {
+					ui.pendingSkin_ = settings->skinPortrait;
 				}
 			}
-			if (SkinCombo(Msg("Settings.SkinLandscape"), false, &settings->skinLandscape)) {
-				changedFields_ |= Settings::kFieldOrientSkin;
-				if (settings_.orientation == Screen::kLandscape) {
-					pendingSkin_ = settings->skinLandscape;
+			if (SkinCombo(ui, Msg("Settings.SkinLandscape"), false, &settings->skinLandscape)) {
+				ui.changedFields_ |= Settings::kFieldOrientSkin;
+				if (orientation_ == Screen::kLandscape) {
+					ui.pendingSkin_ = settings->skinLandscape;
 				}
 			}
 
@@ -454,7 +460,7 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 						const bool selected = (i == mode);
 						if (ImGui::Selectable(Msg(kKeys[i]), selected)) {
 							settings->orientationMode = i;
-							changedFields_ |= Settings::kFieldOrientMode;
+							ui.changedFields_ |= Settings::kFieldOrientMode;
 						}
 						if (selected) ImGui::SetItemDefaultFocus();
 					}
@@ -462,7 +468,7 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 				}
 			}
 			if (ImGui::Button(Msg("Button.Rescan"))) {
-				ScanSkins();
+				ScanSkins(ui);
 			}
 			TextNote(Msg("Settings.OrientNote"));
 		}
@@ -474,7 +480,7 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 		bool largeFont = (settings->fileListFontSize != 0);
 		if (ImGui::Checkbox(Msg("Settings.LargeFont"), &largeFont)) {
 			settings->fileListFontSize = largeFont ? 1 : 0;
-			changedFields_ |= Settings::kFieldFontSize;
+			ui.changedFields_ |= Settings::kFieldFontSize;
 			draw->SetFileListFontSize(settings->fileListFontSize);
 			filer->SetViewMetrics(draw->fileListRows(), draw->fileListItemH());
 		}
@@ -482,7 +488,7 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 		bool folderFirst = settings->folderFirst;
 		if (ImGui::Checkbox(Msg("Settings.FolderFirst"), &folderFirst)) {
 			settings->folderFirst = folderFirst;
-			changedFields_ |= Settings::kFieldFolderFirst;
+			ui.changedFields_ |= Settings::kFieldFolderFirst;
 			filer->SetFolderFirst(folderFirst);
 			filer->Refresh();
 		}
@@ -501,7 +507,7 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 					const bool selected = (i == mode);
 					if (ImGui::Selectable(Msg(kKeys[i]), selected)) {
 						settings->fileListScroll = i;
-						changedFields_ |= Settings::kFieldFileListScroll;
+						ui.changedFields_ |= Settings::kFieldFileListScroll;
 						draw->SetFileListScroll(i);
 					}
 					if (selected) ImGui::SetItemDefaultFocus();
@@ -524,10 +530,10 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 				if (rate != player->sampleRate()) {
 					// 実際の切り替え（MXDRV とオーディオ装置の開き直し）は
 					// メインループがやる。
-					settings_.pendingSampleRate = rate;
+					pendingSampleRate_ = rate;
 				}
 				settings->sampleRate = rate;
-				changedFields_ |= Settings::kFieldSampleRate;
+				ui.changedFields_ |= Settings::kFieldSampleRate;
 			}
 			TextNote(Msg("Settings.SampleRateNote"));
 		}
@@ -535,13 +541,13 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 		int loops = settings->loops;
 		if (ImGui::SliderInt(Msg("Settings.Loops"), &loops, 1, 10)) {
 			settings->loops = loops;
-			changedFields_ |= Settings::kFieldLoops;
+			ui.changedFields_ |= Settings::kFieldLoops;
 			player->SetLoopConfig(settings->loops, settings->fadeout);
 		}
 		bool fadeout = settings->fadeout;
 		if (ImGui::Checkbox(Msg("Settings.Fadeout"), &fadeout)) {
 			settings->fadeout = fadeout;
-			changedFields_ |= Settings::kFieldFadeout;
+			ui.changedFields_ |= Settings::kFieldFadeout;
 			player->SetLoopConfig(settings->loops, settings->fadeout);
 		}
 		TextNote(Msg("Settings.LoopNote"));
@@ -551,7 +557,7 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 		if (ImGui::SliderInt(Msg("Settings.MasterVolume"), &vol, Player::kVolumeMin, Player::kVolumeMax,
 		                     "%+d")) {
 			player->SetMasterVolume(vol);
-			changedFields_ |= Settings::kFieldVolume;
+			ui.changedFields_ |= Settings::kFieldVolume;
 		}
 		settings->masterVolume = player->masterVolume();
 		TextNote(MsgF("Settings.VolumeNote", MsgNum("%+d", player->masterVolume()),
@@ -578,7 +584,7 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 			if (ImGui::Checkbox(Msg("Settings.LatencyAuto"), &autoLatency)) {
 				if (!autoLatency && settings->latencyAuto) settings->latencyMs = autoMs;
 				settings->latencyAuto = autoLatency;
-				changedFields_ |= Settings::kFieldLatency;
+				ui.changedFields_ |= Settings::kFieldLatency;
 				player->SetDisplayLatency(autoLatency,
 				                          MsToFrames(settings->latencyMs, player));
 			}
@@ -598,7 +604,7 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 				                    MsgF("Settings.LatencyValue", MsgNum("%+d", ms)).c_str());
 				ImGui::SameLine();
 				if (ImGui::Button(L("Button.Setup", "##displaylatency").c_str())) {
-					OpenLatencyWindow(kLatencyTargetDisplay, std::string());
+					ui.latency_.Open(ui, LatencyDialog::kLatencyTargetDisplay, std::string());
 				}
 			}
 			ImGui::EndDisabled();
@@ -647,7 +653,7 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 		// （ブックマークの設定と同じ作り。2026-09-16、ユーザーの指示。それまでは
 		// 1 本だけを打ち込み欄と [参照…] で指定していた）。ここは件数と [編集…]
 		// だけ。モーダル同士は入れ子にせず、設定ウィンドウを閉じてから開き、
-		// 閉じたらまた開く（Build() の pdx_.handoff）。
+		// 閉じたらまた開く（Build() の pdx_.handoff_）。
 		// 後ろの [編集…] ボタンと文字の並びを揃える。
 		ImGui::AlignTextToFramePadding();
 		ImGui::TextUnformatted(Msg("Settings.PdxPath"));
@@ -656,7 +662,7 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 		                                MsgNum("%d", (int)settings->pdxPaths.size()))
 		                               .c_str());
 		ImGui::SameLine();
-		if (ImGui::Button(Msg("Button.Edit"))) OpenPdxPathsFromSettings();
+		if (ImGui::Button(Msg("Button.Edit"))) ui.pdx_.OpenFromSettings(ui);
 		GroupTrailingSpace();
 	}
 
@@ -705,13 +711,13 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 				    "%s", MsgF("Settings.LatencyValue", MsgNum("%d", device.latencyMs)).c_str());
 				ImGui::SameLine();
 				if (ImGui::Button(L("Button.Setup", "##btlatency").c_str())) {
-					OpenLatencyWindow(kLatencyTargetBluetooth, name);
+					ui.latency_.Open(ui, LatencyDialog::kLatencyTargetBluetooth, name);
 				}
 				ImGui::EndDisabled();
 			}
 			if (changed) {
 				settings->SetBluetoothDevice(device);
-				changedFields_ |= Settings::kFieldBluetooth;
+				ui.changedFields_ |= Settings::kFieldBluetooth;
 			}
 			GroupTrailingSpace();
 		}
@@ -725,29 +731,29 @@ void SettingsUi::BuildSettingsWindow(Settings *settings, DrawScreen *draw, Playe
 		bool showTutorial = !settings->tutorialDone;
 		if (ImGui::Checkbox(Msg("Settings.TutorialNext"), &showTutorial)) {
 			settings->tutorialDone = !showTutorial;
-			changedFields_ |= Settings::kFieldTutorial;
+			ui.changedFields_ |= Settings::kFieldTutorial;
 		}
 		// 対象を指定せずに起動したとき、終了時に鳴らしていた曲を鳴らす（入れて
 		// いなければカーソルを合わせるだけ。2026-09-28、ユーザーの指示）。
 		bool resumePlay = settings->resumePlayOnStart;
 		if (ImGui::Checkbox(Msg("Settings.ResumePlayOnStart"), &resumePlay)) {
 			settings->resumePlayOnStart = resumePlay;
-			changedFields_ |= Settings::kFieldResumePlay;
+			ui.changedFields_ |= Settings::kFieldResumePlay;
 		}
 		GroupTrailingSpace();
 	}
 
 	// ---- 通信 ----------------------------------------------------------
 	// 更新チェック（settingsui_update.cpp）。使えない環境では出さない。
-	BuildNetworkGroup(settings);
+	ui.update_.BuildNetworkGroup(ui, settings);
 
 	// [今すぐ更新チェックを行う] の結果は、開いたままならこの中に重ねて出す。
-	if (update_.nested) BuildUpdateWindow();
+	if (ui.update_.nested()) ui.update_.BuildWindow(ui);
 
 	// 保存ボタンは無い。触った時点で mxv2.ini へ書き戻す（スマートフォンでの
 	// 作法に合わせてある。デスクトップでも不自然ではないという判断）。
 	ImGui::PopItemWidth();
-	DragToScroll(&dragScroll_, &dragMoved_, true, false);
+	DragToScroll(&ui.dragScroll_, &ui.dragMoved_, true, false);
 	ImGui::EndPopup();
 }
 

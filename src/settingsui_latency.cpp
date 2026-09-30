@@ -74,39 +74,39 @@ void SplitLatency(int ms, int *sec, int *milli) {
 
 }  // namespace
 
-const char *SettingsUi::LatencyTitle() const {
-	return (latency_.target == kLatencyTargetBluetooth) ? kBtLatencyTitle : kDisplayLatencyTitle;
+const char *LatencyDialog::Title() const {
+	return (target_ == kLatencyTargetBluetooth) ? kBtLatencyTitle : kDisplayLatencyTitle;
 }
 
-void SettingsUi::OpenLatencyWindow(int target, const std::string &device) {
-	latency_.target = target;
-	latency_.device = device;
-	latency_.handoff.Start();
-	SetSettingsVisible(false);
+void LatencyDialog::Open(SettingsUi &ui, int target, const std::string &device) {
+	target_ = target;
+	device_ = device;
+	handoff_.Start();
+	ui.SetSettingsVisible(false);
 }
 
-void SettingsUi::BuildLatencyWindow(Settings *settings, DrawScreen *draw, Player *player,
-                                    Screen *screen) {
-	const char *title = LatencyTitle();
-	if (!SyncModal(title, &latency_.show)) return;
+void LatencyDialog::Build(SettingsUi &ui, Settings *settings, DrawScreen *draw, Player *player,
+                          Screen *screen) {
+	const char *title = Title();
+	if (!ui.SyncModal(title, &show_)) return;
 
-	PlaceNextWindowNearFiler(draw, screen, placeCond());
-	ImGui::SetNextWindowSize(DialogSize(360.0f, 0.0f), placeCond());
-	if (!BeginDialog(title, &latency_.show,
-	                            DialogFlags() | ImGuiWindowFlags_AlwaysAutoResize)) {
+	PlaceNextWindowNearFiler(draw, screen, ui.placeCond());
+	ImGui::SetNextWindowSize(ui.DialogSize(360.0f, 0.0f), ui.placeCond());
+	if (!ui.BeginDialog(title, &show_,
+	                            ui.DialogFlags() | ImGuiWindowFlags_AlwaysAutoResize)) {
 		return;
 	}
 
-	const bool bluetooth = (latency_.target == kLatencyTargetBluetooth);
+	const bool bluetooth = (target_ == kLatencyTargetBluetooth);
 	Settings::BtDevice device;
 	int ms = 0;
 	int minMs = 0;
 	int maxMs = 0;
 	if (bluetooth) {
-		device = settings->BluetoothDeviceFor(latency_.device);
+		device = settings->BluetoothDeviceFor(device_);
 		ms = device.latencyMs;
 		maxMs = Settings::kBluetoothLatencyMsMax;
-		TextNote(MsgF("Settings.LatencyDialogDevice", latency_.device).c_str());
+		TextNote(MsgF("Settings.LatencyDialogDevice", device_).c_str());
 	} else {
 		ms = settings->latencyMs;
 		minMs = Settings::kLatencyMsMin;
@@ -131,17 +131,17 @@ void SettingsUi::BuildLatencyWindow(Settings *settings, DrawScreen *draw, Player
 		if (bluetooth) {
 			device.latencyMs = ms;
 			settings->SetBluetoothDevice(device);
-			changedFields_ |= Settings::kFieldBluetooth;
+			ui.changedFields_ |= Settings::kFieldBluetooth;
 		} else {
 			settings->latencyMs = ms;
-			changedFields_ |= Settings::kFieldLatency;
+			ui.changedFields_ |= Settings::kFieldLatency;
 			player->SetDisplayLatency(false, MsToFrames(ms, player));
 		}
 	}
 	TextNote(MsgF("Settings.LatencyDialogTotal", MsgNum(bluetooth ? "%d" : "%+d", ms)).c_str());
 	TextNote(Msg("Settings.LatencyDialogHint"));
 
-	if (ImGui::Button(Msg("Button.Close"), ImVec2(-FLT_MIN, 0.0f))) latency_.show = false;
+	if (ImGui::Button(Msg("Button.Close"), ImVec2(-FLT_MIN, 0.0f))) show_ = false;
 
 	ImGui::EndPopup();
 }

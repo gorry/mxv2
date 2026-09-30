@@ -572,7 +572,7 @@ FileSystem *Vfs::CreateFromMountRef(const std::string &ref) const {
 }
 
 // **呼ぶ前に、all_ を読んでいるスレッドの手を離させること**
-// （SettingsUi::QuiesceVfsReaders）。push_back の再確保が、別スレッドの
+// （FileSystemsDialog::QuiesceVfsReaders）。push_back の再確保が、別スレッドの
 // Parse が all_ を舐めている最中に起きると落ちる。RemoveMounted と同じ作法。
 bool Vfs::Add(FileSystem *fs) {
 	if (fs == 0) return false;

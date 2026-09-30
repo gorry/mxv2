@@ -1,17 +1,22 @@
 // mxv2 - 設定 UI の内部ヘッダ。settingsui_*.cpp だけが含める。
 //
-// SettingsUi は 1 つのクラスだが、実装はダイアログ単位でファイルを分けてある
-// （2026-09-16。1 ファイル 3500 行を超えたため）:
-//   settingsui.cpp             … 初期化・フレーム処理 (Build)・共通の小道具
-//   settingsui_settings.cpp    … [mxv2 の設定] (F1)
-//   settingsui_latency.cpp     … [画面の遅れ] / [遅延時間]（[mxv2 の設定] の [設定…] から）
-//   settingsui_colors.cpp      … [配色設定] (F2)
-//   settingsui_filesystems.cpp … [ファイルシステムの設定] (F3)・SAF
-//   settingsui_bookmarks.cpp   … [ブックマークの設定] (F4)・Shift+M
-//   settingsui_pdx.cpp         … [PDX の探索先]
-//   settingsui_folder.cpp      … フォルダを選ぶ (L)
-//   settingsui_menu.cpp        … コンテキストメニュー・終了の確認
-//   settingsui_info.cpp        … [操作方法] (F11)・[バージョン情報] (F12)・起動時の警告
+// ダイアログはそれぞれ自分のクラス（settingsui_*.h / .cpp）で、SettingsUi
+// （settingsui.h / .cpp）はそれを 1 つずつ持って、開閉の入口・共通の道具・
+// 往復の配線を受け持つ（memo/settingsui-split.md）:
+//   settingsui.cpp             … SettingsUi: 初期化・フレーム処理 (Build)・共通の小道具
+//   settingsui_settings.cpp    … SettingsWindow: [mxv2 の設定] (F1)
+//   settingsui_latency.cpp     … LatencyDialog: [画面の遅れ] / [遅延時間]（[設定…] から）
+//   settingsui_colors.cpp      … ColorsDialog: [配色設定] (F2)
+//   settingsui_filesystems.cpp … FileSystemsDialog: [ファイルシステムの設定] (F3)・SAF・
+//                                渡されたファイル
+//   settingsui_bookmarks.cpp   … BookmarksDialog: [ブックマークの設定] (F4)・Shift+M
+//   settingsui_pdx.cpp         … PdxPathsDialog: [PDX の探索先]
+//   settingsui_folder.cpp      … FolderDialog: フォルダを選ぶ (L)
+//   settingsui_menu.cpp        … ContextMenu: コンテキストメニュー・終了の確認
+//   settingsui_info.cpp        … InfoDialogs: [操作方法] (F11)・[バージョン情報] (F12)・
+//                                起動時の警告
+//   settingsui_update.cpp      … UpdateDialog: 更新チェックの知らせ・[通信]
+//   settingsui_cast.cpp        … CastDialog: [キャスト] (F9)
 // ここにあるのは、複数のファイルで使う題名・定数・描画の小道具。
 
 #ifndef MXV2_SETTINGSUI_INTERNAL_H

@@ -166,3 +166,117 @@ Bookmarks_ / Pdx_` の bool 3 つは **enum 1 つ（`FolderReturn`）**にする
     した（settingsui_latency.cpp と 2 か所で使う）。
 - 手順ごとのコミットはできていない（作業ツリーに全部まとまっている。コミットはユーザー）。
 - 手順に使ったスクリプトは scratchpad の step01.py〜step12.py（rf.py が共通）。使い捨て。
+
+## ダイアログを別クラスにする価値の見積もり（2026-09-30）
+
+struct 化が済んだ状態で、Build 関数まで各ダイアログのクラスへ移す（`class FolderDialog { Build(); ... }`）と
+どうなるかを、各ファイルが SettingsUi の何に手を伸ばしているかで数えた（scratchpad の dep.py）。
+
+### いま各ダイアログが SettingsUi から借りているもの
+
+| 種類 | 中身 | 使っている数 |
+|---|---|---|
+| 共通の道具（全ダイアログ） | SyncModal / BeginDialog / DialogFlags / DialogSize / placeCond / CenterNextWindow、`openedModal_`、`dragScroll_` `dragMoved_`、`touchUi_` | 11 ファイル全部 |
+| main への出力 | `changedFields_`（10 ファイル）、`request_` + `requestedFolder_`（5）、`pendingSkin_`（2） | ほぼ全部 |
+| 環境 | `vfs_`（bookmarks 21・fs 45・folder 16・pdx 4）、`songLoader_`、`paths_` | 5 ファイル |
+| 他のダイアログへの依頼 | OpenFolderFor / SetSettingsVisible / OpenFileSystemsFor / StartSafRegrant / InsertBookmark / InsertPdxPath / OpenLatencyWindow / OpenPdxPathsFromSettings、menu からの Open* 9 本 | 8 ファイル・約 25 か所 |
+| 往復の制御 | Build() の handoff / returnTo / jumpPending の配線（約 70 行） | settingsui.cpp に集中 |
+
+クラスにするには、上の 1〜3 段目を **`DialogHost`（SettingsUi への参照か、道具と出力をまとめた context）** として
+全クラスへ渡し、4 段目を host のメソッドとして呼び直すことになる。5 段目はどのみち SettingsUi に残る
+（ダイアログ同士が直接知り合わない作りにするなら、むしろ残すべきもの）。
+
+### 得られるもの
+
+- settingsui.h（今 1030 行）を「SettingsUi 本体 + ダイアログごとのヘッダ 11 本」に割れる。
+- 各ダイアログの補助関数（fs: 12 本、folder: 7 本、menu: 5 本、colors: 3 本）が、そのクラスの private に
+  なる。今は SettingsUi の private として全ファイルから見えている。
+- 新しいダイアログを足すときの型が決まる（state + Build + host の 3 点セット）。
+
+### 掛かるもの
+
+- 11 クラス + host の型。呼び出しの書き換えは `placeCond()` → `host.placeCond()` の類が数百か所で、
+  今回の struct 化と同じくらいの差分（±1000 行）。動作は変えないので危険は小さいが、手間は同じだけ掛かる。
+- `changedFields_` や `request_` は「各ダイアログが host に積む」形になるだけで、構造は変わらない。
+- ImGui のポップアップ ID は開いた場所の ID スタックで決まるので、`update_.nested`（設定ウィンドウの
+  中で組む更新の知らせ）のような「別のダイアログの中で組む」ものは、クラスを分けても呼び出し順は
+  SettingsUi が持ち続ける。
+
+### 見立て
+
+- **効果が出るのは大きい 4 つだけ**（filesystems 614 行 / settings 754 行 / menu 455 行 / folder 346 行）。
+  cast / update / latency / info / pdx（150〜280 行、補助関数 0〜2 本）は、クラスにしても host 経由の
+  呼び出しが増えるぶん、むしろ読みにくくなる。
+- 「グローバルに近い」問題は struct 化 + API 経由で解けているので、クラス化で新たに解ける問題は
+  **ヘッダの長さ**と**補助関数の可視範囲**の 2 つ。どちらも困っている度合いは小さい。
+
+### もしやるなら（軽い順）
+
+1. **ヘッダだけ割る**（最小）: nested struct を namespace スコープの `struct FolderDialogState` に出し、
+   `settingsui_folder.h` などへ移す。settingsui.h はそれらを include して持つだけ。Build 関数は
+   SettingsUi のまま。差分は小さく（宣言の移動だけ）、ヘッダの見通しは得られる。
+2. **大きい 4 つだけクラス化**: fs / settings / menu / folder を `DialogHost` 経由のクラスに。残り 7 つは
+   struct のまま。host の型はこの 4 つのために作る。
+3. **全部クラス化**: 上の見積もりどおり。
+
+推奨は **1 か「やらない」**。2・3 は、次にダイアログを大きく作り替える予定（例: ファイルシステムの設定を
+分割する）が出てきたときに、そのダイアログだけ手を付けるのがよい。
+
+## 第 2 段: ダイアログを別クラスに（2026-09-30、実施済み）
+
+ユーザーの目的は「人間がメソッドやメンバを見たとき、個々のダイアログの private か
+SettingsUi のものかを手早く分かる」こと（例: 配色設定の Rebuild が SettingsUi の
+private に並んでいた）。SettingsUi の private 関数 60 本のうち共通の道具は 5 本だけで、
+45 本は自分のファイルからしか呼ばれていなかった。
+
+### 形
+
+- 1 ダイアログ 1 クラス、1 ヘッダ（`settingsui_<name>.h`）。状態（末尾 `_`）・Build・
+  補助関数・CloseTop はそのクラスの中。ヘッダを開けば持ち物が全部そこにある。
+  | クラス | ヘッダ | 中身 |
+  |---|---|---|
+  | SettingsWindow | settingsui_settings.h | [mxv2 の設定]、スキン一覧、言語、倍率の適用待ち |
+  | LatencyDialog | settingsui_latency.h | [画面の遅れ]/[遅延時間]（enum Target もここ） |
+  | ColorsDialog | settingsui_colors.h | [配色設定]、SaveAs / Rebuild / 上書き確認 |
+  | FolderDialog | settingsui_folder.h | フォルダ選択（enum Target/Return、DirLister の所有） |
+  | FileSystemsDialog | settingsui_filesystems.h | [ファイルシステムの設定]・SAF・渡されたファイル・追加 |
+  | BookmarksDialog | settingsui_bookmarks.h | [ブックマークの設定]・Shift+M・ジャンプ |
+  | PdxPathsDialog | settingsui_pdx.h | [PDX の探索先] |
+  | ContextMenu | settingsui_menu.h | コンテキストメニュー（enum Page）・終了の確認 |
+  | InfoDialogs | settingsui_info.h | バージョン情報・操作方法・起動時の警告（StartupWarning） |
+  | UpdateDialog | settingsui_update.h | 更新チェックの知らせ・[通信] |
+  | CastDialog | settingsui_cast.h | [キャスト] |
+  共通の型 NestedPopup / Handoff は settingsui_dialog.h。
+- SettingsUi に残したもの: 外向きの API（Open* などは各クラスの Open() へ委ねる薄い
+  wrapper）、共通の道具（SyncModal / BeginDialog / DialogFlags / DialogSize / placeCond /
+  ドラッグスクロール）、main への出力（changedFields_ / request_ / requestedFolder_ /
+  pendingSkin_）、環境（vfs_ / songLoader_ / paths_）、**Build() の往復の配線**、
+  CanBookmark / FindBookmark / OpenBookmarkList（複数のダイアログから使う）。
+- 各クラスは `Build(SettingsUi &ui, …)` で SettingsUi への参照を受け、道具と出力は
+  `ui.placeCond()` `ui.changedFields_ |= …` で使う。SettingsUi は 11 クラスを friend にし、
+  各クラスも `friend class SettingsUi` にしている（往復の配線で中を触るため）。
+  ui を使わない関数（Title / Insert / SelectEntry / Rebuild / MenuItem / PageItem など）は
+  引数を持たない。
+- 他のダイアログへの依頼は `ui.folder_.OpenFor(...)` `ui.fs_.StartSafRegrant(ui, ...)` のように
+  相手のクラスの public を呼ぶ（SettingsUi の中継は Open* の wrapper だけ）。
+
+### 数字
+
+settingsui.h: 1030 行 → 533 行。ヘッダ全体（12 本）で 1678 行。SettingsUi の private
+関数は 60 本 → 共通の道具と往復まわりの十数本。
+
+### 進めかた（scratchpad の cls.py、使い捨て）
+
+1 ダイアログずつ: settingsui.h から struct と関数宣言を取り除き、ヘッダを書き、
+機械的に (1) `SettingsUi::Old(` → `Cls::New(SettingsUi &ui, ` (2) 自分のファイル内の呼び出し
+(3) `own_.field` → `field_` (4) 残りの SettingsUi メンバに `ui.` (5) 他のファイルの呼び出しを
+`own_.New(*this, …)` / `ui.own_.New(ui, …)` に (6) ui を使わない関数から引数を外す、を当て、
+ビルドして直す。踏んだ罠: 型名（ImVec2）や入れ子 struct のコンストラクタが「関数」に
+見えて `ui.` が付く／旧名と新名が同じ関数の引数無し呼び出しが 2 度書き換わる／先に足した
+wrapper の宣言まで書き換わる／bash の heredoc がバックスラッシュを壊す（`'\0'` が NUL に）。
+
+### 確認
+
+Windows Debug / Android release ビルド通過。動きは Windows（ud2）で設定→PDX→フォルダ選択→
+ESC→×、F2/F3/F4/F9、削除確認の ESC、右クリックメニュー、Pixel 7a で設定→PDX→フォルダ→戻る、
+F3、メニューを確認（このあとの節に結果）。

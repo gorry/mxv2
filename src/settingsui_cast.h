@@ -1,0 +1,52 @@
+// mxv2 - 設定 UI: [キャスト] ダイアログ (F9)
+//
+// Chromecast（Google Cast 対応機器）へ画面と音を送る（cast.h）。[表示] の
+// [キャスト…] から。実装は settingsui_cast.cpp。
+//
+// ダイアログのクラスの作法（memo/settingsui-split.md）: 状態と補助関数は
+// このクラスの private。共通の道具（SyncModal / BeginDialog / DialogFlags …）と
+// main への出力（changedFields_ / request_）は Build() に渡される SettingsUi を
+// 通して使う（SettingsUi が friend にしてくれている）。SettingsUi 側は往復の
+// 配線のために中を触るので、こちらも SettingsUi を friend にする。
+
+#ifndef MXV2_SETTINGSUI_CAST_H
+#define MXV2_SETTINGSUI_CAST_H
+
+#include "imgui.h"
+
+namespace mxv2 {
+
+class SettingsUi;
+struct Settings;
+
+class CastDialog {
+public:
+	CastDialog()
+	    : show_(false), wasOpen_(false), selected_(-1), lastSize_(0.0f, 0.0f), recenter_(false),
+	      scrollY_(false) {}
+
+	void Open() { show_ = true; }
+	bool isOpen() const { return show_; }
+	// ESC 用（SettingsUi::CloseDialog）。開いていれば閉じて true。
+	bool CloseTop() {
+		if (!show_) return false;
+		show_ = false;
+		return true;
+	}
+	// 1 フレームぶん。設定ウィンドウが閉じていても毎フレーム呼ぶ。
+	void Build(SettingsUi &ui, Settings *settings);
+
+private:
+	friend class SettingsUi;
+
+	bool show_;
+	bool wasOpen_;     // 前のフレームで開いていた（開いた・閉じた瞬間を拾う）
+	int selected_;     // 一覧で選んでいる行
+	ImVec2 lastSize_;  // 前のフレームのダイアログの大きさ（変わったら中央へ置き直す）
+	bool recenter_;    // 次のフレームで中央へ置き直す
+	bool scrollY_;     // 前のフレームで縦のスクロールバーが出ていた（その幅を空ける）
+};
+
+}  // namespace mxv2
+
+#endif  // MXV2_SETTINGSUI_CAST_H

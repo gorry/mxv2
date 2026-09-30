@@ -1127,7 +1127,7 @@ int main(int argc, char **argv) {
 			const bool isKey = (ev.type == SDL_KEYDOWN || ev.type == SDL_KEYUP ||
 			                    ev.type == SDL_TEXTINPUT);
 			// 右クリックのコンテキストメニューは ImGui 側が自分で拾う
-			// （SettingsUi::BuildContextMenu の BeginPopupContextVoid）。
+			// （ContextMenu::Build の BeginPopupContextVoid）。
 			// ESC は mxv2 では終了に割り当ててあるので、そちらには足さない。
 			if (isMouse && ui.wantCaptureMouse()) {
 				// チュートリアル中で他のダイアログが無ければ、吹き出しの上で
