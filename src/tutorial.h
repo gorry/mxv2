@@ -76,19 +76,22 @@ public:
 	bool BubbleContains(int ox, int oy) const;
 
 private:
-	enum Step {
-		kStepWelcome = 0,
-		kStepFiler,      // ArctanX を開く
-		kStepPlay,       // 曲を開く
-		kStepKeyboard,   // 鍵盤を押す
-		kStepPlayKeys,   // 一時停止と再開
-		kStepCont,       // CONT を点ける
-		kStepMenu,       // メニューから [mxv2 の設定] を開く
-		kStepSettings,   // 設定の説明。ダイアログを閉じたら次へ
-		kStepFsSelect,   // ファイルシステムの選択まで戻る
-		kStepBookmark,
-		kStepEnd,
-		kNumSteps
+	struct Step {
+		enum Type {
+			Welcome = 0,
+			Filer,      // ArctanX を開く
+			Play,       // 曲を開く
+			Keyboard,   // 鍵盤を押す
+			PlayKeys,   // 一時停止と再開
+			Cont,       // CONT を点ける
+			Menu,       // メニューから [mxv2 の設定] を開く
+			Settings,   // 設定の説明。ダイアログを閉じたら次へ
+			FsSelect,   // ファイルシステムの選択まで戻る
+			Bookmark,
+			End,
+			Count
+	
+		};
 	};
 
 	struct Rect {

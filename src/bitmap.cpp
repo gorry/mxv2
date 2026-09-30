@@ -45,8 +45,8 @@ inline int ClampByte(int v) {
 inline uint8_t BlendChannel(int mode, int d, int s) {
 	if (mode == 100) return (uint8_t)s;
 	if (mode < 100) return (uint8_t)(d - g_alpha[mode * 511 + (d - s)]);
-	if (mode == kBlendSub) return g_clip[d - s];
-	if (mode == kBlendAdd) return g_clip[d + s];
+	if (mode == BlendMode::Sub) return g_clip[d - s];
+	if (mode == BlendMode::Add) return g_clip[d + s];
 	return g_alphaMul[s * 256 + d];
 }
 
@@ -219,7 +219,7 @@ void BmpFillMul(Bitmap *dst, int xdst, int ydst, int width, int height,
 	if (alpha <= 0) return;
 	// 素の乗算と同じになるので、そちらへ流す（8bpp の扱いも合わせられる）。
 	if (alpha >= 100) {
-		BmpFill(dst, xdst, ydst, width, height, r, g, b, kBlendMul);
+		BmpFill(dst, xdst, ydst, width, height, r, g, b, BlendMode::Mul);
 		return;
 	}
 
@@ -242,9 +242,9 @@ void BmpFillMul(Bitmap *dst, int xdst, int ydst, int width, int height,
 		uint8_t *q = dst->RowFromTop(ydst + y) + (size_t)xdst * 3;
 		for (int x = 0; x < width; x++) {
 			// 乗算した色を作り、それを元の画素へ alpha で乗せる。
-			q[0] = BlendChannel(alpha, q[0], BlendChannel(kBlendMul, q[0], b));
-			q[1] = BlendChannel(alpha, q[1], BlendChannel(kBlendMul, q[1], g));
-			q[2] = BlendChannel(alpha, q[2], BlendChannel(kBlendMul, q[2], r));
+			q[0] = BlendChannel(alpha, q[0], BlendChannel(BlendMode::Mul, q[0], b));
+			q[1] = BlendChannel(alpha, q[1], BlendChannel(BlendMode::Mul, q[1], g));
+			q[2] = BlendChannel(alpha, q[2], BlendChannel(BlendMode::Mul, q[2], r));
 			q += 3;
 		}
 	}

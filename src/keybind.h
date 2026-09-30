@@ -10,6 +10,8 @@
 
 #include <SDL.h>
 
+#include "mouse.h"
+
 namespace mxv2 {
 
 class DrawScreen;
@@ -36,7 +38,7 @@ struct InputTargets {
 };
 
 // マウス・タッチの操作 (MouseInput::Handle の戻り値) を実行する。
-void HandleMouseRequest(int request, const InputTargets &t);
+void HandleMouseRequest(MouseRequest request, const InputTargets &t);
 // キーが押された。
 void HandleKeyDown(const SDL_KeyboardEvent &ev, const InputTargets &t);
 

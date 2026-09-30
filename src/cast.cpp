@@ -10,7 +10,7 @@ namespace cast {
 // 映像のビットレートは画質だけに効き、CPU はほぼ変わらない。音声は「中」以上を
 // 192kbps にする（2026-09-26、ユーザーの指定）。
 const QualityPreset &GetQualityPreset(int q) {
-	static const QualityPreset kPresets[kQualityCount] = {
+	static const QualityPreset kPresets[Quality::Count] = {
 	    {640, 360, 15, 1000, 128},    // 最低
 	    {854, 480, 30, 2000, 128},    // 低（Android の既定）
 	    {1280, 720, 30, 2000, 192},   // 中（パソコンの既定）
@@ -18,7 +18,7 @@ const QualityPreset &GetQualityPreset(int q) {
 	    {1920, 1080, 60, 6000, 192},  // 最高
 	};
 	if (q < 0) q = 0;
-	if (q >= kQualityCount) q = kQualityCount - 1;
+	if (q >= Quality::Count) q = Quality::Count - 1;
 	return kPresets[q];
 }
 
@@ -38,10 +38,10 @@ void StopDiscovery() {}
 std::vector<Device> Devices() { return std::vector<Device>(); }
 void Start(const Device &) {}
 void Stop() {}
-Event Poll() { return kEventNone; }
+Event Poll() { return Event::None; }
 void ResumeRemote() {}
 bool RemotePaused() { return false; }
-State GetState() { return kIdle; }
+State GetState() { return State::Idle; }
 std::string DeviceName() { return std::string(); }
 std::string LastError() { return std::string(); }
 std::string LastErrorKey() { return std::string(); }
@@ -91,7 +91,7 @@ struct Global {
 	bool discovering;
 	std::thread worker;
 	std::atomic<bool> workerBusy;
-	std::atomic<int> state;    // State
+	std::atomic<State> state;    // State
 	std::atomic<bool> streaming;  // 音と絵を渡してよい
 	std::atomic<bool> muteLocal;
 	std::atomic<int> advanceMs;  // 映像の時刻を早める量
@@ -127,8 +127,9 @@ struct Global {
 	bool haveCaptured;
 
 	Global()
-	    : initialized(false), discovering(false), workerBusy(false), state(kIdle),
-	      streaming(false), muteLocal(true), advanceMs(0), quality(kQualityMedium), cancel(false), endReported(false),
+	    : initialized(false), discovering(false), workerBusy(false), state(State::Idle),
+	      streaming(false), muteLocal(true), advanceMs(0), quality(Quality::Medium), cancel(false),
+	      endReported(false),
 	      remotePaused(false), reloading(false), recoverStreak(0), bufferingSince(0),
 	      seekRescued(false), streamStartTicks(0), fetched(false), mapFrame(0), mapStreamMs(0),
 	      mapTicks(0), perfStart(0), perfLoops(0), perfCaptures(0), perfReadSec(0),
@@ -172,19 +173,19 @@ void StopSequence() {
 		std::lock_guard<std::mutex> lock(g.mutex);
 		g.deviceName.clear();
 	}
-	g.state = kIdle;
+	g.state = State::Idle;
 }
 
 void StartSequence(Device d) {
 	Global &g = G();
-	g.state = kConnecting;
+	g.state = State::Connecting;
 	// 遅い端末（XS17）でつながるまでが長かったので、段階ごとの時間を出しておく。
 	const uint32_t t0 = SDL_GetTicks();
 	printf("cast     : connecting to %s (%s:%d)\n", d.name.c_str(), d.address.c_str(), d.port);
 	if (SDLCastG_Connect(d.address.c_str(), d.port) != 0) {
 		SetError(SDLCastG_GetError());
 		SDLCastG_Disconnect();
-		g.state = kIdle;
+		g.state = State::Idle;
 		g.workerBusy = false;
 		return;
 	}
@@ -217,7 +218,7 @@ void StartSequence(Device d) {
 		cfg.title = MXV2_APP_NAME;
 		if (SDLCastG_StartStream(&cfg) == 0) {
 			g.streaming = true;
-			g.state = kStarting;
+			g.state = State::Starting;
 			g.streamStartTicks = SDL_GetTicks();
 			g.fetched = false;
 			printf("cast     : %s (%s) %dx%d %dfps video %dkbps audio %dkbps\n", d.name.c_str(),
@@ -239,7 +240,7 @@ void StartSequence(Device d) {
 			std::lock_guard<std::mutex> lock(g.mutex);
 			g.deviceName.clear();
 		}
-		g.state = kIdle;
+		g.state = State::Idle;
 	}
 	g.cancel = false;
 	g.workerBusy = false;
@@ -276,7 +277,7 @@ void Shutdown() {
 	if (!g.initialized) return;
 	g.cancel = true;
 	if (g.worker.joinable()) g.worker.join();
-	if (g.state != kIdle) StopSequence();
+	if (g.state != State::Idle) StopSequence();
 	StopDiscovery();
 	SDLCastG_Quit();
 	g.initialized = false;
@@ -323,7 +324,7 @@ std::vector<Device> Devices() {
 
 void Start(const Device &device) {
 	Global &g = G();
-	if (!g.initialized || g.workerBusy || g.state != kIdle) return;
+	if (!g.initialized || g.workerBusy || g.state != State::Idle) return;
 	{
 		std::lock_guard<std::mutex> lock(g.mutex);
 		g.deviceName = device.name;
@@ -335,7 +336,7 @@ void Start(const Device &device) {
 	g.reloading = false;
 	g.recoverStreak = 0;
 	g.bufferingSince = 0;
-	g.state = kConnecting;
+	g.state = State::Connecting;
 	RunWorker(&StartSequence, device);
 }
 
@@ -344,21 +345,21 @@ void Stop() {
 	g.endReported = false;
 	g.remotePaused = false;
 	g.reloading = false;
-	if (g.state == kIdle || g.state == kStopping) return;
+	if (g.state == State::Idle || g.state == State::Stopping) return;
 	if (g.workerBusy) {
 		// つないでいる途中。StartSequence が見て畳む。
 		g.cancel = true;
 		return;
 	}
 	g.streaming = false;
-	g.state = kStopping;
+	g.state = State::Stopping;
 	RunWorker(&StopWorkerEntry, Device());
 }
 
 Event Poll() {
 	Global &g = G();
 	JoinWorker();
-	if (!g.streaming || g.workerBusy || g.endReported) return kEventNone;
+	if (!g.streaming || g.workerBusy || g.endReported) return Event::None;
 
 	// 受信側が流れを取りに来ない（Windows のファイアウォールが HTTP の待ち受けを止めて
 	// いるなど）。受信側はくるくるのまま何も言ってこないので、流し始めて 20 秒たっても
@@ -377,23 +378,23 @@ Event Poll() {
 			}
 			printf("cast     : stopped (%s)\n", LastError().c_str());
 			Stop();
-			return kEventNone;
+			return Event::None;
 		}
 	}
 	SDLCastG_Status st;
 	SDLCastG_GetStatus(&st);
 	switch (st.state) {
 		case SDLCASTG_PAUSED:
-			g.state = kCasting;
+			g.state = State::Casting;
 			g.reloading = false;
 			if (!g.remotePaused) {
 				g.remotePaused = true;
 				printf("cast     : paused on the receiver\n");
-				return kEventRemotePause;
+				return Event::RemotePause;
 			}
 			break;
 		case SDLCASTG_PLAYING:
-			g.state = kCasting;
+			g.state = State::Casting;
 			g.reloading = false;
 			g.recoverStreak = 0;
 			g.bufferingSince = 0;
@@ -401,7 +402,7 @@ Event Poll() {
 			if (g.remotePaused) {
 				g.remotePaused = false;
 				printf("cast     : resumed on the receiver\n");
-				return kEventRemotePlay;
+				return Event::RemotePlay;
 			}
 			break;
 		case SDLCASTG_CONNECTED:
@@ -411,7 +412,7 @@ Event Poll() {
 			// 受信側で終わった（TV で別のアプリにした・受信アプリを閉じた・切れた）。
 			// 受信アプリが消えると CONNECTED に戻る。再生を始める前（起こしている
 			// 途中）も CONNECTED を通るので、再生を見てからのものだけ拾う。
-			if (st.state == SDLCASTG_CONNECTED && g.state != kCasting) break;
+			if (st.state == SDLCASTG_CONNECTED && g.state != State::Casting) break;
 			if (st.state == SDLCASTG_IDLE && st.idleReason[0] == 0) break;
 			// 読み込み直させた直後は、前の再生の終わり（IDLE / INTERRUPTED）が来る。
 			if (st.state == SDLCASTG_IDLE && g.reloading) break;
@@ -441,14 +442,14 @@ Event Poll() {
 			// 畳むのは呼ぶ側が演奏を止めてから（Stop）。ここで送るのをやめると
 			// 手元の消音が外れ、止めるまでの間に手元で鳴ってしまう。
 			g.endReported = true;
-			return kEventEnded;
+			return Event::Ended;
 		default:
 			// 読み込み中・溜めている途中。一時停止中に PLAY が押されると、受信側は
 			// まずここを通る（再開の合図として拾う）。
 			if (g.remotePaused && st.state == SDLCASTG_BUFFERING) {
 				g.remotePaused = false;
 				printf("cast     : resumed on the receiver\n");
-				return kEventRemotePlay;
+				return Event::RemotePlay;
 			}
 			// 再生のあとの溜め直し（TV のリモコンの左右キーで飛ばそうとしたなど）。
 			// ライブの流れでは飛べない: 先へ飛ぶとその時刻の中身が来るまで待ち、
@@ -459,7 +460,7 @@ Event Poll() {
 			//                    「再生中」の札も消える（読み込み直すと、受信側の飛ばしが
 			//                    終わらないまま札が残った）
 			//   6 秒を超えたら … それでも戻らないので読み込み直す
-			if (st.state == SDLCASTG_BUFFERING && g.state == kCasting && !g.reloading) {
+			if (st.state == SDLCASTG_BUFFERING && g.state == State::Casting && !g.reloading) {
 				const uint32_t now = SDL_GetTicks();
 				if (g.bufferingSince == 0) {
 					g.bufferingSince = now;
@@ -476,10 +477,10 @@ Event Poll() {
 				}
 				break;  // 表示は「送っています」のまま
 			}
-			if (!g.reloading) g.state = kStarting;
+			if (!g.reloading) g.state = State::Starting;
 			break;
 	}
-	return kEventNone;
+	return Event::None;
 }
 
 bool RemotePaused() { return G().streaming && G().remotePaused; }
@@ -495,7 +496,7 @@ void ResumeRemote() {
 	}
 }
 
-State GetState() { return (State)G().state.load(); }
+State GetState() { return G().state.load(); }
 
 std::string DeviceName() {
 	std::lock_guard<std::mutex> lock(G().mutex);
@@ -531,7 +532,7 @@ std::string StatsText() {
 
 void SetQuality(int q) {
 	if (q < 0) q = 0;
-	if (q >= kQualityCount) q = kQualityCount - 1;
+	if (q >= Quality::Count) q = Quality::Count - 1;
 	G().quality = q;
 }
 

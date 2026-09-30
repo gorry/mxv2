@@ -46,8 +46,8 @@ Screen::Screen()
       width_(0),
       height_(0),
       zoom_(100),
-      orientLock_(kOrientLockNone),
-      scaleMode_(kScaleSharp),
+      orientLock_(OrientationLock::None),
+      scaleMode_(ScaleMode::Sharp),
       preTexture_(0),
       preScale_(0) {}
 
@@ -268,9 +268,9 @@ void Screen::FillRect(int x, int y, int w, int h, uint32_t argb) {
 
 const char *Screen::ScaleModeName(ScaleMode mode) {
 	switch (mode) {
-		case kScaleNearest:
+		case ScaleMode::Nearest:
 			return "nearest";
-		case kScaleLinear:
+		case ScaleMode::Linear:
 			return "linear";
 		default:
 			return "sharp";
@@ -278,9 +278,9 @@ const char *Screen::ScaleModeName(ScaleMode mode) {
 }
 
 Screen::ScaleMode Screen::ScaleModeFromName(const std::string &name, ScaleMode fallback) {
-	if (name == "nearest") return kScaleNearest;
-	if (name == "linear") return kScaleLinear;
-	if (name == "sharp" || name == "sharp-bilinear") return kScaleSharp;
+	if (name == "nearest") return ScaleMode::Nearest;
+	if (name == "linear") return ScaleMode::Linear;
+	if (name == "sharp" || name == "sharp-bilinear") return ScaleMode::Sharp;
 	return fallback;
 }
 
@@ -289,9 +289,9 @@ void Screen::SetScaleMode(ScaleMode mode) {
 	// キャンバスは sharp のときも最近傍。ぼかすのは 2 段目だけ。
 	if (texture_ != 0) {
 		SDL_SetTextureScaleMode(
-		    texture_, (mode == kScaleLinear) ? SDL_ScaleModeLinear : SDL_ScaleModeNearest);
+		    texture_, (mode == ScaleMode::Linear) ? SDL_ScaleModeLinear : SDL_ScaleModeNearest);
 	}
-	if (mode != kScaleSharp) ReleasePreTexture();
+	if (mode != ScaleMode::Sharp) ReleasePreTexture();
 }
 
 void Screen::ReleasePreTexture() {
@@ -333,7 +333,7 @@ void Screen::Draw() {
 
 	const SDL_Rect dst = CanvasRect();
 
-	if (scaleMode_ == kScaleSharp && EnsurePreTexture()) {
+	if (scaleMode_ == ScaleMode::Sharp && EnsurePreTexture()) {
 		// 1 段目: 最近傍で整数倍へ（中間テクスチャいっぱいに描く）。
 		// 描画先は元へ戻す（NULL ＝ウィンドウとは限らない。Chromecast へ送っている間は
 		// ウィンドウと同じ大きさのテクスチャへ描いている。cast.h）。
@@ -382,19 +382,19 @@ bool Screen::ResetTextures(std::string *err) {
 
 Screen::Orientation Screen::OrientationOf(int w, int h) const {
 	// -orientlock が指定されていれば、実物は見ない（デバッグ用）。
-	if (orientLock_ == kOrientLockPortrait) return kPortrait;
-	if (orientLock_ == kOrientLockLandscape) return kLandscape;
+	if (orientLock_ == OrientationLock::Portrait) return Orientation::Portrait;
+	if (orientLock_ == OrientationLock::Landscape) return Orientation::Landscape;
 
 #ifdef __ANDROID__
 	// 正方形は縦扱い（screen_orientation.md）。スキンの分け方と揃える。
-	if (w > 0 && h > 0) return (w > h) ? kLandscape : kPortrait;
-	return kPortrait;
+	if (w > 0 && h > 0) return (w > h) ? Orientation::Landscape : Orientation::Portrait;
+	return Orientation::Portrait;
 #else
 	// デスクトップに「画面の向き」は無い。ウィンドウは自由に変形できるので
 	// 縦横比では決められず、常に横を返す。
 	(void)w;
 	(void)h;
-	return kLandscape;
+	return Orientation::Landscape;
 #endif
 }
 

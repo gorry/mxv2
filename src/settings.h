@@ -24,12 +24,15 @@ struct Settings {
 	// 画面の向きでスキンを切り替えるときのふるまい
 	// （screen_orientation.md）。UI では「縦画面のみ」「横画面のみ」
 	// 「起動時の方向で切り替える」「常に切り替える」の 4 つに見せる。
-	enum OrientationMode {
-		kOrientPortraitOnly = 0,
-		kOrientLandscapeOnly,
-		kOrientStartup,  // 起動時（と設定を閉じたとき）の向きで決めて、以後は固定
-		kOrientAlways,   // 向きが変わるたびに切り替える
-		kNumOrientModes
+	struct OrientationMode {
+		enum Type {
+			PortraitOnly = 0,
+			LandscapeOnly,
+			Startup,  // 起動時（と設定を閉じたとき）の向きで決めて、以後は固定
+			Always,   // 向きが変わるたびに切り替える
+			Count
+	
+		};
 	};
 	// ini に書く名前との変換。綴りは大文字小文字を問わない。
 	static const char *OrientationModeName(int mode);
@@ -70,22 +73,29 @@ struct Settings {
 	// 指で操作する端末向けに、ダイアログの押せるところを広げるか。
 	// kTouchAuto なら Screen::TouchPreferred() に従う（Android は有効）。
 	int touchUi;
-	enum TouchUi { kTouchAuto = 0, kTouchOn = 1, kTouchOff = 2 };
+	struct TouchUi {
+		enum Type { Auto = 0, On = 1, Off = 2 };
+	};
 	// ホームへ戻ったときに小窓（ピクチャー・イン・ピクチャー）で出すか
 	// （Android だけ。pip.h / memo/pip.md）。ini は [Screen] Pip。
 	// 値は Java の PipBridge.MODE_* と同じ並び。
 	int pipMode;
-	enum PipMode { kPipOff = 0, kPipPlaying = 1, kPipAlways = 2, kNumPipModes };
+	struct PipMode {
+		enum Type { Off = 0, Playing = 1, Always = 2, Count };
+	};
 
 	// [Filer]
 	int fileListFontSize;  // 0 = 小 / 1 = 大 (旧 mxv の FontSize)
 	bool folderFirst;
 	// ファイラーの曲名が桁に収まらないときの横スクロール。
 	int fileListScroll;
-	enum FileListScroll {
-		kScrollNone = 0,    // しない
-		kScrollCursor = 1,  // カーソル行だけ
-		kScrollAll = 2,     // 全て
+	struct FileListScroll {
+		enum Type {
+			None = 0,    // しない
+			Cursor = 1,  // カーソル行だけ
+			All = 2,     // 全て
+	
+		};
 	};
 	std::string lastDir;  // 最後に開いていたディレクトリ
 	// 最後に演奏したファイル (ref)。対象を省略して起動したとき、その場所を開いて
@@ -258,38 +268,41 @@ struct Settings {
 	// 保存する項目。「変わった項目だけを書き戻す」ために使う。
 	// 設定ウィンドウには保存ボタンが無く、触った時点で保存する作りなので、
 	// 何を触ったかをこのビットで積んでいく。
-	enum Field {
-		kFieldSkin = 1 << 0,
-		kFieldZoom = 1 << 1,
-		kFieldFilter = 1 << 2,
-		kFieldFontSize = 1 << 3,
-		kFieldFolderFirst = 1 << 4,
-		kFieldLastDir = 1 << 5,
-		kFieldLastFile = 1 << 28,        // [Filer] LastFile / LastPlaying
-		kFieldResumePlay = 1 << 29,      // [Behavior] ResumePlayOnStart
-		kFieldLoops = 1 << 6,
-		kFieldFadeout = 1 << 7,
-		kFieldVolume = 1 << 8,
-		kFieldPdxPaths = 1 << 9,
-		kFieldWindowPos = 1 << 10,
-		kFieldLatency = 1 << 11,
-		kFieldFileSystems = 1 << 12,
-		kFieldSampleRate = 1 << 13,
-		kFieldBookmarks = 1 << 14,
-		kFieldTouchUi = 1 << 15,
-		kFieldFileListScroll = 1 << 16,
-		kFieldContRepeat = 1 << 17,
-		kFieldLocale = 1 << 18,
-		// 縦横切り替えが ON のときのスキン 2 つと、切り替えかた。
-		kFieldOrientSkin = 1 << 19,
-		kFieldOrientMode = 1 << 20,
-		kFieldTutorial = 1 << 21,
-		kFieldFullScreen = 1 << 22,
-		kFieldUpdateCheck = 1 << 23,     // [Network] UpdateCheck
-		kFieldUpdateSchedule = 1 << 24,  // [Network] NextUpdateCheck
-		kFieldPip = 1 << 25,             // [Screen] Pip
-		kFieldCast = 1 << 26,            // [Cast] Quality / MuteLocal / VideoAdvanceMs
-		kFieldBluetooth = 1 << 27,       // [Bluetooth] すべて（機器ごとの値と既定の値）
+	struct Field {
+		enum Type {
+			Skin = 1 << 0,
+			Zoom = 1 << 1,
+			Filter = 1 << 2,
+			FontSize = 1 << 3,
+			FolderFirst = 1 << 4,
+			LastDir = 1 << 5,
+			LastFile = 1 << 28,        // [Filer] LastFile / LastPlaying
+			ResumePlay = 1 << 29,      // [Behavior] ResumePlayOnStart
+			Loops = 1 << 6,
+			Fadeout = 1 << 7,
+			Volume = 1 << 8,
+			PdxPaths = 1 << 9,
+			WindowPos = 1 << 10,
+			Latency = 1 << 11,
+			FileSystems = 1 << 12,
+			SampleRate = 1 << 13,
+			Bookmarks = 1 << 14,
+			TouchUi = 1 << 15,
+			FileListScroll = 1 << 16,
+			ContRepeat = 1 << 17,
+			Locale = 1 << 18,
+			// 縦横切り替えが ON のときのスキン 2 つと、切り替えかた。
+			OrientSkin = 1 << 19,
+			OrientMode = 1 << 20,
+			Tutorial = 1 << 21,
+			FullScreen = 1 << 22,
+			UpdateCheck = 1 << 23,     // [Network] UpdateCheck
+			UpdateSchedule = 1 << 24,  // [Network] NextUpdateCheck
+			Pip = 1 << 25,             // [Screen] Pip
+			Cast = 1 << 26,            // [Cast] Quality / MuteLocal / VideoAdvanceMs
+			Bluetooth = 1 << 27,       // [Bluetooth] すべて（機器ごとの値と既定の値）
+	
+		};
 	};
 
 	Settings();

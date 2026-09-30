@@ -21,10 +21,14 @@
 namespace mxv2 {
 
 // アルファ指定の特殊値。旧 mxv の BMPCOPY_ALPHA_* と同じ値。
-enum BlendMode {
-	kBlendSub = 101,
-	kBlendAdd = 102,
-	kBlendMul = 103,
+struct BlendMode {
+	enum Type {
+		Sub = 101,
+		Add = 102,
+		Mul = 103,
+
+
+	};
 };
 
 // RGBQUAD 相当。DIB と同じ B,G,R,X の並び。

@@ -37,7 +37,7 @@ bool LessPathNoCase(const std::string &a, const std::string &b) {
 }  // namespace
 
 FolderDialog::FolderDialog()
-    : target_(kFolderTargetFiler), returnTo_(kFolderReturnNone), openPending_(false),
+    : target_(Target::Filer), returnTo_(Return::None), openPending_(false),
       lister_(new DirLister()), loading_(false), ticks_(0), hasPrev_(false) {
 	pathBuf_[0] = '\0';
 }
@@ -51,8 +51,8 @@ void FolderDialog::Quiesce() {
 }
 
 void FolderDialog::Open(SettingsUi &ui, const std::string &dir) {
-	target_ = kFolderTargetFiler;
-	returnTo_ = kFolderReturnNone;
+	target_ = Target::Filer;
+	returnTo_ = Return::None;
 	SetDir(ui, dir);
 	show_ = true;
 }
@@ -175,8 +175,8 @@ void FolderDialog::SelectEntry(const std::string &path) {
 }
 
 const char *FolderDialog::Title() const {
-	if (target_ == kFolderTargetPdx) return kPdxFolderTitle;
-	if (target_ == kFolderTargetBookmark) return kBookmarkFolderTitle;
+	if (target_ == Target::Pdx) return kPdxFolderTitle;
+	if (target_ == Target::Bookmark) return kBookmarkFolderTitle;
 	return kFolderTitle;
 }
 
@@ -312,7 +312,7 @@ void FolderDialog::Build(SettingsUi &ui, Settings *settings, Filer *filer) {
 		const bool known = ok && (ref == dir_) && !loading_;
 		if (!ok || (!ref.empty() && !known && !ui.vfs_->IsDir(ref))) {
 			error_ = Msg("Folder.NotFound");
-		} else if (target_ == kFolderTargetPdx) {
+		} else if (target_ == Target::Pdx) {
 			// PDX の探索先に足す。ルート（ファイルシステムの選択）と "Bookmarks>"
 			// 自身、入れてある場所は入れられない。挿す位置は [PDX の探索先] で
 			// 選んでいた行（無ければ末尾）。
@@ -325,10 +325,10 @@ void FolderDialog::Build(SettingsUi &ui, Settings *settings, Filer *filer) {
 				error_ = Msg("PdxPath.AddFull");
 			} else {
 				ui.pdx_.Insert(&list, ref);
-				ui.changedFields_ |= Settings::kFieldPdxPaths;
+				ui.changedFields_ |= Settings::Field::PdxPaths;
 				show_ = false;
 			}
-		} else if (target_ == kFolderTargetBookmark) {
+		} else if (target_ == Target::Bookmark) {
 			// ブックマークに足す。ルート（ファイルシステムの選択）と
 			// "Bookmarks>" 自身、控え済みの場所は入れられない。挿す位置は
 			// [ブックマークの設定] で選んでいた行（無ければ末尾）。
@@ -341,13 +341,13 @@ void FolderDialog::Build(SettingsUi &ui, Settings *settings, Filer *filer) {
 				error_ = Msg("Bookmark.AddFull");
 			} else {
 				ui.bm_.Insert(&list, ref);
-				ui.changedFields_ |= Settings::kFieldBookmarks;
+				ui.changedFields_ |= Settings::Field::Bookmarks;
 				show_ = false;
 			}
 		} else {
 			// ファイラーを動かすのはメインループの持ち物なので、要求だけ積む。
 			ui.requestedFolder_ = ref;
-			ui.request_ = SettingsUi::kRequestSetFolder;
+			ui.request_ = SettingsUi::Request::SetFolder;
 			show_ = false;
 		}
 	}

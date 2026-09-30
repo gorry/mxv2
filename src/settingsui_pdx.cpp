@@ -67,7 +67,7 @@ void PdxPathsDialog::Build(SettingsUi &ui, Settings *settings, Filer *filer) {
 	if (ImGui::Button(Msg("Button.Up"))) {
 		std::swap(list[selected_], list[selected_ - 1]);
 		selected_--;
-		ui.changedFields_ |= Settings::kFieldPdxPaths;
+		ui.changedFields_ |= Settings::Field::PdxPaths;
 	}
 	ImGui::EndDisabled();
 	ImGui::SameLine();
@@ -75,7 +75,7 @@ void PdxPathsDialog::Build(SettingsUi &ui, Settings *settings, Filer *filer) {
 	if (ImGui::Button(Msg("Button.Down"))) {
 		std::swap(list[selected_], list[selected_ + 1]);
 		selected_++;
-		ui.changedFields_ |= Settings::kFieldPdxPaths;
+		ui.changedFields_ |= Settings::Field::PdxPaths;
 	}
 	ImGui::EndDisabled();
 
@@ -88,7 +88,7 @@ void PdxPathsDialog::Build(SettingsUi &ui, Settings *settings, Filer *filer) {
 	ImGui::BeginDisabled(full);
 	if (ImGui::Button(Msg("Button.AddPdxPath"))) {
 		error_.clear();
-		ui.OpenFolderFor(FolderDialog::kFolderTargetPdx, FolderDialog::kFolderReturnPdx);
+		ui.OpenFolderFor(FolderDialog::Target::Pdx, FolderDialog::Return::Pdx);
 		show_ = false;
 	}
 	ImGui::EndDisabled();
@@ -138,7 +138,7 @@ void PdxPathsDialog::BuildRemoveWindow(SettingsUi &ui, Settings *settings) {
 		if (valid) {
 			list.erase(list.begin() + selected_);
 			if (selected_ >= (int)list.size()) selected_ = (int)list.size() - 1;
-			ui.changedFields_ |= Settings::kFieldPdxPaths;
+			ui.changedFields_ |= Settings::Field::PdxPaths;
 		}
 		ImGui::CloseCurrentPopup();
 	}

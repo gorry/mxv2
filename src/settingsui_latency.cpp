@@ -39,19 +39,19 @@ void PlaceNextWindowNearFiler(const DrawScreen *draw, const Screen *screen, ImGu
 	ImVec2 pos(fx + fw * 0.5f, fy + fh * 0.5f);
 	ImVec2 pivot(0.5f, 0.5f);
 	switch (l.filerSide) {
-		case kFilerSideTop:
+		case FilerSide::Top:
 			pos.y = (float)cr.y;
 			pivot.y = 0.0f;
 			break;
-		case kFilerSideLeft:
+		case FilerSide::Left:
 			pos.x = (float)cr.x;
 			pivot.x = 0.0f;
 			break;
-		case kFilerSideRight:
+		case FilerSide::Right:
 			pos.x = (float)(cr.x + cr.w);
 			pivot.x = 1.0f;
 			break;
-		case kFilerSideBottom:
+		case FilerSide::Bottom:
 		default:
 			pos.y = (float)(cr.y + cr.h);
 			pivot.y = 1.0f;
@@ -75,10 +75,10 @@ void SplitLatency(int ms, int *sec, int *milli) {
 }  // namespace
 
 const char *LatencyDialog::Title() const {
-	return (target_ == kLatencyTargetBluetooth) ? kBtLatencyTitle : kDisplayLatencyTitle;
+	return (target_ == Target::Bluetooth) ? kBtLatencyTitle : kDisplayLatencyTitle;
 }
 
-void LatencyDialog::Open(SettingsUi &ui, int target, const std::string &device) {
+void LatencyDialog::Open(SettingsUi &ui, Target target, const std::string &device) {
 	target_ = target;
 	device_ = device;
 	handoff_.Start();
@@ -97,7 +97,7 @@ void LatencyDialog::Build(SettingsUi &ui, Settings *settings, DrawScreen *draw, 
 		return;
 	}
 
-	const bool bluetooth = (target_ == kLatencyTargetBluetooth);
+	const bool bluetooth = (target_ == Target::Bluetooth);
 	Settings::BtDevice device;
 	int ms = 0;
 	int minMs = 0;
@@ -131,10 +131,10 @@ void LatencyDialog::Build(SettingsUi &ui, Settings *settings, DrawScreen *draw, 
 		if (bluetooth) {
 			device.latencyMs = ms;
 			settings->SetBluetoothDevice(device);
-			ui.changedFields_ |= Settings::kFieldBluetooth;
+			ui.changedFields_ |= Settings::Field::Bluetooth;
 		} else {
 			settings->latencyMs = ms;
-			ui.changedFields_ |= Settings::kFieldLatency;
+			ui.changedFields_ |= Settings::Field::Latency;
 			player->SetDisplayLatency(false, MsToFrames(ms, player));
 		}
 	}

@@ -56,14 +56,14 @@ void BookmarksDialog::OpenBookmark(SettingsUi &ui, Settings *settings, int index
 			if (i < index) index--;
 		}
 		selected_ = index;
-		ui.changedFields_ |= Settings::kFieldBookmarks;
+		ui.changedFields_ |= Settings::Field::Bookmarks;
 		ref = parent;
 	}
 
 	// ファイラーを動かすのはメインループの持ち物なので、要求だけ積む
 	// （フォルダ選択やコンテキストメニューと同じ作法）。
 	ui.requestedFolder_ = ref;
-	ui.request_ = SettingsUi::kRequestSetFolder;
+	ui.request_ = SettingsUi::Request::SetFolder;
 	error_.clear();
 	show_ = false;
 }
@@ -88,7 +88,7 @@ void BookmarksDialog::JumpToRef(SettingsUi &ui, Settings *settings, const std::s
 	}
 	// 控えに無い（並べ替え中に消えた）か、開けない。ファイラーに任せる。
 	ui.requestedFolder_ = ref;
-	ui.request_ = SettingsUi::kRequestSetFolder;
+	ui.request_ = SettingsUi::Request::SetFolder;
 }
 
 void BookmarksDialog::Build(SettingsUi &ui, Settings *settings, Filer *filer) {
@@ -145,7 +145,7 @@ void BookmarksDialog::Build(SettingsUi &ui, Settings *settings, Filer *filer) {
 	if (ImGui::Button(Msg("Button.Up"))) {
 		std::swap(list[selected_], list[selected_ - 1]);
 		selected_--;
-		ui.changedFields_ |= Settings::kFieldBookmarks;
+		ui.changedFields_ |= Settings::Field::Bookmarks;
 	}
 	ImGui::EndDisabled();
 	ImGui::SameLine();
@@ -153,7 +153,7 @@ void BookmarksDialog::Build(SettingsUi &ui, Settings *settings, Filer *filer) {
 	if (ImGui::Button(Msg("Button.Down"))) {
 		std::swap(list[selected_], list[selected_ + 1]);
 		selected_++;
-		ui.changedFields_ |= Settings::kFieldBookmarks;
+		ui.changedFields_ |= Settings::Field::Bookmarks;
 	}
 	ImGui::EndDisabled();
 
@@ -171,7 +171,7 @@ void BookmarksDialog::Build(SettingsUi &ui, Settings *settings, Filer *filer) {
 	// ダイアログを開くボタンなので末尾に "…"（Button.AddBookmark）。
 	if (ImGui::Button(Msg("Button.AddBookmark"))) {
 		error_.clear();
-		ui.OpenFolderFor(FolderDialog::kFolderTargetBookmark, FolderDialog::kFolderReturnBookmarks);
+		ui.OpenFolderFor(FolderDialog::Target::Bookmark, FolderDialog::Return::Bookmarks);
 		show_ = false;
 	}
 	ImGui::EndDisabled();
@@ -216,7 +216,7 @@ void BookmarksDialog::BuildRemoveWindow(SettingsUi &ui, Settings *settings) {
 		if (valid) {
 			list.erase(list.begin() + selected_);
 			if (selected_ >= (int)list.size()) selected_ = (int)list.size() - 1;
-			ui.changedFields_ |= Settings::kFieldBookmarks;
+			ui.changedFields_ |= Settings::Field::Bookmarks;
 		}
 		ImGui::CloseCurrentPopup();
 	}
@@ -250,7 +250,7 @@ void BookmarksDialog::BuildToggleWindow(SettingsUi &ui, Settings *settings, File
 		if (ImGui::Button(Msg("Button.Remove"))) {
 			list.erase(list.begin() + at);
 			if (selected_ >= (int)list.size()) selected_ = (int)list.size() - 1;
-			ui.changedFields_ |= Settings::kFieldBookmarks;
+			ui.changedFields_ |= Settings::Field::Bookmarks;
 			ImGui::CloseCurrentPopup();
 		}
 	} else {
@@ -263,7 +263,7 @@ void BookmarksDialog::BuildToggleWindow(SettingsUi &ui, Settings *settings, File
 		ImGui::BeginDisabled(full);
 		if (ImGui::Button(Msg("Button.Add"))) {
 			list.push_back(toggleRef_);  // 追加は末尾（仕様どおり）
-			ui.changedFields_ |= Settings::kFieldBookmarks;
+			ui.changedFields_ |= Settings::Field::Bookmarks;
 			ImGui::CloseCurrentPopup();
 		}
 		ImGui::EndDisabled();

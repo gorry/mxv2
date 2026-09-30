@@ -19,14 +19,15 @@ namespace mxv2 {
 namespace orientlock {
 
 // 端末に要求する向き。
-enum Request {
+enum class Request {
 	// 好きに回してよい（端末の回転ロックの設定には従う）。
 	// Android の SCREEN_ORIENTATION_FULL_USER。既定の状態。
-	kFree = 0,
+	Free = 0,
 	// 縦で固定。**上下反転は許す**（SCREEN_ORIENTATION_SENSOR_PORTRAIT）。
-	kPortrait,
+	Portrait,
 	// 横で固定。同じく左右どちら向きでもよい（SENSOR_LANDSCAPE）。
-	kLandscape,
+	Landscape,
+
 };
 
 // この環境で向きを固定できるか。

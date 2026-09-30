@@ -61,19 +61,21 @@ public:
 	// ---- 画面の向き（screen_orientation.md） --------------------------
 	// スキンを選ぶためだけの向き。上下反転は区別しない（反転しても
 	// 縦は縦、横は横なので、スキンを替える理由が無い）。
-	enum Orientation {
-		kPortrait = 0,
-		kLandscape,
+	enum class Orientation {
+		Portrait = 0,
+		Landscape,
+	
 	};
 
 	// -orientlock の値。0 なら実物（デスクトップではダミー）を見る。
-	enum OrientationLock {
-		kOrientLockNone = 0,
-		kOrientLockPortrait,
-		kOrientLockLandscape,
+	enum class OrientationLock {
+		None = 0,
+		Portrait,
+		Landscape,
+	
 	};
-	void SetOrientationLock(int lock) { orientLock_ = lock; }
-	int orientationLock() const { return orientLock_; }
+	void SetOrientationLock(OrientationLock lock) { orientLock_ = lock; }
+	OrientationLock orientationLock() const { return orientLock_; }
 
 	// いまの向き。**端末の「自然な向き」ではなく出力の縦横比で決める。**
 	// SDL_GetDisplayOrientation は SDLActivity が display.getRotation() を
@@ -89,17 +91,18 @@ public:
 	Orientation displayOrientation() const;
 
 	// キャンバスを拡大するときの補間方法。
-	enum ScaleMode {
+	enum class ScaleMode {
 		// 最近傍。ドットがそのまま出るが、非整数倍だと 1px と 2px が混ざって
 		// 線の太さがムラになる。
-		kScaleNearest = 0,
+		Nearest = 0,
 		// バイリニア。ムラは消えるがドット絵全体がぼやける。
-		kScaleLinear,
+		Linear,
 		// sharp-bilinear。まず最近傍で整数倍 (ceil) に拡大してドットの角を
 		// 作ってから、バイリニアで目的の大きさへ縮める。角を保ったまま
 		// 非整数倍のムラが消える。整数倍のときは縮小が 1:1 になるので
 		// 最近傍と同じ結果になる。
-		kScaleSharp,
+		Sharp,
+	
 	};
 	void SetScaleMode(ScaleMode mode);
 	ScaleMode scaleMode() const { return scaleMode_; }
@@ -270,7 +273,7 @@ private:
 	int width_, height_;
 	int zoom_;  // 表示倍率 (%)
 
-	int orientLock_;  // OrientationLock
+	OrientationLock orientLock_;
 	// 実物の向きを見るところ（Android だけ）。w/h の大小で決める。
 	Orientation OrientationOf(int w, int h) const;
 

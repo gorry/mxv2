@@ -42,44 +42,44 @@ void NudgeZoom(const InputTargets &t, int step) {
 }  // namespace
 
 // マウス・タッチの操作 (MouseInput::Handle) が返した要求を実行する。
-void HandleMouseRequest(int request, const InputTargets &t) {
+void HandleMouseRequest(MouseRequest request, const InputTargets &t) {
 	switch (request) {
-		case mxv2::kMouseRequestOpenCursor:
+		case mxv2::MouseRequest::OpenCursor:
 			OpenCursor(*t.ctx, t.filer, t.ui);
 			break;
-		case mxv2::kMouseRequestPrev: {
+		case mxv2::MouseRequest::Prev: {
 			std::string path;
 			if (t.filer->PrevMdx(&path)) {
 				StartPlay(*t.ctx, path);
 			}
 			break;
 		}
-		case mxv2::kMouseRequestNext: {
+		case mxv2::MouseRequest::Next: {
 			std::string path;
 			if (t.filer->NextMdx(&path)) {
 				StartPlay(*t.ctx, path);
 			}
 			break;
 		}
-		case mxv2::kMouseRequestReplay:
+		case mxv2::MouseRequest::Replay:
 			if (!t.currentPath->empty()) {
 				StartPlay(*t.ctx, *t.currentPath);
 			}
 			break;
-		case mxv2::kMouseRequestToggleCont:
+		case mxv2::MouseRequest::ToggleCont:
 			*t.autoNext = !*t.autoNext;
 			*t.chromeRefresh = true;
 			break;
-		case mxv2::kMouseRequestToggleRepeat:
+		case mxv2::MouseRequest::ToggleRepeat:
 			*t.autoRepeat = !*t.autoRepeat;
 			*t.chromeRefresh = true;
 			break;
-		case mxv2::kMouseRequestGoParent:
+		case mxv2::MouseRequest::GoParent:
 			// ファイラーで左へはじいた。BACKSPACE と同じ。
 			t.filer->GoParent();
 			*t.fileListRefresh = true;
 			break;
-		case mxv2::kMouseRequestContextMenu:
+		case mxv2::MouseRequest::ContextMenu:
 			t.ui->OpenContextMenu();
 			break;
 		default:

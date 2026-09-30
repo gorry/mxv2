@@ -91,7 +91,7 @@ public:
 	bool visible() const { return settings_.isOpen(); }
 
 	// 縦横切り替えの状態。main が毎フレーム教える（screen_orientation.md）。
-	void SetOrientationState(bool enabled, int orientation) {
+	void SetOrientationState(bool enabled, Screen::Orientation orientation) {
 		settings_.SetOrientationState(enabled, orientation);
 	}
 
@@ -246,17 +246,18 @@ public:
 	// メニューから出た「メインループにやってもらうこと」。読んだら消える。
 	// フォルダの移動と終了はメインループが状態を持っているので、
 	// ここでは要求だけ返す。
-	enum Request {
-		kRequestNone = 0,
-		kRequestSetFolder,    // ファイラーを requestedFolder() へ移す
-		kRequestQuit,
-		kRequestOpenHanded,   // requestedHanded() を「落とされた」のと同じ扱いで開く
-		kRequestEnterPip,     // 小窓（ピクチャー・イン・ピクチャー）に入る
-		kRequestStopCast,     // [キャストを終了]。手元を一時停止してからキャストを終える
+	enum class Request {
+		None = 0,
+		SetFolder,    // ファイラーを requestedFolder() へ移す
+		Quit,
+		OpenHanded,   // requestedHanded() を「落とされた」のと同じ扱いで開く
+		EnterPip,     // 小窓（ピクチャー・イン・ピクチャー）に入る
+		StopCast,     // [キャストを終了]。手元を一時停止してからキャストを終える
+	
 	};
 	Request TakeRequest() {
 		const Request r = request_;
-		request_ = kRequestNone;
+		request_ = Request::None;
 		return r;
 	}
 

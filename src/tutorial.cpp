@@ -50,7 +50,7 @@ Tutorial::Tutorial()
     : active_(false),
       recordDone_(false),
       finished_(false),
-      step_(kStepWelcome),
+      step_(Step::Welcome),
       confirmSkip_(false),
       maskReset_(false),
       stepEntered_(false),
@@ -69,7 +69,7 @@ void Tutorial::Start(bool recordDone) {
 	active_ = true;
 	recordDone_ = recordDone;
 	finished_ = false;
-	step_ = kStepWelcome;
+	step_ = Step::Welcome;
 	confirmSkip_ = false;
 	maskReset_ = false;
 	stepEntered_ = false;
@@ -107,12 +107,12 @@ void Tutorial::Finish() {
 	confirmSkip_ = false;
 	spot_ = Rect();
 	// 鍵盤のステップの途中で抜けたなら、マスクを残さない。
-	if (step_ == kStepKeyboard) maskReset_ = true;
+	if (step_ == Step::Keyboard) maskReset_ = true;
 }
 
 void Tutorial::Advance() {
-	if (step_ == kStepKeyboard) maskReset_ = true;
-	if (step_ + 1 >= kNumSteps) {
+	if (step_ == Step::Keyboard) maskReset_ = true;
+	if (step_ + 1 >= Step::Count) {
 		Finish();
 		return;
 	}
@@ -130,14 +130,14 @@ void Tutorial::Advance() {
 
 bool Tutorial::IsAction(int step) {
 	switch (step) {
-		case kStepFiler:
-		case kStepPlay:
-		case kStepKeyboard:
-		case kStepPlayKeys:
-		case kStepCont:
-		case kStepMenu:
-		case kStepSettings:
-		case kStepFsSelect:
+		case Step::Filer:
+		case Step::Play:
+		case Step::Keyboard:
+		case Step::PlayKeys:
+		case Step::Cont:
+		case Step::Menu:
+		case Step::Settings:
+		case Step::FsSelect:
 			return true;
 		default:
 			return false;
@@ -146,29 +146,29 @@ bool Tutorial::IsAction(int step) {
 
 bool Tutorial::StepDone(int step, const State &st) {
 	switch (step) {
-		case kStepFiler:
+		case Step::Filer:
 			return CompareNoCase(st.currentRef, kTargetFolderRef) == 0;
-		case kStepPlay:
+		case Step::Play:
 			return st.playing;
-		case kStepKeyboard:
+		case Step::Keyboard:
 			// 一度どれかのチャンネルを OFF にしたあと、すべてを ON に戻したら次へ。
 			if (st.channelMask != 0) sawMasked_ = true;
 			return sawMasked_ && st.channelMask == 0;
-		case kStepPlayKeys:
+		case Step::PlayKeys:
 			if (st.paused) sawPaused_ = true;
 			return sawPaused_ && !st.paused;
-		case kStepCont:
+		case Step::Cont:
 			// 「点ける」ではなく「切り替えた」を見る。ini の Cont=1 で既に
 			// 点いていると、入った瞬間に終わって読む間が無いため。
 			return st.cont != contAtStart_;
-		case kStepMenu:
+		case Step::Menu:
 			// メニューから [mxv2 の設定] を開いたら次へ。
 			return st.settingsOpen;
-		case kStepSettings:
+		case Step::Settings:
 			// 開いているダイアログを閉じたら次へ。
 			if (st.settingsOpen) sawSettingsOpen_ = true;
 			return sawSettingsOpen_ && !st.settingsOpen;
-		case kStepFsSelect:
+		case Step::FsSelect:
 			return st.fsSelect;
 		default:
 			return false;
@@ -179,13 +179,13 @@ Tutorial::Rect Tutorial::SpotFor(int step, const DrawScreen &draw) const {
 	const Skin &l = draw.layout();
 	Rect r;
 	switch (step) {
-		case kStepFiler:
-		case kStepPlay:
-		case kStepFsSelect:
+		case Step::Filer:
+		case Step::Play:
+		case Step::FsSelect:
 			r = Rect(l.fileListX, l.fileListY, l.fileListW, l.fileListH);
 			r.unite(Rect(l.scrollHitX, l.scrollY, l.scrollHitW, l.scrollH));
 			break;
-		case kStepKeyboard:
+		case Step::Keyboard:
 			for (int ch = 0; ch < 16; ch++) {
 				int x0, y0, x1, y1;
 				if (draw.ChannelKeyRect(ch, &x0, &y0, &x1, &y1)) {
@@ -197,25 +197,25 @@ Tutorial::Rect Tutorial::SpotFor(int step, const DrawScreen &draw) const {
 				if (draw.StatusRect(row, &x, &y, &w, &h)) r.unite(Rect(x, y, w, h));
 			}
 			break;
-		case kStepPlayKeys:
-		case kStepCont: {
+		case Step::PlayKeys:
+		case Step::Cont: {
 			// 操作ボタンは 0..5 が演奏、6 と 7 が CONT / REPEAT。
-			const int from = (step == kStepPlayKeys) ? 0 : 6;
-			const int to = (step == kStepPlayKeys) ? 6 : 8;
+			const int from = (step == Step::PlayKeys) ? 0 : 6;
+			const int to = (step == Step::PlayKeys) ? 6 : 8;
 			for (int i = from; i < to && i < l.numPlayKeys; i++) {
 				r.unite(Rect(l.playKeyX + l.playKeyPos[i][0], l.playKeyY + l.playKeyPos[i][1],
 				             l.playKeyRect[i].w, l.playKeyRect[i].h));
 			}
-			if (step == kStepCont) {
+			if (step == Step::Cont) {
 				r.unite(Rect(l.volX, l.volY, l.volW, l.volH));
 				r.unite(Rect(l.progX, l.progY, l.progW, l.progH));
 			}
 			break;
 		}
-		case kStepMenu:
+		case Step::Menu:
 			r = Rect(l.bannerX, l.bannerY, l.bannerW, l.bannerH);
 			break;
-		case kStepBookmark:
+		case Step::Bookmark:
 			// ファイルシステムの選択画面の先頭行 ("Bookmarks>")。
 			r = Rect(l.fileListX, l.fileListY, l.fileListW, draw.fileListItemH());
 			break;
@@ -230,14 +230,14 @@ Tutorial::Rect Tutorial::SpotFor(int step, const DrawScreen &draw) const {
 std::string Tutorial::TitleFor(int step) const {
 	// 見出しに通し番号 (1/11) を添える。書式はカタログ (TitleFormat)。
 	return MsgF("Tutorial.TitleFormat", Msg(Key("Title", step).c_str()), MsgNum("%d", step + 1),
-	            MsgNum("%d", (int)kNumSteps));
+	            MsgNum("%d", (int)Step::Count));
 }
 
 std::string Tutorial::TextFor(int step, const State &st) const {
 	const char *side = st.touch ? "Mobile" : "Desktop";
 	std::string text;
 	// ステップ 8 は、選択画面に着いたら文面を差し替える。
-	if (step == kStepFsSelect && fsReached_) {
+	if (step == Step::FsSelect && fsReached_) {
 		text = MsgOrEmpty(Key("Text", step, "After"));
 		const std::string extra = MsgOrEmpty(Key("Text", step, (std::string("After") + side).c_str()));
 		if (!extra.empty()) text += (text.empty() ? "" : "\n") + extra;
@@ -282,7 +282,7 @@ bool Tutorial::AllowsMouse(const SDL_Event &ev) {
 	if (ev.type == SDL_MOUSEWHEEL) {
 		// ホイールには押した場所が無いので、ファイラーのステップだけ通す
 		// （一覧のスクロールに要る）。
-		return step_ == kStepFiler || step_ == kStepPlay || step_ == kStepFsSelect;
+		return step_ == Step::Filer || step_ == Step::Play || step_ == Step::FsSelect;
 	}
 	return false;
 }
@@ -292,9 +292,9 @@ bool Tutorial::AllowsKey(SDL_Keycode key, Uint16 mod) const {
 	if (confirmSkip_ || holding_ || fsReached_) return false;
 	(void)mod;
 	switch (step_) {
-		case kStepFiler:
-		case kStepPlay:
-		case kStepFsSelect:
+		case Step::Filer:
+		case Step::Play:
+		case Step::FsSelect:
 			switch (key) {
 				case SDLK_UP:
 				case SDLK_DOWN:
@@ -311,11 +311,11 @@ bool Tutorial::AllowsKey(SDL_Keycode key, Uint16 mod) const {
 				default:
 					return false;
 			}
-		case kStepKeyboard:
+		case Step::Keyboard:
 			return (key >= SDLK_0 && key <= SDLK_8);
-		case kStepPlayKeys:
+		case Step::PlayKeys:
 			return key == SDLK_SPACE;
-		case kStepCont:
+		case Step::Cont:
 			return key == SDLK_c;
 		default:
 			return false;
@@ -336,14 +336,14 @@ void Tutorial::Build(const DrawScreen &draw, const Screen &screen, const State &
 		contAtStart_ = st.cont;
 		// 設定の段に入った時点でダイアログが閉じていたら（「間」の最中に
 		// 閉じられた）、「開いているのを見た」ことにして待たない。
-		if (step_ == kStepSettings && !st.settingsOpen) sawSettingsOpen_ = true;
+		if (step_ == Step::Settings && !st.settingsOpen) sawSettingsOpen_ = true;
 	}
 	// 操作待ちが満たされたら、まず kHoldMs のあいだ UI を止めて「できた」
 	// 状態を見せてから次へ進む（満たした瞬間に飛ぶと分かりにくい）。
 	if (holding_) {
 		if (SDL_GetTicks() - holdStartMs_ >= kHoldMs) {
 			holding_ = false;
-			if (step_ == kStepFsSelect) {
+			if (step_ == Step::FsSelect) {
 				fsReached_ = true;
 			} else {
 				Advance();
@@ -391,7 +391,7 @@ void Tutorial::Build(const DrawScreen &draw, const Screen &screen, const State &
 	// 設定の段でダイアログが開いている間は、ImGui のモーダルがどのウィンドウ
 	// よりも上に来て吹き出しを隠すので、説明を**最前面の描画リスト**に
 	// 直接描く（ボタンは無い。閉じれば次へ進むので要らない）。画面の下端。
-	if (step_ == kStepSettings && st.settingsOpen && !confirmSkip_) {
+	if (step_ == Step::Settings && st.settingsOpen && !confirmSkip_) {
 		const std::string text = TitleFor(step_) + "\n\n" + TextFor(step_, st);
 		const float pad = 8.0f * uiScale;
 		const float wrap = width - pad * 2;
@@ -471,11 +471,11 @@ void Tutorial::Build(const DrawScreen &draw, const Screen &screen, const State &
 			TextWrappedKinsoku(TextFor(step_, st).c_str());
 			ImGui::Spacing();
 
-			if (step_ == kStepWelcome) {
+			if (step_ == Step::Welcome) {
 				if (ImGui::Button(Msg("Tutorial.Start"))) Advance();
 				ImGui::SameLine();
 				if (ImGui::Button(Msg("Tutorial.Skip"))) confirmSkip_ = true;
-			} else if (step_ == kStepEnd) {
+			} else if (step_ == Step::End) {
 				if (ImGui::Button(Msg("Tutorial.Close"), ImVec2(-FLT_MIN, 0.0f))) Finish();
 			} else {
 				if (ImGui::Button(Msg("Tutorial.Next"))) Advance();

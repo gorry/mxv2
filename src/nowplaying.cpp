@@ -243,11 +243,14 @@ void Shutdown() {
 }
 
 Request TakeRequest() {
-	if (!Available()) return kRequestNone;
+	if (!Available()) return Request::None;
 	const jint r = Env()->CallStaticIntMethod(g.cls, g.takeRequest);
 	// Java 側の定数はこの enum と同じ並び (PlaybackBridge.REQ_*)。
-	if (r <= kRequestNone || r > kRequestBluetoothConnected) return kRequestNone;
-	return (Request)r;
+	if (r <= static_cast<jint>(Request::None) ||
+	    r > static_cast<jint>(Request::BluetoothConnected)) {
+		return Request::None;
+	}
+	return static_cast<Request>(r);
 }
 
 uint32_t TakeSeekMs() {
@@ -273,7 +276,7 @@ void SetLabels(const Labels &) {}
 void Update(const State &) {}
 void Shutdown() {}
 Request TakeRequest() {
-	return kRequestNone;
+	return Request::None;
 }
 uint32_t TakeSeekMs() {
 	return 0;

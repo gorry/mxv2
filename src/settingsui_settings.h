@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "message.h"
+#include "screen.h"
 
 namespace mxv2 {
 
@@ -45,7 +46,7 @@ public:
 	}
 
 	// 縦横切り替えの状態。main が毎フレーム教える（screen_orientation.md）。
-	void SetOrientationState(bool enabled, int orientation) {
+	void SetOrientationState(bool enabled, Screen::Orientation orientation) {
 		orientEnabled_ = enabled;
 		orientation_ = orientation;
 	}
@@ -107,7 +108,7 @@ private:
 	int pendingSampleRate_;  // 選ばれた出力レート。0 なら変更なし
 	// 縦横切り替えが有効か（起動オプションで決まる）と、いまの向き。
 	bool orientEnabled_;
-	int orientation_;  // Screen::Orientation
+	Screen::Orientation orientation_;
 	// 言語。選べるのは同梱ぶんだけ（SettingsUi::Init で数え上げる）。
 	std::vector<LocaleInfo> locales_;
 	// 選ばれた言語を実際に読み込むまでの控え。

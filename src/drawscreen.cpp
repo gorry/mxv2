@@ -143,7 +143,7 @@ DrawScreen::DrawScreen()
       backImageH_(0),
       textLayer_(0),
       fileListFontSize_(0),
-      statusMode_(kStatusModeChannel),
+      statusMode_(StatusMode::Channel),
       channelMask_(0),
       regMapVisible_(false),
       regMapDirty_(true),
@@ -369,13 +369,14 @@ void DrawScreen::LoadBackBitmap() {
 	// 左へ伸びるなら右上）。素材が足りないところは黒のまま残り、このあとの
 	// CompositeBack で配色の背景色が乗る。はみ出しは BmpCopy が切る。
 	int dx = 0, dy = 0;
-	if (layout_.filerSide == kFilerSideTop) dy = height() - image.height();
-	if (layout_.filerSide == kFilerSideLeft) dx = width() - image.width();
+	if (layout_.filerSide == FilerSide::Top) dy = height() - image.height();
+	if (layout_.filerSide == FilerSide::Left) dx = width() - image.width();
 	BmpCopy(&backBitmap_, dx, dy, image.width(), image.height(), &image, 0, 0, 100);
 }
 
 void DrawScreen::CompositeBanner() {
-	BmpCopy(&back_, layout_.bannerX, layout_.bannerY, layout_.bannerW, layout_.bannerH, &banner_, 0, 0, kBlendMul);
+	BmpCopy(&back_, layout_.bannerX, layout_.bannerY, layout_.bannerW, layout_.bannerH, &banner_,
+	        0, 0, BlendMode::Mul);
 }
 
 void DrawScreen::CompositeStatusBack() {
@@ -408,7 +409,7 @@ void DrawScreen::CompositeKeyboard() {
 	kb0_.SetPalette(2, colors_.kb.whiteBright, colors_.kb.whiteBright, colors_.kb.whiteBright);
 	for (int i = 0; i < 9; i++) {
 		BmpCopy(&back_, layout_.kbX, layout_.kbY + layout_.chYOffset[i] + layout_.kbYOffset, kb0_.width(), kb0_.height(),
-		        &kb0_, 0, 0, kBlendMul);
+		        &kb0_, 0, 0, BlendMode::Mul);
 	}
 }
 
@@ -707,9 +708,9 @@ void DrawScreen::PrintMiniCompose(int x, int y, const char *msg, const Rgb &colo
 
 // ステータス欄の項目 1 つの左上。FM の項目は段 (row) の y をそのまま使い、
 // PCM の 2 項目だけは PCM 行 (chYOffset[8]) の中の 8 スロットから選ぶ。
-void DrawScreen::StatusItemPos(StatusItem item, int row, int *x, int *y) const {
+void DrawScreen::StatusItemPos(StatusItem::Type item, int row, int *x, int *y) const {
 	const int *pos = layout_.statusPos[item];
-	if (item == kStatusPcmVolume || item == kStatusPcmPtr) {
+	if (item == StatusItem::PcmVolume || item == StatusItem::PcmPtr) {
 		const int i = row - 8;
 		*x = layout_.statusX + layout_.pcmXOffset[i] + pos[0];
 		*y = layout_.statusY + layout_.chYOffset[8] + layout_.pcmYOffset[i] + pos[1];
@@ -719,8 +720,8 @@ void DrawScreen::StatusItemPos(StatusItem item, int row, int *x, int *y) const {
 	*y = layout_.statusY + layout_.chYOffset[row] + pos[1];
 }
 
-void DrawScreen::PutStatusText(StatusItem item, int row, const char *text) {
-	if (statusMode_ != kStatusModeChannel) return;
+void DrawScreen::PutStatusText(StatusItem::Type item, int row, const char *text) {
+	if (statusMode_ != StatusMode::Channel) return;
 	int x = 0, y = 0;
 	StatusItemPos(item, row, &x, &y);
 	PrintMiniCompose(x, y, text, colors_.status.color, colors_.status.colorBright);
@@ -730,8 +731,8 @@ void DrawScreen::PutStatusText(StatusItem item, int row, const char *text) {
 // 音色データ表示 (tonedata.md)
 // ---------------------------------------------------------------------------
 
-void DrawScreen::PutToneText(StatusItem item, int row, int slot, const char *text) {
-	if (statusMode_ != kStatusModeTone) return;
+void DrawScreen::PutToneText(StatusItem::Type item, int row, int slot, const char *text) {
+	if (statusMode_ != StatusMode::Tone) return;
 	if (row < 0 || row >= 9) return;
 	const int *pos = layout_.statusPos[item];
 	int x = layout_.statusX + pos[0];
@@ -748,7 +749,7 @@ void DrawScreen::ClearStatusArea() {
 	}
 }
 
-void DrawScreen::SetStatusMode(int mode) {
+void DrawScreen::SetStatusMode(StatusMode mode) {
 	if (mode == statusMode_) return;
 	statusMode_ = mode;
 	ClearStatusArea();
@@ -759,48 +760,48 @@ void DrawScreen::PutOPMChannel(int reg20, int row) {
 	if (row < 0 || row >= 8) return;
 	char s[8];
 	snprintf(s, sizeof(s), "A%X", reg20 & 7);
-	PutToneText(kStatusOPMAlgorithm, row, 0, s);
+	PutToneText(StatusItem::OPMAlgorithm, row, 0, s);
 	snprintf(s, sizeof(s), "F%X", (reg20 >> 3) & 7);
-	PutToneText(kStatusOPMFeedback, row, 0, s);
+	PutToneText(StatusItem::OPMFeedback, row, 0, s);
 }
 
 void DrawScreen::PutOPMOperator(int row, int slot, int group, int value) {
 	if (row < 0 || row >= 8) return;
 	char s[8];
 	switch (group) {
-		case kOpmOpDT1MUL:
+		case OpmOpGroup::DT1MUL:
 			snprintf(s, sizeof(s), "%X", value & 0x0f);
-			PutToneText(kStatusOPMMultiple, row, slot, s);
+			PutToneText(StatusItem::OPMMultiple, row, slot, s);
 			snprintf(s, sizeof(s), "%X", (value >> 4) & 0x07);
-			PutToneText(kStatusOPMDetune1, row, slot, s);
+			PutToneText(StatusItem::OPMDetune1, row, slot, s);
 			break;
-		case kOpmOpKSAR:
+		case OpmOpGroup::KSAR:
 			snprintf(s, sizeof(s), "%02X", value & 0x1f);
-			PutToneText(kStatusOPMAttackRate, row, slot, s);
+			PutToneText(StatusItem::OPMAttackRate, row, slot, s);
 			snprintf(s, sizeof(s), "%X", (value >> 6) & 0x03);
-			PutToneText(kStatusOPMKeyScaling, row, slot, s);
+			PutToneText(StatusItem::OPMKeyScaling, row, slot, s);
 			break;
-		case kOpmOpAMED1R:
+		case OpmOpGroup::AMED1R:
 			snprintf(s, sizeof(s), "%02X", value & 0x1f);
-			PutToneText(kStatusOPMDecayRate, row, slot, s);
+			PutToneText(StatusItem::OPMDecayRate, row, slot, s);
 			snprintf(s, sizeof(s), "%X", (value >> 7) & 0x01);
-			PutToneText(kStatusOPMAMSEnable, row, slot, s);
+			PutToneText(StatusItem::OPMAMSEnable, row, slot, s);
 			break;
-		case kOpmOpDT2D2R:
+		case OpmOpGroup::DT2D2R:
 			snprintf(s, sizeof(s), "%02X", value & 0x1f);
-			PutToneText(kStatusOPMSustainRate, row, slot, s);
+			PutToneText(StatusItem::OPMSustainRate, row, slot, s);
 			snprintf(s, sizeof(s), "%X", (value >> 6) & 0x03);
-			PutToneText(kStatusOPMDetune2, row, slot, s);
+			PutToneText(StatusItem::OPMDetune2, row, slot, s);
 			break;
-		case kOpmOpD1LRR:
+		case OpmOpGroup::D1LRR:
 			snprintf(s, sizeof(s), "%X", value & 0x0f);
-			PutToneText(kStatusOPMReleaseRate, row, slot, s);
+			PutToneText(StatusItem::OPMReleaseRate, row, slot, s);
 			snprintf(s, sizeof(s), "%X", (value >> 4) & 0x0f);
-			PutToneText(kStatusOPMSustainLevel, row, slot, s);
+			PutToneText(StatusItem::OPMSustainLevel, row, slot, s);
 			break;
-		case kOpmOpTL:
+		case OpmOpGroup::TL:
 			snprintf(s, sizeof(s), "%02X", value & 0x7f);
-			PutToneText(kStatusOPMTotalLevel, row, slot, s);
+			PutToneText(StatusItem::OPMTotalLevel, row, slot, s);
 			break;
 		default:
 			break;
@@ -809,15 +810,15 @@ void DrawScreen::PutOPMOperator(int row, int slot, int group, int value) {
 
 void DrawScreen::PutOPMGlobal(int kind, int value, bool valid) {
 	char s[16];
-	static const char *const kLabels[kNumOpmGlobalKinds] = {
+	static const char *const kLabels[OpmGlobalKind::Count] = {
 		"NOISE:", "CLKB :", "LFRQ :", "PMD  :", "AMD  :", "WAVE :",
 	};
-	static const StatusItem kItems[kNumOpmGlobalKinds] = {
-		kStatusOPMNoise,  kStatusOPMClockB, kStatusOPMLFOFreq,
-		kStatusOPMLFOPMD, kStatusOPMLFOAMD, kStatusOPMLFOWave,
+	static const StatusItem::Type kItems[OpmGlobalKind::Count] = {
+		StatusItem::OPMNoise,  StatusItem::OPMClockB, StatusItem::OPMLFOFreq,
+		StatusItem::OPMLFOPMD, StatusItem::OPMLFOAMD, StatusItem::OPMLFOWave,
 	};
-	if (kind < 0 || kind >= kNumOpmGlobalKinds) return;
-	if (kind == kOpmGlobalLFOWave) {
+	if (kind < 0 || kind >= OpmGlobalKind::Count) return;
+	if (kind == OpmGlobalKind::LFOWave) {
 		snprintf(s, sizeof(s), "%s%X", kLabels[kind], value & 3);
 	} else if (!valid) {
 		snprintf(s, sizeof(s), "%s--", kLabels[kind]);
@@ -874,7 +875,7 @@ void DrawScreen::PutVolume(int volume, int row) {
 	} else {
 		snprintf(s, sizeof(s), "V%-3d", volume);
 	}
-	PutStatusText(kStatusVolume, row, s);
+	PutStatusText(StatusItem::Volume, row, s);
 }
 
 void DrawScreen::PutPanpot(int panpot, int row) {
@@ -882,7 +883,7 @@ void DrawScreen::PutPanpot(int panpot, int row) {
 	char s[2];
 	s[0] = "-LRC"[panpot & 3];
 	s[1] = '\0';
-	PutStatusText(kStatusPanpot, row, s);
+	PutStatusText(StatusItem::Panpot, row, s);
 }
 
 void DrawScreen::PutDetune(int detune, int row) {
@@ -890,28 +891,28 @@ void DrawScreen::PutDetune(int detune, int row) {
 	char s[64];
 	const int v = (int16_t)detune;
 	snprintf(s, sizeof(s), "D%c%04d", (v >= 0) ? '+' : '-', abs(v) % 10000);
-	PutStatusText(kStatusDetune, row, s);
+	PutStatusText(StatusItem::Detune, row, s);
 }
 
 void DrawScreen::PutVoice(int voice, int row) {
 	if (row < 0 || row >= 9) return;
 	char s[64];
 	snprintf(s, sizeof(s), "@%03d", voice % 1000);
-	PutStatusText(kStatusVoice, row, s);
+	PutStatusText(StatusItem::Voice, row, s);
 }
 
 void DrawScreen::PutQ(int q, int row) {
 	if (row < 0 || row >= 9) return;
 	char s[64];
 	snprintf(s, sizeof(s), "Q%03d", q % 1000);
-	PutStatusText(kStatusQ, row, s);
+	PutStatusText(StatusItem::Q, row, s);
 }
 
 void DrawScreen::PutPtr(int ptr, int row) {
 	if (row < 0 || row >= 9) return;
 	char s[64];
 	snprintf(s, sizeof(s), "$%05X", (unsigned)ptr & 0xfffff);
-	PutStatusText(kStatusPtr, row, s);
+	PutStatusText(StatusItem::Ptr, row, s);
 }
 
 void DrawScreen::PutLFOPitch(int v, int row) {
@@ -919,7 +920,7 @@ void DrawScreen::PutLFOPitch(int v, int row) {
 	char s[64];
 	const int t = (int16_t)v;
 	snprintf(s, sizeof(s), "P%c%04d", (t >= 0) ? '+' : '-', abs(t) % 10000);
-	PutStatusText(kStatusLFOPitch, row, s);
+	PutStatusText(StatusItem::LFOPitch, row, s);
 }
 
 void DrawScreen::PutLFOPitch1(int v, int row) {
@@ -927,28 +928,28 @@ void DrawScreen::PutLFOPitch1(int v, int row) {
 	char s[2];
 	s[0] = (char)(0x15 + v);  // 波形の記号 (制御コード 0x10〜0x19 のグリフ)
 	s[1] = '\0';
-	PutStatusText(kStatusLFOPitch1, row, s);
+	PutStatusText(StatusItem::LFOPitch1, row, s);
 }
 
 void DrawScreen::PutLFOPitch2(int v, int row) {
 	if (row < 0 || row >= 9) return;
 	char s[64];
 	snprintf(s, sizeof(s), "%04d", (uint16_t)v % 10000);
-	PutStatusText(kStatusLFOPitch2, row, s);
+	PutStatusText(StatusItem::LFOPitch2, row, s);
 }
 
 void DrawScreen::PutLFOPitch3(int v, int row) {
 	if (row < 0 || row >= 9) return;
 	char s[64];
 	snprintf(s, sizeof(s), "%c%04d", (v >= 0) ? '+' : '-', abs(v) % 10000);
-	PutStatusText(kStatusLFOPitch3, row, s);
+	PutStatusText(StatusItem::LFOPitch3, row, s);
 }
 
 void DrawScreen::PutLFOPitch4(int v, int row) {
 	if (row < 0 || row >= 9) return;
 	char s[64];
 	snprintf(s, sizeof(s), "D%03d", (uint16_t)v % 1000);
-	PutStatusText(kStatusLFOPitch4, row, s);
+	PutStatusText(StatusItem::LFOPitch4, row, s);
 }
 
 void DrawScreen::PutLFOVolume(int v, int row) {
@@ -956,7 +957,7 @@ void DrawScreen::PutLFOVolume(int v, int row) {
 	char s[64];
 	const int t = (int16_t)v;
 	snprintf(s, sizeof(s), "A%c%04d", (t >= 0) ? '+' : '-', abs(t) % 10000);
-	PutStatusText(kStatusLFOVolume, row, s);
+	PutStatusText(StatusItem::LFOVolume, row, s);
 }
 
 void DrawScreen::PutLFOVolume1(int v, int row) {
@@ -964,26 +965,26 @@ void DrawScreen::PutLFOVolume1(int v, int row) {
 	char s[2];
 	s[0] = (char)(0x15 + v);  // 波形の記号 (制御コード 0x10〜0x19 のグリフ)
 	s[1] = '\0';
-	PutStatusText(kStatusLFOVolume1, row, s);
+	PutStatusText(StatusItem::LFOVolume1, row, s);
 }
 
 void DrawScreen::PutLFOVolume2(int v, int row) {
 	if (row < 0 || row >= 9) return;
 	char s[64];
 	snprintf(s, sizeof(s), "%04d", (uint16_t)v % 10000);
-	PutStatusText(kStatusLFOVolume2, row, s);
+	PutStatusText(StatusItem::LFOVolume2, row, s);
 }
 
 void DrawScreen::PutLFOVolume3(int v, int row) {
 	if (row < 0 || row >= 9) return;
 	char s[64];
 	snprintf(s, sizeof(s), "%c%04d", (v >= 0) ? '+' : '-', abs(v) % 10000);
-	PutStatusText(kStatusLFOVolume3, row, s);
+	PutStatusText(StatusItem::LFOVolume3, row, s);
 }
 
 void DrawScreen::PutLevelMeter(const char *levelMeterInfo, int row) {
 	if (row < 0 || row >= 9 || !levelMeter_.valid()) return;
-	if (statusMode_ != kStatusModeChannel) return;
+	if (statusMode_ != StatusMode::Channel) return;
 
 	// 点灯しているセルだけ明るいパレットに差し替える。
 	for (int i = 0; i < layout_.levelMeterWidthCells; i++) {
@@ -997,7 +998,7 @@ void DrawScreen::PutLevelMeter(const char *levelMeterInfo, int row) {
 	const int w = levelMeter_.width() - skip;
 	const int h = levelMeter_.height();
 	int x = 0, y = 0;
-	StatusItemPos(kStatusLevelMeter, row, &x, &y);
+	StatusItemPos(StatusItem::LevelMeter, row, &x, &y);
 	BmpCopyComposite(&screen_, x, y, w, h, &levelMeter_, skip, 0, &back_, x, y,
 	                 colors_.status.colorBright);
 }
@@ -1014,14 +1015,14 @@ void DrawScreen::PutPCMVolume(int volume, int row) {
 	} else {
 		snprintf(s, sizeof(s), "V%-3d", volume);
 	}
-	PutStatusText(kStatusPcmVolume, row, s);
+	PutStatusText(StatusItem::PcmVolume, row, s);
 }
 
 void DrawScreen::PutPCMPtr(int ptr, int row) {
 	if (row < 8 || row >= 16) return;
 	char s[64];
 	snprintf(s, sizeof(s), "$%05X", (unsigned)ptr & 0xfffff);
-	PutStatusText(kStatusPcmPtr, row, s);
+	PutStatusText(StatusItem::PcmPtr, row, s);
 }
 
 // 演奏を始める前のステータス欄。項目と並びを 1 か所で決めたいので、
@@ -1062,11 +1063,13 @@ void DrawScreen::PutStatusZero() {
 	for (int row = 0; row < 8; row++) {
 		PutOPMChannel(0, row);
 		for (int slot = 0; slot < 4; slot++) {
-			for (int g = 0; g < kNumOpmOpGroups; g++) PutOPMOperator(row, slot, g, 0);
+			for (int g = 0; g < OpmOpGroup::Count; g++) PutOPMOperator(row, slot, g, 0);
 		}
 	}
-	for (int k = 0; k < kNumOpmGlobalKinds; k++) {
-		PutOPMGlobal(k, 0, k == kOpmGlobalClockB || k == kOpmGlobalLFOFreq || k == kOpmGlobalLFOWave);
+	for (int k = 0; k < OpmGlobalKind::Count; k++) {
+		PutOPMGlobal(k, 0,
+		             k == OpmGlobalKind::ClockB || k == OpmGlobalKind::LFOFreq ||
+		                 k == OpmGlobalKind::LFOWave);
 	}
 }
 
@@ -1251,8 +1254,8 @@ void DrawScreen::PutFileList(const Filer &filer, bool refresh, uint32_t nowMs) {
 		float scrollX = 0.0f;
 		bool titlePartial = false;
 		const bool scrollRow =
-		    (fileListScroll_ == Settings::kScrollAll) ||
-		    (fileListScroll_ == Settings::kScrollCursor && j == cursor);
+		    (fileListScroll_ == Settings::FileListScroll::All) ||
+		    (fileListScroll_ == Settings::FileListScroll::Cursor && j == cursor);
 		if (scrollRow && !shown.title.empty() && textLayer_ != 0 && textLayer_->available()) {
 			if (fileListTitleW_[i] < 0) {
 				fileListTitleW_[i] = textLayer_->MeasureWidth(itemH, shown.title);
@@ -1300,11 +1303,11 @@ void DrawScreen::PutFileList(const Filer &filer, bool refresh, uint32_t nowMs) {
 		// 種別で文字色を変える。"[Setting]" は MDX と同じ色。
 		// ブックマークの行はフォルダへ移るものなのでフォルダの色。
 		Rgb color = colors_.filer.color;
-		if (shown.type & kFileItemFileSystem) {
+		if (shown.type & FileItemType::FileSystem) {
 			color = colors_.filer.fileSystemColor;
-		} else if (shown.type & kFileItemDrive) {
+		} else if (shown.type & FileItemType::Drive) {
 			color = colors_.filer.driveColor;
-		} else if (shown.type & (kFileItemDir | kFileItemBookmark)) {
+		} else if (shown.type & (FileItemType::Dir | FileItemType::Bookmark)) {
 			color = colors_.filer.folderColor;
 		}
 
@@ -1363,7 +1366,7 @@ void DrawScreen::PutScrollBar(int topPx, int maxTopPx) {
 
 	// つまみ自体をドラッグしている間は、掴んだ位置のまま動かす。
 	// 旧 mxv の MX_PUTSCROLLBAR_FLAG_DRAG。
-	if ((scrollBarFlags_ & kScrollBarDrag) == 0) {
+	if ((scrollBarFlags_ & ScrollBarFlag::Drag) == 0) {
 		SetScrollBarThumb((maxTopPx > 0) ? (scrollBarMovement() * topPx / maxTopPx) : 0);
 	}
 
@@ -1398,12 +1401,12 @@ void DrawScreen::PutScrollBar(int topPx, int maxTopPx) {
 
 	// 矢印の押下表示は通常の矢印と同じ場所に差し替える。原典はここを
 	// 高さ CH_D(110) で転送していてバー全体を潰していた。
-	if (scrollBarFlags_ & kScrollBarUpArrowDown) {
+	if (scrollBarFlags_ & ScrollBarFlag::UpArrowDown) {
 		const Xywh &s = layout_.scrollSrcUpArrowPress;
 		BmpCopy(&scrollBar_, layout_.scrollPosUpArrow[0], layout_.scrollPosUpArrow[1], s.w, s.h,
 		        &scrollBarBase_, s.x, s.y, 100);
 	}
-	if (scrollBarFlags_ & kScrollBarDownArrowDown) {
+	if (scrollBarFlags_ & ScrollBarFlag::DownArrowDown) {
 		const Xywh &s = layout_.scrollSrcDownArrowPress;
 		BmpCopy(&scrollBar_, layout_.scrollPosDownArrow[0], layout_.scrollPosDownArrow[1], s.w, s.h,
 		        &scrollBarBase_, s.x, s.y, 100);
@@ -1424,7 +1427,7 @@ void DrawScreen::PutScrollBar(int topPx, int maxTopPx) {
 void DrawScreen::CompositeScrollBar(int x, int y, int w, int h) {
 	if (w <= 0 || h <= 0) return;
 	BmpCopyComposite(&screen_, x, y, w, h, &scrollBar_, x - layout_.scrollX,
-	                 y - layout_.scrollY, &back_, x, y, kBlendMul);
+	                 y - layout_.scrollY, &back_, x, y, BlendMode::Mul);
 }
 
 // ---------------------------------------------------------------------------
@@ -1488,7 +1491,7 @@ void DrawScreen::PutProgressBar(uint32_t nowTimeMs, uint32_t playTimeMs, bool re
 		const int bx = layout_.progX + layout_.progPos[0];
 		const int by = layout_.progY + layout_.progPos[1];
 		BmpCopyComposite(&screen_, bx, by, layout_.progW, barH, &progressBar_, 0, 0, &back_, bx, by,
-		                 kBlendMul);
+		                 BlendMode::Mul);
 	}
 
 	const int nowSec = (int)(nowTimeMs / 1000);
@@ -1560,7 +1563,7 @@ void DrawScreen::PutTotalVolBar(int volume, bool refresh) {
 	        right.y, 100);
 	BmpCopy(&totalVolBar_, barPos, 0, thumb.w, thumb.h, &totalVolBarBase_, thumb.x, thumb.y, 100);
 	BmpCopyComposite(&screen_, layout_.volX, layout_.volY, layout_.volW, layout_.volH, &totalVolBar_, 0, 0, &back_, layout_.volX,
-	                 layout_.volY, kBlendMul);
+	                 layout_.volY, BlendMode::Mul);
 
 	// 桁数は固定にする。短い文字列を書くと前の表示の末尾が残る。
 	char s[64];
@@ -1587,10 +1590,10 @@ void DrawScreen::PutPlayKey(uint32_t status, bool refresh) {
 	// PAUSE だけ黄（2026-09-04、ユーザー指示。素材のパレットでも PAUSE の
 	// 玉 (palPauseLed) は元から黄色なので、点灯色と素材の色が揃った）。
 	const LedMap leds[4] = {
-		{ kPlayKeyPlayLed, layout_.palPlayLed, layout_.palGreen },
-		{ kPlayKeyPauseLed, layout_.palPauseLed, layout_.palYellow },
-		{ kPlayKeyContLed, layout_.palContLed, layout_.palRed },
-		{ kPlayKeyRepeatLed, layout_.palRepeatLed, layout_.palRed },
+		{ PlayKeyStatus::PlayLed, layout_.palPlayLed, layout_.palGreen },
+		{ PlayKeyStatus::PauseLed, layout_.palPauseLed, layout_.palYellow },
+		{ PlayKeyStatus::ContLed, layout_.palContLed, layout_.palRed },
+		{ PlayKeyStatus::RepeatLed, layout_.palRepeatLed, layout_.palRed },
 	};
 
 	// LED は「前回の status」ではなく **今パレットに入っている色**と見比べる。
@@ -1622,7 +1625,7 @@ void DrawScreen::PutPlayKey(uint32_t status, bool refresh) {
 		const int x = layout_.playKeyX + layout_.playKeyPos[i][0];
 		const int y = layout_.playKeyY + layout_.playKeyPos[i][1];
 		BmpCopyComposite(&screen_, x, y, w, h, &playKey_, layout_.playKeyRect[i].x,
-		                 layout_.playKeyRect[i].y + (sw ? h : 0), &back_, x, y, kBlendMul);
+		                 layout_.playKeyRect[i].y + (sw ? h : 0), &back_, x, y, BlendMode::Mul);
 	}
 
 	playKeyStatusLast_ = status;
@@ -1632,37 +1635,37 @@ void DrawScreen::PutPlayKey(uint32_t status, bool refresh) {
 // ヒットチェック（旧 mxv の Screen_HitCheck_*）
 // ---------------------------------------------------------------------------
 
-int DrawScreen::HitCheckPlayKey(int x, int y) const {
+DrawScreen::PlayKeyHit::Type DrawScreen::HitCheckPlayKey(int x, int y) const {
 	for (int i = 0; i < layout_.numPlayKeys; i++) {
 		const int l = layout_.playKeyX + layout_.playKeyPos[i][0];
 		const int t = layout_.playKeyY + layout_.playKeyPos[i][1];
 		if (x >= l && x < l + layout_.playKeyRect[i].w && y >= t && y < t + layout_.playKeyRect[i].h) {
-			return i + 1;
+			return static_cast<PlayKeyHit::Type>(i + 1);  // 並びは Prev, Stop, …
 		}
 	}
-	return kHitPlayKeyNone;
+	return PlayKeyHit::None;
 }
 
-int DrawScreen::HitCheckScrollBar(int x, int y) const {
+DrawScreen::ScrollBarHit::Type DrawScreen::HitCheckScrollBar(int x, int y) const {
 	// 横は当たり判定の矩形 ([ScrollBar] HitWidth) で見る。描画より広く
 	// できるので、細いバーでも指で掴める（Phone がそうしている）。
 	if (x < layout_.scrollHitX || x >= layout_.scrollHitX + layout_.scrollHitW) {
-		return kHitScrollBarNone;
+		return ScrollBarHit::None;
 	}
-	if (y < layout_.scrollY || y >= layout_.scrollY + layout_.scrollH) return kHitScrollBarNone;
+	if (y < layout_.scrollY || y >= layout_.scrollY + layout_.scrollH) return ScrollBarHit::None;
 
 	// 縦は描いたとおりに分ける。矢印は上端・下端に貼り付き、間が溝。
 	const int dy = y - layout_.scrollY;
 	if (dy < layout_.scrollPosUpArrow[1] + layout_.scrollSrcUpArrow.h) {
-		return kHitScrollBarUpArrow;
+		return ScrollBarHit::UpArrow;
 	}
-	if (dy >= layout_.scrollPosDownArrow[1]) return kHitScrollBarDownArrow;
+	if (dy >= layout_.scrollPosDownArrow[1]) return ScrollBarHit::DownArrow;
 
 	// 残りは溝の中。つまみの上下がページ送りになる。
 	const int thumbTop = layout_.scrollPosBar[1] + scrollBarThumb_;
-	if (dy < thumbTop) return kHitScrollBarUpPage;
-	if (dy < thumbTop + layout_.scrollSrcThumb.h) return kHitScrollBarThumb;
-	return kHitScrollBarDownPage;
+	if (dy < thumbTop) return ScrollBarHit::UpPage;
+	if (dy < thumbTop + layout_.scrollSrcThumb.h) return ScrollBarHit::Thumb;
+	return ScrollBarHit::DownPage;
 }
 
 int DrawScreen::HitCheckFileList(int x, int y) const {

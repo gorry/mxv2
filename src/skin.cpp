@@ -16,25 +16,25 @@ const char kColorsFile[] = "colors.ini";
 const char kLegacyColorsFile[] = "theme.mxv";
 
 // FilerSide の並び。
-static const char *const kFilerSideNames[kNumFilerSides] = {
+static const char *const kFilerSideNames[FilerSide::Count] = {
 	"Bottom", "Top", "Left", "Right",
 };
 
 const char *FilerSideName(int side) {
-	if (side < 0 || side >= kNumFilerSides) side = kFilerSideBottom;
+	if (side < 0 || side >= FilerSide::Count) side = FilerSide::Bottom;
 	return kFilerSideNames[side];
 }
 
 int FilerSideFromName(const std::string &name, int fallback) {
 	if (name.empty()) return fallback;
-	for (int i = 0; i < kNumFilerSides; i++) {
+	for (int i = 0; i < FilerSide::Count; i++) {
 		if (CompareNoCase(name, kFilerSideNames[i]) == 0) return i;
 	}
 	return fallback;
 }
 
 // StatusItem の並び。
-const char *const kStatusItemKeys[kNumStatusItems] = {
+const char *const kStatusItemKeys[StatusItem::Count] = {
 	"PosVolume",     "PosLevelMeter", "PosPanpot",    "PosDetune",
 	"PosVoice",      "PosQ",          "PosPtr",       "PosLFOPitch",
 	"PosLFOPitch1",  "PosLFOPitch2",  "PosLFOPitch3", "PosLFOPitch4",
@@ -131,7 +131,7 @@ Skin::Skin() {
 
 	// ファイラーは下。境界は y=366（旧 mxv の一覧の上辺）なので、
 	// ファイラー側の厚みは 480-366 = 114。
-	filerSide = kFilerSideBottom;
+	filerSide = FilerSide::Bottom;
 	filerExtent = 114;
 
 	kbX = 4;
@@ -170,7 +170,7 @@ Skin::Skin() {
 	}
 	{
 		// 旧 mxv/draw.cpp の各 Screen_Put* にあった CX_D / CY_D。
-		static const int kPos[kNumStatusItems][2] = {
+		static const int kPos[StatusItem::Count][2] = {
 			{ 2, 0 },    // Volume
 			{ 26, 0 },   // LevelMeter
 			{ 122, 0 },  // Panpot
@@ -210,7 +210,7 @@ Skin::Skin() {
 			{ 68, 18 },  // OPMLFOAMD
 			{ 68, 27 },  // OPMLFOWave
 		};
-		for (int i = 0; i < kNumStatusItems; i++) {
+		for (int i = 0; i < StatusItem::Count; i++) {
 			statusPos[i][0] = kPos[i][0];
 			statusPos[i][1] = kPos[i][1];
 		}
@@ -465,7 +465,7 @@ void Skin::ApplyLayout(const std::string &skinDir) {
 	}
 	GetIntList(ini, "Status", "PcmX", pcmXOffset, 8);
 	GetIntList(ini, "Status", "PcmY", pcmYOffset, 8);
-	for (int i = 0; i < kNumStatusItems; i++) {
+	for (int i = 0; i < StatusItem::Count; i++) {
 		GetIntList(ini, "Status", kStatusItemKeys[i], statusPos[i], 2);
 	}
 	GetIntList(ini, "Status", "OPMOperatorY", opmOperatorY, 4);
@@ -623,19 +623,19 @@ Skin Skin::PlacedFor(int canvasW, int canvasH) const {
 	Xywh filer = { 0, 0, canvasW, canvasH };
 	int otherX = 0, otherY = 0;
 	switch (filerSide) {
-		case kFilerSideTop:
+		case FilerSide::Top:
 			filer.h = canvasH - fixedV;
 			otherY = filer.h;
 			break;
-		case kFilerSideLeft:
+		case FilerSide::Left:
 			filer.w = canvasW - fixedH;
 			otherX = filer.w;
 			break;
-		case kFilerSideRight:
+		case FilerSide::Right:
 			filer.x = fixedH;
 			filer.w = canvasW - fixedH;
 			break;
-		case kFilerSideBottom:
+		case FilerSide::Bottom:
 		default:
 			filer.y = fixedV;
 			filer.h = canvasH - fixedV;

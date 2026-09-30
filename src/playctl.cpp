@@ -240,23 +240,23 @@ void ToggleFileListFontSize(mxv2::DrawScreen *draw, mxv2::Filer *filer, bool *fi
 void OpenCursor(const PlayContext &ctx, mxv2::Filer *filer, mxv2::SettingsUi *ui) {
 	std::string path;
 	switch (filer->Open(&path)) {
-		case mxv2::kFilerOpenPlay:
+		case mxv2::FilerOpen::Play:
 			StartPlay(ctx, path);
 			break;
-		case mxv2::kFilerOpenMoved:
+		case mxv2::FilerOpen::Moved:
 			*ctx.fileListRefresh = true;
 			break;
-		case mxv2::kFilerOpenSettings:
+		case mxv2::FilerOpen::Settings:
 			ui->OpenFileSystems();
 			break;
-		case mxv2::kFilerOpenBookmark:
+		case mxv2::FilerOpen::Bookmark:
 			// 控え直し（ファイルを指していたとき）が要るので UI 側に任せる。
 			ui->OpenBookmarkRef(path);
 			break;
-		case mxv2::kFilerOpenBookmarkSettings:
+		case mxv2::FilerOpen::BookmarkSettings:
 			ui->OpenBookmarks();
 			break;
-		case mxv2::kFilerOpenNeedsAccess:
+		case mxv2::FilerOpen::NeedsAccess:
 			// SAF の許可が失われている。OS のピッカーを直に出して取り直させる
 			// （出せなければ設定ダイアログをその行で開く）。
 			ui->RegrantAccess(path);
@@ -435,12 +435,12 @@ void PollNotifyRequests(const PlayContext &ctx, mxv2::Filer *filer, AutoPause *a
 	mxv2::Player *player = ctx.player;
 	for (;;) {
 		const mxv2::nowplaying::Request req = mxv2::nowplaying::TakeRequest();
-		if (req == mxv2::nowplaying::kRequestNone) break;
+		if (req == mxv2::nowplaying::Request::None) break;
 
 		std::string path;
 		switch (req) {
-			case mxv2::nowplaying::kRequestPlay:
-				*autoPause = kAutoPauseNone;
+			case mxv2::nowplaying::Request::Play:
+				*autoPause = AutoPause::None;
 				if (player->playing()) {
 					if (player->paused()) player->Resume();
 					break;
@@ -453,32 +453,32 @@ void PollNotifyRequests(const PlayContext &ctx, mxv2::Filer *filer, AutoPause *a
 				if (!ctx.currentPath->empty()) {
 					StartPlay(ctx, *ctx.currentPath);
 				} else if (filer->itemCount() > 0 &&
-				           (filer->item(filer->cursor()).type & mxv2::kFileItemMdx) != 0 &&
-				           filer->Open(&path) == mxv2::kFilerOpenPlay) {
+				           (filer->item(filer->cursor()).type & mxv2::FileItemType::Mdx) != 0 &&
+				           filer->Open(&path) == mxv2::FilerOpen::Play) {
 					StartPlay(ctx, path);
 				} else if (filer->NextMdx(&path)) {
 					StartPlay(ctx, path);
 				}
 				break;
-			case mxv2::nowplaying::kRequestPause:
-				*autoPause = kAutoPauseNone;
+			case mxv2::nowplaying::Request::Pause:
+				*autoPause = AutoPause::None;
 				if (!player->paused()) player->Pause();
 				break;
-			case mxv2::nowplaying::kRequestPrev:
+			case mxv2::nowplaying::Request::Prev:
 				if (filer->PrevMdx(&path)) StartPlay(ctx, path);
 				break;
-			case mxv2::nowplaying::kRequestNext:
+			case mxv2::nowplaying::Request::Next:
 				if (filer->NextMdx(&path)) StartPlay(ctx, path);
 				break;
-			case mxv2::nowplaying::kRequestStop:
+			case mxv2::nowplaying::Request::Stop:
 				player->Stop();
 				break;
-			case mxv2::nowplaying::kRequestSeekForward:
-			case mxv2::nowplaying::kRequestSeekBack: {
+			case mxv2::nowplaying::Request::SeekForward:
+			case mxv2::nowplaying::Request::SeekBack: {
 				if (!player->playing()) break;
 				const uint32_t now = player->nowTimeMs();
 				uint32_t want = 0;
-				if (req == mxv2::nowplaying::kRequestSeekBack) {
+				if (req == mxv2::nowplaying::Request::SeekBack) {
 					want = (now > kRemoteSeekStepMs) ? (now - kRemoteSeekStepMs) : 0;
 				} else {
 					want = now + kRemoteSeekStepMs;
@@ -488,7 +488,7 @@ void PollNotifyRequests(const PlayContext &ctx, mxv2::Filer *filer, AutoPause *a
 				player->SeekMs(want);
 				break;
 			}
-			case mxv2::nowplaying::kRequestSeekTo: {
+			case mxv2::nowplaying::Request::SeekTo: {
 				if (!player->playing()) break;
 				uint32_t want = mxv2::nowplaying::TakeSeekMs();
 				const uint32_t total = player->playTimeMs();
@@ -496,18 +496,18 @@ void PollNotifyRequests(const PlayContext &ctx, mxv2::Filer *filer, AutoPause *a
 				player->SeekMs(want);
 				break;
 			}
-			case mxv2::nowplaying::kRequestFocusLost:
-			case mxv2::nowplaying::kRequestRouteLost:
+			case mxv2::nowplaying::Request::FocusLost:
+			case mxv2::nowplaying::Request::RouteLost:
 				// 鳴っていたときだけ印を付ける。
 				if (player->playing() && !player->paused()) {
 					player->Pause();
-					*autoPause = (req == mxv2::nowplaying::kRequestFocusLost) ? kAutoPauseFocus
-					                                                         : kAutoPauseRoute;
+					*autoPause = (req == mxv2::nowplaying::Request::FocusLost) ? AutoPause::Focus
+					                                                         : AutoPause::Route;
 				}
 				break;
-			case mxv2::nowplaying::kRequestFocusGained:
-				if (*autoPause == kAutoPauseFocus) {
-					*autoPause = kAutoPauseNone;
+			case mxv2::nowplaying::Request::FocusGained:
+				if (*autoPause == AutoPause::Focus) {
+					*autoPause = AutoPause::None;
 					if (player->playing() && player->paused()) player->Resume();
 				}
 				break;
@@ -515,12 +515,12 @@ void PollNotifyRequests(const PlayContext &ctx, mxv2::Filer *filer, AutoPause *a
 			// 画面から鳴らし直していれば、一時停止していないので何もしない。
 			// 再開するかは、つながった機器の設定で決める（機器ごと）。1 秒ごとに
 			// 引き直している機器名は古いかもしれないので、ここで引き直す。
-			case mxv2::nowplaying::kRequestBluetoothConnected: {
-				if (*autoPause != kAutoPauseRoute) break;
+			case mxv2::nowplaying::Request::BluetoothConnected: {
+				if (*autoPause != AutoPause::Route) break;
 				mxv2::outputlatency::RefreshBluetoothName();
 				const std::string name = mxv2::outputlatency::BluetoothName();
 				if (name.empty() || !settings.BluetoothDeviceFor(name).resumeOnReconnect) break;
-				*autoPause = kAutoPauseNone;
+				*autoPause = AutoPause::None;
 				if (player->playing() && player->paused()) player->Resume();
 				break;
 			}
@@ -559,7 +559,7 @@ void PollUnderruns(const mxv2::Player &player, uint32_t *last, uint32_t *nextMs)
 // Settings::BluetoothLatencyFor）を足す。測った遅れには受け側の中の遅れが
 // 入らず、Windows は Bluetooth の遅れそのものも入らないので。
 void PollOutputLatency(mxv2::Player *player, const mxv2::Settings &settings, int *lastLoggedMs) {
-	const bool casting = mxv2::cast::GetState() != mxv2::cast::kIdle;
+	const bool casting = mxv2::cast::GetState() != mxv2::cast::State::Idle;
 	const bool want =
 	    player->playing() && !player->paused() && player->displayLatencyAuto() && !casting;
 	mxv2::outputlatency::SetActive(want, player->sampleRate());

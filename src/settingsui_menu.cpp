@@ -86,9 +86,9 @@ bool ContextMenu::MenuItem(const char *label, const char *shortcut, bool selecte
 // 1 ページぶんの項目。
 void ContextMenu::BuildPageItems(SettingsUi &ui, int page, bool paged, Settings *settings,
                                  DrawScreen *draw, Player *player, Filer *filer) {
-	if (page == kCtxPageView) {
+	if (page == Page::View) {
 		// [表示] … 表示の ON/OFF。チェックが今の状態。
-		const bool tone = (draw->statusMode() == DrawScreen::kStatusModeTone);
+		const bool tone = (draw->statusMode() == DrawScreen::StatusMode::Tone);
 		if (MenuItem(Msg("Menu.ToneData"), "F7", tone, true)) {
 			// ステータス欄の長押しと同じ経路（値の積み直しまで）。
 			draw->ToggleStatusMode();
@@ -101,24 +101,24 @@ void ContextMenu::BuildPageItems(SettingsUi &ui, int page, bool paged, Settings 
 		// ここからは入れる。出すものが無い（曲を持っていない）ときは押せない。
 		if (pip::Available() &&
 		    MenuItem(Msg("Menu.Pip"), NULL, false, player != 0 && player->playing())) {
-			ui.request_ = SettingsUi::kRequestEnterPip;
+			ui.request_ = SettingsUi::Request::EnterPip;
 		}
 		// Chromecast へ送る（MXV2_CAST 付きでビルドしたときだけ）。送っている間は
 		// チェックが付く。押すとダイアログ（送り先を選ぶ・やめる）。
 		if (cast::Available() &&
-		    MenuItem(Msg("Menu.Cast"), "F9", cast::GetState() != cast::kIdle, true)) {
+		    MenuItem(Msg("Menu.Cast"), "F9", cast::GetState() != cast::State::Idle, true)) {
 			ui.OpenCast();
 		}
 		if (paged) {
 			ImGui::Separator();
 			if (PageItem(Msg("Menu.Back"), true)) {
-				switchTo_ = kCtxPageMain;
+				switchTo_ = Page::Main;
 				animForward_ = false;
 			}
 		}
 		return;
 	}
-	if (page == kCtxPageOther) {
+	if (page == Page::Other) {
 		// [その他] … [操作方法…] と [バージョン情報…]（2026-09-16、ユーザーの
 		// 指示）。横画面の携帯でメニューが縦に収まらず（ジェスチャー
 		// ナビゲーションの帯ぶん短い Pixel 8 Pro でスクロールバーが出た）、
@@ -128,7 +128,7 @@ void ContextMenu::BuildPageItems(SettingsUi &ui, int page, bool paged, Settings 
 		if (paged) {
 			ImGui::Separator();
 			if (PageItem(Msg("Menu.Back"), true)) {
-				switchTo_ = kCtxPageMain;
+				switchTo_ = Page::Main;
 				animForward_ = false;
 			}
 		}
@@ -165,11 +165,11 @@ void ContextMenu::BuildPageItems(SettingsUi &ui, int page, bool paged, Settings 
 	// [表示] … 2 段目。指で操作するときはページ、それ以外はサブメニュー。
 	if (paged) {
 		if (PageItem(Msg("Menu.View"), false)) {
-			switchTo_ = kCtxPageView;
+			switchTo_ = Page::View;
 			animForward_ = true;
 		}
 	} else if (ImGui::BeginMenu(Msg("Menu.View"))) {
-		BuildPageItems(ui, kCtxPageView, false, settings, draw, player, filer);
+		BuildPageItems(ui, Page::View, false, settings, draw, player, filer);
 		ImGui::EndMenu();
 	}
 
@@ -184,17 +184,17 @@ void ContextMenu::BuildPageItems(SettingsUi &ui, int page, bool paged, Settings 
 	// [その他] … 2 段目。
 	if (paged) {
 		if (PageItem(Msg("Menu.Other"), false)) {
-			switchTo_ = kCtxPageOther;
+			switchTo_ = Page::Other;
 			animForward_ = true;
 		}
 	} else if (ImGui::BeginMenu(Msg("Menu.Other"))) {
-		BuildPageItems(ui, kCtxPageOther, false, settings, draw, player, filer);
+		BuildPageItems(ui, Page::Other, false, settings, draw, player, filer);
 		ImGui::EndMenu();
 	}
 	// [終了] はモバイルには置かない（区切り線ごと）。
 	if (Screen::CanQuitApp()) {
 		ImGui::Separator();
-		if (MenuItem(Msg("Menu.Quit"), NULL, false, true)) ui.request_ = SettingsUi::kRequestQuit;
+		if (MenuItem(Msg("Menu.Quit"), NULL, false, true)) ui.request_ = SettingsUi::Request::Quit;
 	}
 }
 
@@ -204,7 +204,7 @@ void ContextMenu::BuildPageItems(SettingsUi &ui, int page, bool paged, Settings 
 // カーソルの進んだ高さから取る。
 bool ContextMenu::BuildPageChild(SettingsUi &ui, int page, const ImVec2 &pos, Settings *settings,
                                  DrawScreen *draw, Player *player, Filer *filer) {
-	static const char *const kNames[kCtxPageCount] = {"##ctxpage0", "##ctxpage1", "##ctxpage2"};
+	static const char *const kNames[Page::Count] = {"##ctxpage0", "##ctxpage1", "##ctxpage2"};
 	ImGui::SetCursorPos(pos);
 	ImGui::BeginChild(kNames[page], pageSize_[page], ImGuiChildFlags_None,
 	                  ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
@@ -228,7 +228,7 @@ void ContextMenu::BuildItems(SettingsUi &ui, Settings *settings, DrawScreen *dra
 	// デスクトップ（マウス）は ImGui のサブメニューをそのまま使う。
 	const bool paged = ui.touchUi_;
 	if (!paged) {
-		BuildPageItems(ui, kCtxPageMain, false, settings, draw, player, filer);
+		BuildPageItems(ui, Page::Main, false, settings, draw, player, filer);
 		return;
 	}
 
@@ -338,11 +338,11 @@ void ContextMenu::BuildItems(SettingsUi &ui, Settings *settings, DrawScreen *dra
 		const ImGuiStyle &style = ImGui::GetStyle();
 		const float availW = ImGui::GetIO().DisplaySize.x - style.DisplaySafeAreaPadding.x * 2.0f -
 		                     style.WindowPadding.x * 2.0f;
-		for (int i = 0; i < kCtxPageCount; i++) {
+		for (int i = 0; i < Page::Count; i++) {
 			if (pageSize_[i].x > availW) {
 				noShortcut_ = true;
 				// 列幅を決め直すので、決まるまでまた隠す。
-				for (int j = 0; j < kCtxPageCount; j++) childWarm_[j] = false;
+				for (int j = 0; j < Page::Count; j++) childWarm_[j] = false;
 				popup->HiddenFramesCannotSkipItems = 1;
 				break;
 			}
@@ -369,11 +369,11 @@ void ContextMenu::Build(SettingsUi &ui, Settings *settings, DrawScreen *draw, Pl
 	// 開いていない間に 1 ページ目へ戻しておく（右クリックで開く経路は
 	// BeginPopupContextVoid の中なので、開く前に見るのが確実）。
 	if (!ImGui::IsPopupOpen("##mxv2ctx")) {
-		page_ = kCtxPageMain;
+		page_ = Page::Main;
 		switchTo_ = -1;
 		animFrom_ = -1;
 		// 子ウィンドウはポップアップと一緒に出直すので、列幅も決め直し。
-		for (int i = 0; i < kCtxPageCount; i++) childWarm_[i] = false;
+		for (int i = 0; i < Page::Count; i++) childWarm_[i] = false;
 		// 短縮キーの列を出すかも開くたびに決め直す（回転で幅が変わる）。
 		noShortcut_ = false;
 	}
@@ -425,7 +425,7 @@ void ContextMenu::BuildQuitWindow(SettingsUi &ui) {
 	const bool enter =
 	    ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter);
 	if (ImGui::Button(Msg("Button.Quit")) || enter) {
-		ui.request_ = SettingsUi::kRequestQuit;
+		ui.request_ = SettingsUi::Request::Quit;
 		ImGui::CloseCurrentPopup();
 	}
 	ImGui::SameLine();

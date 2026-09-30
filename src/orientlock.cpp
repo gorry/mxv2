@@ -72,10 +72,10 @@ bool Available() {
 }
 
 void Set(Request request) {
-	if ((int)request == g_last) return;
+	if (static_cast<int>(request) == g_last) return;
 	if (!Available()) return;
-	g_last = (int)request;
-	Env()->CallStaticVoidMethod(g.cls, g.setOrientation, (jint)request);
+	g_last = static_cast<int>(request);
+	Env()->CallStaticVoidMethod(g.cls, g.setOrientation, static_cast<jint>(request));
 }
 
 }  // namespace orientlock

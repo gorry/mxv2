@@ -27,17 +27,20 @@ struct Settings;
 
 class ContextMenu {
 public:
-	enum Page {
-		kCtxPageMain = 0,
-		kCtxPageView,   // [表示] の中身
-		kCtxPageOther,  // [その他] の中身
-		kCtxPageCount,
+	struct Page {
+		enum Type {
+			Main = 0,
+			View,   // [表示] の中身
+			Other,  // [その他] の中身
+			Count,
+	
+		};
 	};
 
 	ContextMenu()
-	    : openRequested_(false), open_(false), closeWanted_(false), page_(kCtxPageMain),
+	    : openRequested_(false), open_(false), closeWanted_(false), page_(Page::Main),
 	      switchTo_(-1), animFrom_(-1), animForward_(true), animStartMs_(0), noShortcut_(false) {
-		for (int i = 0; i < kCtxPageCount; i++) {
+		for (int i = 0; i < Page::Count; i++) {
 			pageSize_[i] = ImVec2(0.0f, 0.0f);
 			childWarm_[i] = false;
 		}
@@ -102,12 +105,12 @@ private:
 	bool animForward_;  // 下る（次が右から入る）か、戻る（左から）か
 	Uint32 animStartMs_;
 	// 各ページの中身の大きさ。描くたびに測り直す（未測は 0）。
-	ImVec2 pageSize_[kCtxPageCount];
+	ImVec2 pageSize_[Page::Count];
 	// 子ウィンドウの列幅が決まっているか。ImGui はウィンドウが出直すたびに
 	// 列幅を測り直すので、最初の 1 フレームはラベルと短縮キーが重なる。
 	// 決まるまではポップアップごと隠す（ポップアップ自身が最初のフレームで
 	// やっているのと同じ）。
-	bool childWarm_[kCtxPageCount];
+	bool childWarm_[Page::Count];
 	// 短縮キーの列を出さない。どれかのページが画面の横に入りきらないと
 	// 分かったら立て、メニューを閉じるまで保つ（毎フレーム決め直すと、
 	// 列を消して幅が縮んだ途端に「入る」に戻ってちらつく）。指で操作する

@@ -428,14 +428,14 @@ void StatusWatch::PollTone(uint64_t frame, DispQueue *q) {
 		const uint8_t *voice = MxdrvOfsToPtr(context_, p->S0004);
 		for (int s = 0; s < 4; s++) {
 			const int slot = ch + s * 8;
-			int v[kNumOpmOpGroups];
-			v[kOpmOpDT1MUL] = OpmReg(0x40 + slot);
-			v[kOpmOpKSAR] = OpmReg(0x80 + slot);
-			v[kOpmOpAMED1R] = OpmReg(0xa0 + slot);
-			v[kOpmOpDT2D2R] = OpmReg(0xc0 + slot);
-			v[kOpmOpD1LRR] = OpmReg(0xe0 + slot);
-			v[kOpmOpTL] = (voice == 0) ? 0 : (voice[6 + s] & 0x7f);
-			for (int g = 0; g < kNumOpmOpGroups; g++) {
+			int v[OpmOpGroup::Count];
+			v[OpmOpGroup::DT1MUL] = OpmReg(0x40 + slot);
+			v[OpmOpGroup::KSAR] = OpmReg(0x80 + slot);
+			v[OpmOpGroup::AMED1R] = OpmReg(0xa0 + slot);
+			v[OpmOpGroup::DT2D2R] = OpmReg(0xc0 + slot);
+			v[OpmOpGroup::D1LRR] = OpmReg(0xe0 + slot);
+			v[OpmOpGroup::TL] = (voice == 0) ? 0 : (voice[6 + s] & 0x7f);
+			for (int g = 0; g < OpmOpGroup::Count; g++) {
 				if (t->op[s][g] == v[g]) continue;
 				q->Push(frame, DISP_OPMOP, (uint8_t)(ch | (s << 4)), (uint8_t)g, (uint8_t)v[g]);
 				t->op[s][g] = v[g];
@@ -444,12 +444,12 @@ void StatusWatch::PollTone(uint64_t frame, DispQueue *q) {
 	}
 
 	// OPM 全体の値（PCM の段に出す）。値 | (有効 << 8) で前回値と比べる。
-	int gv[kNumOpmGlobalKinds];
+	int gv[OpmGlobalKind::Count];
 	{
 		const int noise = OpmReg(0x0f);
-		gv[kOpmGlobalNoise] = (noise & 0x80) ? ((noise & 0x1f) | 0x100) : 0;
-		gv[kOpmGlobalClockB] = OpmReg(0x12) | 0x100;
-		gv[kOpmGlobalLFOFreq] = OpmReg(0x18) | 0x100;
+		gv[OpmGlobalKind::Noise] = (noise & 0x80) ? ((noise & 0x1f) | 0x100) : 0;
+		gv[OpmGlobalKind::ClockB] = OpmReg(0x12) | 0x100;
+		gv[OpmGlobalKind::LFOFreq] = OpmReg(0x18) | 0x100;
 		int pmd = opmPmd_, amd = opmAmd_;
 		if (!opmCallbackActive_) {
 			// 通知が無いときは $19 の最後の書き込みしか分からない。
@@ -457,11 +457,11 @@ void StatusWatch::PollTone(uint64_t frame, DispQueue *q) {
 			pmd = (r & 0x80) ? (r & 0x7f) : -1;
 			amd = (r & 0x80) ? -1 : (r & 0x7f);
 		}
-		gv[kOpmGlobalLFOPMD] = (pmd < 0) ? 0 : (pmd | 0x100);
-		gv[kOpmGlobalLFOAMD] = (amd < 0) ? 0 : (amd | 0x100);
-		gv[kOpmGlobalLFOWave] = (OpmReg(0x1b) & 0x03) | 0x100;
+		gv[OpmGlobalKind::LFOPMD] = (pmd < 0) ? 0 : (pmd | 0x100);
+		gv[OpmGlobalKind::LFOAMD] = (amd < 0) ? 0 : (amd | 0x100);
+		gv[OpmGlobalKind::LFOWave] = (OpmReg(0x1b) & 0x03) | 0x100;
 	}
-	for (int k = 0; k < kNumOpmGlobalKinds; k++) {
+	for (int k = 0; k < OpmGlobalKind::Count; k++) {
 		if (toneGlobal_[k] == gv[k]) continue;
 		q->Push(frame, DISP_OPMGLOBAL, (uint8_t)k, (uint8_t)(gv[k] & 0xff),
 		        (uint8_t)((gv[k] & 0x100) ? 1 : 0));

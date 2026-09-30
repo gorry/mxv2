@@ -49,7 +49,7 @@ void UpdateDialog::BuildNetworkGroup(SettingsUi &ui, Settings *settings) {
 	bool on = settings->updateCheck;
 	if (ImGui::Checkbox(Msg("Settings.UpdateCheck"), &on)) {
 		settings->updateCheck = on;
-		ui.changedFields_ |= Settings::kFieldUpdateCheck;
+		ui.changedFields_ |= Settings::Field::UpdateCheck;
 	}
 
 	// 次の更新チェックの時刻。確かめている最中・OFF・もう過ぎている
@@ -104,11 +104,11 @@ void UpdateDialog::BuildWindow(SettingsUi &ui) {
 
 	const UpdateResult &r = result_;
 	switch (r.status) {
-		case UpdateResult::kNewer:
+		case UpdateResult::Status::Newer:
 			ConfirmText(MsgF("Update.Newer", r.latest).c_str());
 			ConfirmNote(MsgF("Update.Current", MXV2_APP_VERSION).c_str());
 			break;
-		case UpdateResult::kLatest:
+		case UpdateResult::Status::Latest:
 			ConfirmText(MsgF("Update.Latest", MXV2_APP_VERSION).c_str());
 			break;
 		default:
@@ -120,7 +120,7 @@ void UpdateDialog::BuildWindow(SettingsUi &ui) {
 	ImGui::Separator();
 
 	bool close = false;
-	if (r.status == UpdateResult::kNewer) {
+	if (r.status == UpdateResult::Status::Newer) {
 		if (ImGui::Button(Msg("Button.OpenReleasePage"))) {
 			OpenUrl(r.pageUrl.c_str());
 			close = true;

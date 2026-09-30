@@ -400,7 +400,7 @@ SettingsUi::SettingsUi()
       lastDisplaySize_(0.0f, 0.0f),
       vfs_(0),
       changedFields_(0),
-      request_(kRequestNone),
+      request_(Request::None),
       dragScroll_(false),
       dragMoved_(false),
       songLoader_(0),
@@ -794,8 +794,8 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	// 「指で操作する」。自動なら端末で決まるが、ブラウザではあとからタッチ
 	// 装置が見つかることがあるので毎フレーム見る（ApplyScale は変わった
 	// ときだけ作り直す）。
-	bool touch = (settings->touchUi == Settings::kTouchOn);
-	if (settings->touchUi == Settings::kTouchAuto) touch = Screen::TouchPreferred();
+	bool touch = (settings->touchUi == Settings::TouchUi::On);
+	if (settings->touchUi == Settings::TouchUi::Auto) touch = Screen::TouchPreferred();
 	const bool scaleChanged = ApplyScale(scale, touch, ImGui::GetIO().DisplaySize.y);
 	// 表示サイズが変わったフレーム（回転・リサイズ）は、開いている
 	// ダイアログを置き直す（placeCond）。
@@ -869,7 +869,7 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 		// PDX なら一覧で選んでいた探索先から（読めなければファイラーの今の
 		// 場所から）。ブックマークはファイラーの今の場所から。
 		std::string start = filer->currentRef();
-		if (folder_.target_ == FolderDialog::kFolderTargetPdx && vfs_ != 0 && pdx_.selected_ >= 0 &&
+		if (folder_.target_ == FolderDialog::Target::Pdx && vfs_ != 0 && pdx_.selected_ >= 0 &&
 		    pdx_.selected_ < (int)settings->pdxPaths.size()) {
 			std::string ref;
 			if (vfs_->Resolve(settings->pdxPaths[pdx_.selected_], filer->currentRef(), &ref) &&
@@ -910,19 +910,19 @@ void SettingsUi::Build(Settings *settings, DrawScreen *draw, Player *player, Fil
 	update_.Schedule(*this);
 	if (!update_.nested()) update_.BuildWindow(*this);
 	// フォルダ選択を閉じたら、[追加…] で呼んだ元へ戻る（OpenFolderFor）。
-	if (folder_.returnTo_ != FolderDialog::kFolderReturnNone && !folder_.show_ &&
+	if (folder_.returnTo_ != FolderDialog::Return::None && !folder_.show_ &&
 	    !folder_.openPending_ &&
 	    !ImGui::IsPopupOpen(folder_.Title())) {
 		const FolderDialog::Return to = folder_.returnTo_;
-		folder_.returnTo_ = FolderDialog::kFolderReturnNone;
-		if (to == FolderDialog::kFolderReturnBookmarks) bm_.show_ = true;
-		if (to == FolderDialog::kFolderReturnPdx) pdx_.show_ = true;
+		folder_.returnTo_ = FolderDialog::Return::None;
+		if (to == FolderDialog::Return::Bookmarks) bm_.show_ = true;
+		if (to == FolderDialog::Return::Pdx) pdx_.show_ = true;
 	}
 	// [PDX の探索先] を閉じたら設定ウィンドウへ戻る。[追加…] のフォルダ選択へ
 	// 出ている間（と、そこから戻ってくる途中）は戻らない。
 	if (pdx_.handoff_.returnToCaller && !pdx_.show_ && !pdx_.handoff_.openPending &&
 	    !folder_.show_ &&
-	    !folder_.openPending_ && folder_.returnTo_ != FolderDialog::kFolderReturnPdx &&
+	    !folder_.openPending_ && folder_.returnTo_ != FolderDialog::Return::Pdx &&
 	    !ImGui::IsPopupOpen(kPdxPathsTitle) &&
 	    !ImGui::IsPopupOpen(folder_.Title())) {
 		pdx_.handoff_.returnToCaller = false;
@@ -1006,7 +1006,7 @@ void SettingsUi::OpenBookmarkList() {
 	if (busy() || vfs_ == 0) return;
 	requestedFolder_ = vfs_->BookmarkRootRef();
 	if (requestedFolder_.empty()) return;
-	request_ = kRequestSetFolder;
+	request_ = Request::SetFolder;
 }
 
 }  // namespace mxv2

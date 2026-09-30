@@ -99,16 +99,17 @@ public:
 	// 上の Put*（チャンネルステータス）と下の PutOPM*（音色データ）は、
 	// それぞれ自分のモードのときだけ描く。生成側は両方を積んでくるので、
 	// 消費側 (Visualizer) はモードを気にしなくてよい。
-	enum StatusMode {
-		kStatusModeChannel = 0,
-		kStatusModeTone,
+	enum class StatusMode {
+		Channel = 0,
+		Tone,
+	
 	};
-	int statusMode() const { return statusMode_; }
+	StatusMode statusMode() const { return statusMode_; }
 	// 切り替える。欄を下地で消して、新しいモードの 0 表示を敷く。呼んだ側は
 	// Player::RequestStatusRefresh で値を積み直させること。
-	void SetStatusMode(int mode);
+	void SetStatusMode(StatusMode mode);
 	void ToggleStatusMode() {
-		SetStatusMode(statusMode_ == kStatusModeChannel ? kStatusModeTone : kStatusModeChannel);
+		SetStatusMode(statusMode_ == StatusMode::Channel ? StatusMode::Tone : StatusMode::Channel);
 	}
 
 	// ---- 音色データ (FM 0..7 / OPM 全体) ------------------------------
@@ -178,28 +179,36 @@ public:
 	// ---- ヒットチェック (旧 mxv の Screen_HitCheck_*) ----------------
 	// 操作ボタン。戻り値は旧 mxv の MX_HITCODE_PLAYKEY_* と同じ並びで、
 	// 押下ビットは (1 << (hit-1)) = PlayKeyStatus の下位ビットに対応する。
-	enum PlayKeyHit {
-		kHitPlayKeyNone = 0,
-		kHitPlayKeyPrev,
-		kHitPlayKeyStop,
-		kHitPlayKeyPlay,
-		kHitPlayKeyFastPlay,
-		kHitPlayKeyPause,
-		kHitPlayKeyNext,
-		kHitPlayKeyCont,
-		kHitPlayKeyRepeat,
+	struct PlayKeyHit {
+		enum Type {
+			None = 0,
+			Prev,
+			Stop,
+			Play,
+			FastPlay,
+			Pause,
+			Next,
+			Cont,
+			Repeat,
+	
+	
+		};
 	};
-	enum ScrollBarHit {
-		kHitScrollBarNone = 0,
-		kHitScrollBarUpArrow,
-		kHitScrollBarUpPage,
-		kHitScrollBarThumb,
-		kHitScrollBarDownPage,
-		kHitScrollBarDownArrow,
+	struct ScrollBarHit {
+		enum Type {
+			None = 0,
+			UpArrow,
+			UpPage,
+			Thumb,
+			DownPage,
+			DownArrow,
+	
+	
+		};
 	};
 
-	int HitCheckPlayKey(int x, int y) const;
-	int HitCheckScrollBar(int x, int y) const;
+	PlayKeyHit::Type HitCheckPlayKey(int x, int y) const;
+	ScrollBarHit::Type HitCheckScrollBar(int x, int y) const;
 	// 表示行 (0..fileListRows()-1)。当たらなければ -1。
 	int HitCheckFileList(int x, int y) const;
 	// バー内の x 位置 (0..kProgressBarWidth)。当たらなければ -1。
@@ -233,10 +242,13 @@ public:
 	int TotalVolBarPosFromVolume(int volume) const;
 
 	// ---- スクロールバーの見た目の状態 -------------------------------
-	enum ScrollBarFlag {
-		kScrollBarDrag = 1 << 0,           // つまみをドラッグ中 (位置を固定する)
-		kScrollBarUpArrowDown = 1 << 1,    // 上矢印の押下表示
-		kScrollBarDownArrowDown = 1 << 2,  // 下矢印の押下表示
+	struct ScrollBarFlag {
+		enum Type {
+			Drag = 1 << 0,           // つまみをドラッグ中 (位置を固定する)
+			UpArrowDown = 1 << 1,    // 上矢印の押下表示
+			DownArrowDown = 1 << 2,  // 下矢印の押下表示
+	
+		};
 	};
 	void SetScrollBarFlags(int flags) { scrollBarFlags_ = flags; }
 	int scrollBarFlags() const { return scrollBarFlags_; }
@@ -248,19 +260,22 @@ public:
 	int fileListFontSize() const { return fileListFontSize_; }
 
 	// 操作ボタンの状態ビット。旧 mxv の MX_PUTPLAYKEY_STATUS_* と同じ。
-	enum PlayKeyStatus {
-		kPlayKeyPrev = 1 << 0,
-		kPlayKeyStop = 1 << 1,
-		kPlayKeyPlay = 1 << 2,
-		kPlayKeyFastPlay = 1 << 3,
-		kPlayKeyPause = 1 << 4,
-		kPlayKeyNext = 1 << 5,
-		kPlayKeyCont = 1 << 6,
-		kPlayKeyRepeat = 1 << 7,
-		kPlayKeyPlayLed = 1 << 16,
-		kPlayKeyPauseLed = 1 << 17,
-		kPlayKeyContLed = 1 << 18,
-		kPlayKeyRepeatLed = 1 << 19,
+	struct PlayKeyStatus {
+		enum Type {
+			Prev = 1 << 0,
+			Stop = 1 << 1,
+			Play = 1 << 2,
+			FastPlay = 1 << 3,
+			Pause = 1 << 4,
+			Next = 1 << 5,
+			Cont = 1 << 6,
+			Repeat = 1 << 7,
+			PlayLed = 1 << 16,
+			PauseLed = 1 << 17,
+			ContLed = 1 << 18,
+			RepeatLed = 1 << 19,
+	
+		};
 	};
 
 	// つまみが動ける幅。旧 mxv の MX_CW_TOTALVOLBARMOVEMENT /
@@ -290,16 +305,16 @@ private:
 	void PrintMiniStencil(Bitmap *dst, int x, int y, const char *msg) const;
 
 	// ステータス欄の項目 1 つの左上（row 段目）。位置はスキン持ち。
-	void StatusItemPos(StatusItem item, int row, int *x, int *y) const;
+	void StatusItemPos(StatusItem::Type item, int row, int *x, int *y) const;
 
 	// ステータス欄の共通処理: 項目の位置に文字を合成する。
 	// チャンネルステータスのモードでないときは何もしない。
-	void PutStatusText(StatusItem item, int row, const char *text);
+	void PutStatusText(StatusItem::Type item, int row, const char *text);
 
 	// 音色データの項目。row は FM の段 (0..7) か PCM の段 (8)、slot は
 	// オペレータごとの項目のときの OPM スロット（それ以外は 0）。
 	// 音色データのモードでないときは何もしない。
-	void PutToneText(StatusItem item, int row, int slot, const char *text);
+	void PutToneText(StatusItem::Type item, int row, int slot, const char *text);
 	// ステータス欄を下地で消す（モードの切り替え）。
 	void ClearStatusArea();
 
@@ -344,7 +359,7 @@ private:
 
 	TextLayer *textLayer_;
 	int fileListFontSize_;
-	int statusMode_;  // StatusMode
+	StatusMode statusMode_;
 
 	// マスクしているチャンネル（SetChannelMask）。BlitTo で灰色を乗せる。
 	uint16_t channelMask_;

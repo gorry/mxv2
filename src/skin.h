@@ -41,12 +41,15 @@ struct Xywh {
 // キャンバスが伸び縮みしてもファイラー以外側の厚みは宣言サイズのまま、
 // 増減はすべてファイラー側が吸収する（fullscreen.md）。
 // 上下に置けば縦に、左右に置けば横に伸びる。
-enum FilerSide {
-	kFilerSideBottom = 0,
-	kFilerSideTop,
-	kFilerSideLeft,
-	kFilerSideRight,
-	kNumFilerSides
+struct FilerSide {
+	enum Type {
+		Bottom = 0,
+		Top,
+		Left,
+		Right,
+		Count
+
+	};
 };
 
 // layout.ini での名前 ("Bottom" など) との変換。綴りは大文字小文字を問わない。
@@ -55,7 +58,7 @@ int FilerSideFromName(const std::string &name, int fallback);
 
 // 伸縮する向きが縦か（上下配置）。
 inline bool FilerSideVertical(int side) {
-	return side == kFilerSideBottom || side == kFilerSideTop;
+	return side == FilerSide::Bottom || side == FilerSide::Top;
 }
 
 // ステータス欄に並ぶ項目。1 段（1 チャンネル）の中でどこに出すかを
@@ -63,61 +66,64 @@ inline bool FilerSideVertical(int side) {
 // [Status] Pos と [Keyboard] ChannelY が足される）。
 // FM の 16 項目は 8 段ぶんそのまま繰り返され、PCM の 2 項目は
 // [Status] PcmX / PcmY の 8 スロットぶん繰り返される。
-enum StatusItem {
-	kStatusVolume = 0,
-	kStatusLevelMeter,
-	kStatusPanpot,
-	kStatusDetune,
-	kStatusVoice,
-	kStatusQ,
-	kStatusPtr,
-	kStatusLFOPitch,
-	kStatusLFOPitch1,
-	kStatusLFOPitch2,
-	kStatusLFOPitch3,
-	kStatusLFOPitch4,
-	kStatusLFOVolume,
-	kStatusLFOVolume1,
-	kStatusLFOVolume2,
-	kStatusLFOVolume3,
-	kStatusPcmVolume,
-	kStatusPcmPtr,
-	// ---- 音色データ表示（ステータス欄の長押しで切り替える。tonedata.md） ----
-	// FM の 13 項目は 1 段（1 チャンネル）の中の位置。オペレータごとの項目
-	// （AR〜AMSEnable）は、さらに [Status] OPMOperatorY のスロットぶんが足される。
-	kStatusOPMAlgorithm,
-	kStatusOPMFeedback,
-	kStatusOPMAttackRate,
-	kStatusOPMDecayRate,
-	kStatusOPMSustainRate,
-	kStatusOPMReleaseRate,
-	kStatusOPMSustainLevel,
-	kStatusOPMTotalLevel,
-	kStatusOPMKeyScaling,
-	kStatusOPMMultiple,
-	kStatusOPMDetune1,
-	kStatusOPMDetune2,
-	kStatusOPMAMSEnable,
-	// PCM の段に出す OPM 全体の値（Rect の左上 + [Keyboard] ChannelY[8] からの相対）。
-	kStatusOPMNoise,
-	kStatusOPMClockB,
-	kStatusOPMLFOFreq,
-	kStatusOPMLFOPMD,
-	kStatusOPMLFOAMD,
-	kStatusOPMLFOWave,
-	kNumStatusItems
+struct StatusItem {
+	enum Type {
+		Volume = 0,
+		LevelMeter,
+		Panpot,
+		Detune,
+		Voice,
+		Q,
+		Ptr,
+		LFOPitch,
+		LFOPitch1,
+		LFOPitch2,
+		LFOPitch3,
+		LFOPitch4,
+		LFOVolume,
+		LFOVolume1,
+		LFOVolume2,
+		LFOVolume3,
+		PcmVolume,
+		PcmPtr,
+		// ---- 音色データ表示（ステータス欄の長押しで切り替える。tonedata.md） ----
+		// FM の 13 項目は 1 段（1 チャンネル）の中の位置。オペレータごとの項目
+		// （AR〜AMSEnable）は、さらに [Status] OPMOperatorY のスロットぶんが足される。
+		OPMAlgorithm,
+		OPMFeedback,
+		OPMAttackRate,
+		OPMDecayRate,
+		OPMSustainRate,
+		OPMReleaseRate,
+		OPMSustainLevel,
+		OPMTotalLevel,
+		OPMKeyScaling,
+		OPMMultiple,
+		OPMDetune1,
+		OPMDetune2,
+		OPMAMSEnable,
+		// PCM の段に出す OPM 全体の値（Rect の左上 + [Keyboard] ChannelY[8] からの相対）。
+		OPMNoise,
+		OPMClockB,
+		OPMLFOFreq,
+		OPMLFOPMD,
+		OPMLFOAMD,
+		OPMLFOWave,
+		Count
+
+	};
 };
 
 // 音色データ表示の項目の分類。
-inline bool IsStatusOpmOperatorItem(StatusItem item) {
-	return item >= kStatusOPMAttackRate && item <= kStatusOPMAMSEnable;
+inline bool IsStatusOpmOperatorItem(StatusItem::Type item) {
+	return item >= StatusItem::OPMAttackRate && item <= StatusItem::OPMAMSEnable;
 }
-inline bool IsStatusOpmGlobalItem(StatusItem item) {
-	return item >= kStatusOPMNoise && item <= kStatusOPMLFOWave;
+inline bool IsStatusOpmGlobalItem(StatusItem::Type item) {
+	return item >= StatusItem::OPMNoise && item <= StatusItem::OPMLFOWave;
 }
 
 // layout.ini でのキー名（"PosVolume" など）。並びは StatusItem と同じ。
-extern const char *const kStatusItemKeys[kNumStatusItems];
+extern const char *const kStatusItemKeys[StatusItem::Count];
 
 // 配色ファイルの名前。旧 mxv の <テーマ名>.mxv をそのまま持ってきていたのを
 // 2026-08-21 に layout.ini と揃えた。**書くのは新しい名前だけ**で、
@@ -161,7 +167,7 @@ struct Skin {
 	int pcmXOffset[8], pcmYOffset[8];  // PCM 8ch のステータス欄の並び
 	// 項目ごとの位置。StatusItem の並びで [x, y]。旧 mxv は draw.cpp の
 	// 関数ごとに #define CX_D / CY_D で埋め込んでいたもの。
-	int statusPos[kNumStatusItems][2];
+	int statusPos[StatusItem::Count][2];
 	// 音色データ表示で、オペレータごとの項目を置く段の y（[Status]
 	// OPMOperatorY）。並びは OPM のスロット順（M1, M2, C1, C2）。既定の
 	// 0,18,9,27 で上から M1 / C1 / M2 / C2（MML の OP1〜OP4 の順）に並ぶ。

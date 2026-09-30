@@ -72,25 +72,31 @@ enum DispCmd {
 
 // DISP_OPMOP の param2。値はそのレジスタのバイトそのもの（TL だけは音色
 // データの値。レジスタの TL には音量が乗るため。tonedata.md）。
-enum OpmOpGroup {
-	kOpmOpDT1MUL = 0,  // $40+  bit4-6 DT1, bit0-3 MUL
-	kOpmOpKSAR,        // $80+  bit6-7 KS,  bit0-4 AR
-	kOpmOpAMED1R,      // $A0+  bit7 AME,   bit0-4 D1R
-	kOpmOpDT2D2R,      // $C0+  bit6-7 DT2, bit0-4 D2R
-	kOpmOpD1LRR,       // $E0+  bit4-7 D1L, bit0-3 RR
-	kOpmOpTL,          // 音色データ $06+op の bit0-6
-	kNumOpmOpGroups
+struct OpmOpGroup {
+	enum Type {
+		DT1MUL = 0,  // $40+  bit4-6 DT1, bit0-3 MUL
+		KSAR,        // $80+  bit6-7 KS,  bit0-4 AR
+		AMED1R,      // $A0+  bit7 AME,   bit0-4 D1R
+		DT2D2R,      // $C0+  bit6-7 DT2, bit0-4 D2R
+		D1LRR,       // $E0+  bit4-7 D1L, bit0-3 RR
+		TL,          // 音色データ $06+op の bit0-6
+		Count
+
+	};
 };
 
 // DISP_OPMGLOBAL の param1。
-enum OpmGlobalKind {
-	kOpmGlobalNoise = 0,  // $0F bit0-4（NE=0 なら無効）
-	kOpmGlobalClockB,     // $12
-	kOpmGlobalLFOFreq,    // $18
-	kOpmGlobalLFOPMD,     // $19 の bit7=1 の書き込みの bit0-6
-	kOpmGlobalLFOAMD,     // $19 の bit7=0 の書き込みの bit0-6
-	kOpmGlobalLFOWave,    // $1B bit0-1
-	kNumOpmGlobalKinds
+struct OpmGlobalKind {
+	enum Type {
+		Noise = 0,  // $0F bit0-4（NE=0 なら無効）
+		ClockB,     // $12
+		LFOFreq,    // $18
+		LFOPMD,     // $19 の bit7=1 の書き込みの bit0-6
+		LFOAMD,     // $19 の bit7=0 の書き込みの bit0-6
+		LFOWave,    // $1B bit0-1
+		Count
+
+	};
 };
 
 struct DispWork {

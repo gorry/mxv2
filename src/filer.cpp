@@ -443,7 +443,7 @@ bool Filer::PollDir() {
 	if (loading_ && !loadingRow_ && (SDL_GetTicks() - loadTicks_) >= kLoadingRowDelayMs) {
 		FileItem f;
 		f.title = Msg("Filer.Loading");
-		f.type = kFileItemLoading;
+		f.type = FileItemType::Loading;
 		items_.push_back(f);
 		loadingRow_ = true;
 		return true;
@@ -459,7 +459,7 @@ void Filer::AppendParentRow(std::vector<FileItem> *out) {
 	f.baseName = atRoot ? "[FS]" : "..";
 	f.path = atRoot ? std::string() : Vfs::MakeRef(fs_, fs_->Parent(rel_));
 	f.title = fs_->DisplayPath(rel_);
-	f.type = atRoot ? kFileItemFileSystem : kFileItemDir;
+	f.type = atRoot ? FileItemType::FileSystem : FileItemType::Dir;
 	out->push_back(f);
 }
 
@@ -474,14 +474,14 @@ void Filer::AppendFileSystems(std::vector<FileItem> *out) {
 		// アクセス許可が失われている（SAF）ときはその旨を添える。
 		if (!fs->accessible()) f.title += " " + std::string(Msg("Fs.NoAccess"));
 		f.path = Vfs::MakeRef(fs, fs->Root());
-		f.type = kFileItemFileSystem;
+		f.type = FileItemType::FileSystem;
 		out->push_back(f);
 	}
 	{
 		FileItem f;
 		f.baseName = "[Setting]";
 		f.title = Msg("Filer.SettingTitle");
-		f.type = kFileItemSetting;
+		f.type = FileItemType::Setting;
 		out->push_back(f);
 	}
 }
@@ -496,7 +496,7 @@ void Filer::AppendBookmarks(std::vector<FileItem> *out) {
 	for (size_t i = 0; i < refs.size(); i++) {
 		FileItem f;
 		f.path = refs[i];
-		f.type = kFileItemBookmark;
+		f.type = FileItemType::Bookmark;
 		FileSystem *target = 0;
 		std::string rel;
 		if (vfs_->Parse(refs[i], &target, &rel) && target != 0) {
@@ -527,7 +527,7 @@ void Filer::AppendBookmarks(std::vector<FileItem> *out) {
 		FileItem f;
 		f.baseName = "[Setting]";
 		f.title = Msg("Filer.BookmarkSettingTitle");
-		f.type = kFileItemBookmarkSetting;
+		f.type = FileItemType::BookmarkSetting;
 		out->push_back(f);
 	}
 }
@@ -539,7 +539,7 @@ void Filer::AppendDirs(const std::vector<DirEntry> &entries, std::vector<FileIte
 		FileItem f;
 		f.baseName = entries[i].name;
 		f.path = Vfs::MakeRef(fs_, fs_->Join(rel_, entries[i].name));
-		f.type = kFileItemDir;
+		f.type = FileItemType::Dir;
 		dirs.push_back(f);
 	}
 	std::sort(dirs.begin(), dirs.end(), LessNoCase);
@@ -555,7 +555,7 @@ void Filer::AppendMdx(const std::vector<DirEntry> &entries, std::vector<FileItem
 		FileItem f;
 		f.baseName = entries[i].name;
 		f.path = Vfs::MakeRef(fs_, fs_->Join(rel_, entries[i].name));
-		f.type = kFileItemMdx;
+		f.type = FileItemType::Mdx;
 		files.push_back(f);
 	}
 	std::sort(files.begin(), files.end(), LessNoCase);
@@ -570,7 +570,7 @@ void Filer::AppendExtras(std::vector<FileItem> *out) {
 		FileItem f;
 		f.baseName = extras[i].name;
 		f.path = Vfs::MakeRef(fs_, extras[i].rel);
-		f.type = kFileItemDrive;
+		f.type = FileItemType::Drive;
 		out->push_back(f);
 	}
 }
@@ -578,7 +578,7 @@ void Filer::AppendExtras(std::vector<FileItem> *out) {
 void Filer::StartReadTitles() {
 	std::vector<TitleReader::Job> jobs;
 	for (size_t i = 0; i < items_.size(); i++) {
-		if ((items_[i].type & kFileItemMdx) == 0) continue;
+		if ((items_[i].type & FileItemType::Mdx) == 0) continue;
 		TitleReader::Job job;
 		job.index = (int)i;
 		job.ref = items_[i].path;
@@ -602,7 +602,7 @@ bool Filer::PollTitles() {
 		// 依頼したときの一覧に対する位置。世代が変わったぶんは捨てられて
 		// いるので、ここへ来るのは今の一覧のものだけ。
 		if (at < 0 || at >= (int)items_.size()) continue;
-		if ((items_[at].type & kFileItemMdx) == 0) continue;
+		if ((items_[at].type & FileItemType::Mdx) == 0) continue;
 		if (items_[at].title == got[i].title) continue;
 		items_[at].title = got[i].title;
 		changed = true;
@@ -670,26 +670,26 @@ void Filer::EnsureCursorVisible() {
 
 FilerOpen Filer::Open(std::string *playPath) {
 	playPath->clear();
-	if (items_.empty()) return kFilerOpenNone;
+	if (items_.empty()) return FilerOpen::None;
 	const FileItem f = items_[cursor_];  // SetCurrentRef が items_ を作り直す
 
-	if (f.type & kFileItemMdx) {
+	if (f.type & FileItemType::Mdx) {
 		*playPath = f.path;
-		return kFilerOpenPlay;
+		return FilerOpen::Play;
 	}
-	if (f.type & kFileItemSetting) {
-		return kFilerOpenSettings;
+	if (f.type & FileItemType::Setting) {
+		return FilerOpen::Settings;
 	}
-	if (f.type & kFileItemBookmarkSetting) {
-		return kFilerOpenBookmarkSettings;
+	if (f.type & FileItemType::BookmarkSetting) {
+		return FilerOpen::BookmarkSettings;
 	}
-	if (f.type & kFileItemBookmark) {
+	if (f.type & FileItemType::Bookmark) {
 		// 行き先がファイルになっていることがある（控え直しが要る）ので、
 		// 移動はブックマークを知っている側 (SettingsUi) に任せる。
 		*playPath = f.path;
-		return kFilerOpenBookmark;
+		return FilerOpen::Bookmark;
 	}
-	if (f.type & kFileItemFileSystem) {
+	if (f.type & FileItemType::FileSystem) {
 		// 許可が失われているファイルシステム（SAF）は入れない。設定で
 		// 取り直してもらう（行は残しておく。消すと ini の控えごと失われる）。
 		if (!f.path.empty()) {
@@ -697,7 +697,7 @@ FilerOpen Filer::Open(std::string *playPath) {
 			std::string rel;
 			if (vfs_->Parse(f.path, &target, &rel) && target != 0 && !target->accessible()) {
 				*playPath = target->mountRef();
-				return kFilerOpenNeedsAccess;
+				return FilerOpen::NeedsAccess;
 			}
 		}
 		// 選択画面の 1 行ならその FS のルートへ、ルートの "[FS]" なら
@@ -705,23 +705,23 @@ FilerOpen Filer::Open(std::string *playPath) {
 		const std::string leaving = currentRef_;
 		SetCurrentRef(f.path);
 		if (f.path.empty()) SelectByPath(leaving);
-		return kFilerOpenMoved;
+		return FilerOpen::Moved;
 	}
-	if (f.type & (kFileItemDir | kFileItemDrive)) {
+	if (f.type & (FileItemType::Dir | FileItemType::Drive)) {
 		// 先頭の ".." は BACKSPACE と同じ扱いにする（GoParent が出てきた
 		// フォルダにカーソルを戻す）。ここだけ別扱いなのは、ふつうの
 		// フォルダは「入る」ので合わせる先が無いから。
-		if (cursor_ == 0 && (f.type & kFileItemDir) != 0) {
+		if (cursor_ == 0 && (f.type & FileItemType::Dir) != 0) {
 			GoParent();
-			return kFilerOpenMoved;
+			return FilerOpen::Moved;
 		}
 		// 「そこを開けるか」は読み出しスレッドの List が兼ねる。開けなければ
 		// PollDir が元の場所へ戻すので、ここで IsDir を呼ぶ必要はない
 		// （呼ぶと遅いファイルシステムではその場で固まる）。
 		SetCurrentRef(f.path);
-		return kFilerOpenMoved;
+		return FilerOpen::Moved;
 	}
-	return kFilerOpenNone;
+	return FilerOpen::None;
 }
 
 void Filer::GoParent() {
@@ -781,7 +781,7 @@ bool Filer::SelectByPath(const std::string &ref) {
 
 bool Filer::NextMdx(std::string *playPath) {
 	for (int i = cursor_ + 1; i < (int)items_.size(); i++) {
-		if (items_[i].type & kFileItemMdx) {
+		if (items_[i].type & FileItemType::Mdx) {
 			SetCursor(i);
 			*playPath = items_[i].path;
 			return true;
@@ -792,7 +792,7 @@ bool Filer::NextMdx(std::string *playPath) {
 
 bool Filer::PrevMdx(std::string *playPath) {
 	for (int i = cursor_ - 1; i >= 0; i--) {
-		if (items_[i].type & kFileItemMdx) {
+		if (items_[i].type & FileItemType::Mdx) {
 			SetCursor(i);
 			*playPath = items_[i].path;
 			return true;
@@ -806,7 +806,7 @@ bool Filer::MdxNumberOf(const std::string &ref, int *number, int *count) const {
 	int n = 0;
 	int found = 0;
 	for (size_t i = 0; i < items_.size(); i++) {
-		if (!(items_[i].type & kFileItemMdx)) continue;
+		if (!(items_[i].type & FileItemType::Mdx)) continue;
 		n++;
 		if (found == 0 && items_[i].path == ref) found = n;
 	}

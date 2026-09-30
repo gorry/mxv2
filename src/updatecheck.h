@@ -16,17 +16,18 @@
 namespace mxv2 {
 
 struct UpdateResult {
-	enum Status {
-		kFailed = 0,  // 通信・解析に失敗した（error に理由。英語のまま）
-		kLatest,      // 今の版が最新（か、公開版より新しい手元のビルド）
-		kNewer,       // 新しい版が公開されている
+	enum class Status {
+		Failed = 0,  // 通信・解析に失敗した（error に理由。英語のまま）
+		Latest,      // 今の版が最新（か、公開版より新しい手元のビルド）
+		Newer,       // 新しい版が公開されている
+	
 	};
 	Status status;
 	bool manual;              // [今すぐ更新チェックを行う] から始めたか
 	std::string latest;       // 公開されている最新の版（タグ名）
 	std::string pageUrl;      // そのリリースのページ
 	std::string error;
-	UpdateResult() : status(kFailed), manual(false) {}
+	UpdateResult() : status(Status::Failed), manual(false) {}
 };
 
 class UpdateChecker {

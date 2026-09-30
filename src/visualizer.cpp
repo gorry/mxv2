@@ -173,11 +173,11 @@ void Visualizer::UpdateChrome(const Player &player, uint32_t nowTimeMs, bool ref
 
 	uint32_t status = pressMask;
 	if (player.playing()) {
-		status |= DrawScreen::kPlayKeyPlayLed;
-		if (player.paused()) status |= DrawScreen::kPlayKeyPauseLed;
+		status |= DrawScreen::PlayKeyStatus::PlayLed;
+		if (player.paused()) status |= DrawScreen::PlayKeyStatus::PauseLed;
 	}
-	if (autoNext) status |= DrawScreen::kPlayKeyContLed;
-	if (autoRepeat) status |= DrawScreen::kPlayKeyRepeatLed;
+	if (autoNext) status |= DrawScreen::PlayKeyStatus::ContLed;
+	if (autoRepeat) status |= DrawScreen::PlayKeyStatus::RepeatLed;
 	draw_->PutPlayKey(status, refresh);
 
 	draw_->PutTotalVolBar(player.mainVolume(), refresh);

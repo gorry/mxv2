@@ -82,7 +82,7 @@ void FileSystemsDialog::Build(SettingsUi &ui, Filer *filer) {
 	if (ImGui::Button(Msg("Button.Up"))) {
 		ui.vfs_->Move(selected_, -1);
 		selected_--;
-		ui.changedFields_ |= Settings::kFieldFileSystems;
+		ui.changedFields_ |= Settings::Field::FileSystems;
 		filer->Refresh();
 	}
 	ImGui::EndDisabled();
@@ -91,7 +91,7 @@ void FileSystemsDialog::Build(SettingsUi &ui, Filer *filer) {
 	if (ImGui::Button(Msg("Button.Down"))) {
 		ui.vfs_->Move(selected_, 1);
 		selected_++;
-		ui.changedFields_ |= Settings::kFieldFileSystems;
+		ui.changedFields_ |= Settings::Field::FileSystems;
 		filer->Refresh();
 	}
 	ImGui::EndDisabled();
@@ -292,7 +292,7 @@ void FileSystemsDialog::ApplyPickedTree(SettingsUi &ui, Filer *filer, const std:
 			exists->Reconnect();
 			if (!ui.vfs_->IsMounted(exists)) {
 				ui.vfs_->Mount(exists);
-				ui.changedFields_ |= Settings::kFieldFileSystems;
+				ui.changedFields_ |= Settings::Field::FileSystems;
 			}
 			// 渡されたものの流れでは一覧を出していないので、誤りの文言は残さない
 			// （次に [ファイルシステムの設定] を開いたときに古い文が出る）。
@@ -317,7 +317,7 @@ void FileSystemsDialog::ApplyPickedTree(SettingsUi &ui, Filer *filer, const std:
 	const int at = (selected_ >= 0) ? selected_ : ui.vfs_->count();
 	ui.vfs_->MountAt(at, made);
 	selected_ = at;
-	ui.changedFields_ |= Settings::kFieldFileSystems;
+	ui.changedFields_ |= Settings::Field::FileSystems;
 	if (filer != 0) filer->Refresh();
 }
 
@@ -344,7 +344,7 @@ void FileSystemsDialog::BuildHandedWindow(SettingsUi &ui, Filer *filer) {
 				handed_.uri.clear();
 				handed_.name.clear();
 				handed_.ref = ref;
-				ui.request_ = SettingsUi::kRequestOpenHanded;
+				ui.request_ = SettingsUi::Request::OpenHanded;
 				return;
 			}
 		}
@@ -409,7 +409,7 @@ bool FileSystemsDialog::MountGrantedTree(SettingsUi &ui, Filer *filer, const std
 	}
 	if (!ui.vfs_->IsMounted(fs)) {
 		if (!ui.vfs_->Mount(fs)) return false;
-		ui.changedFields_ |= Settings::kFieldFileSystems;
+		ui.changedFields_ |= Settings::Field::FileSystems;
 		if (filer != 0) filer->Refresh();
 		printf("info     : %s\n", MsgF("Log.HandedMounted", fs->label()).c_str());
 		fflush(stdout);
@@ -433,7 +433,7 @@ void FileSystemsDialog::FinishHandedAfterPick(SettingsUi &ui, bool cancelled) {
 		handed_.uri.clear();
 		handed_.name.clear();
 		handed_.ref = ref;
-		ui.request_ = SettingsUi::kRequestOpenHanded;
+		ui.request_ = SettingsUi::Request::OpenHanded;
 		return;
 	}
 	// 許可は取れたが、その中に見つからなかった（別のフォルダを選んだ、
@@ -450,7 +450,7 @@ void FileSystemsDialog::OpenHandedByCopy(SettingsUi &ui) {
 	handed_.name.clear();
 	if (!ok) return;
 	handed_.ref = ref;
-	ui.request_ = SettingsUi::kRequestOpenHanded;
+	ui.request_ = SettingsUi::Request::OpenHanded;
 }
 
 void FileSystemsDialog::BuildAddWindow(SettingsUi &ui, Filer *filer) {
@@ -499,7 +499,7 @@ void FileSystemsDialog::BuildAddWindow(SettingsUi &ui, Filer *filer) {
 			const int at = (selected_ >= 0) ? selected_ : ui.vfs_->count();
 			ui.vfs_->MountAt(at, made);
 			selected_ = at;
-			ui.changedFields_ |= Settings::kFieldFileSystems;
+			ui.changedFields_ |= Settings::Field::FileSystems;
 			if (filer != 0) filer->Refresh();
 			ImGui::CloseCurrentPopup();
 		}
@@ -548,7 +548,7 @@ void FileSystemsDialog::BuildRemoveWindow(SettingsUi &ui, Filer *filer) {
 		ui.vfs_->RemoveMounted(selected_);
 		if (selected_ >= ui.vfs_->count()) selected_ = ui.vfs_->count() - 1;
 		if (selected_ < 0) selected_ = 0;
-		ui.changedFields_ |= Settings::kFieldFileSystems;
+		ui.changedFields_ |= Settings::Field::FileSystems;
 		if (filer != 0) filer->Refresh();
 		ImGui::CloseCurrentPopup();
 	}

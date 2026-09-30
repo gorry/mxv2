@@ -98,7 +98,7 @@ void CastDialog::Build(SettingsUi &ui, Settings *settings) {
 	}
 
 	const cast::State state = cast::GetState();
-	const bool idle = (state == cast::kIdle);
+	const bool idle = (state == cast::State::Idle);
 	const std::vector<cast::Device> devices = cast::Devices();
 	if (selected_ >= (int)devices.size()) selected_ = -1;
 	// 送っている間は、送り先の行に印を付ける（名前で探す）。
@@ -157,10 +157,10 @@ void CastDialog::Build(SettingsUi &ui, Settings *settings) {
 			cast::Start(devices[startIndex]);
 		}
 	} else {
-		ImGui::BeginDisabled(state == cast::kStopping);
+		ImGui::BeginDisabled(state == cast::State::Stopping);
 		// 終えるのはメインループ（先に手元を一時停止する。main.cpp の kRequestStopCast）。
 		if (ImGui::Button(Msg("Cast.Stop"), ImVec2(-FLT_MIN, 0.0f))) {
-			ui.request_ = SettingsUi::kRequestStopCast;
+			ui.request_ = SettingsUi::Request::StopCast;
 		}
 		ImGui::EndDisabled();
 	}
@@ -185,13 +185,13 @@ void CastDialog::Build(SettingsUi &ui, Settings *settings) {
 		} else {
 			const std::string name = cast::DeviceName();
 			switch (state) {
-				case cast::kConnecting:
+				case cast::State::Connecting:
 					ConfirmText(MsgF("Cast.Connecting", name).c_str());
 					break;
-				case cast::kStarting:
+				case cast::State::Starting:
 					ConfirmText(MsgF("Cast.Starting", name).c_str());
 					break;
-				case cast::kCasting:
+				case cast::State::Casting:
 					ConfirmText(MsgF("Cast.Casting", name).c_str());
 					break;
 				default:
@@ -208,25 +208,25 @@ void CastDialog::Build(SettingsUi &ui, Settings *settings) {
 	// 送っている間は触れない（一覧と同じ）。名札は上の行、選ぶ欄は幅いっぱい
 	// （[映像を早める] と同じ。幅の狭い画面ではみ出さないように）。
 	{
-		static const char *const kKeys[cast::kQualityCount] = {
+		static const char *const kKeys[cast::Quality::Count] = {
 		    "Cast.QualityLowest", "Cast.QualityLow", "Cast.QualityMedium", "Cast.QualityHigh",
 		    "Cast.QualityHighest",
 		};
 		int q = settings->castQuality;
-		if (q < 0 || q >= cast::kQualityCount) q = Settings::kCastQualityDefault;
+		if (q < 0 || q >= cast::Quality::Count) q = Settings::kCastQualityDefault;
 		char shown[128];
 		ImGui::TextUnformatted(Msg("Cast.Quality"));
 		ImGui::SetNextItemWidth(-FLT_MIN);
 		ImGui::BeginDisabled(!idle);
 		QualityLabel(Msg(kKeys[q]), cast::GetQualityPreset(q), shown, sizeof(shown));
 		if (ImGui::BeginCombo("##castquality", shown)) {
-			for (int i = 0; i < cast::kQualityCount; i++) {
+			for (int i = 0; i < cast::Quality::Count; i++) {
 				const bool selected = (i == q);
 				char label[128];
 				QualityLabel(Msg(kKeys[i]), cast::GetQualityPreset(i), label, sizeof(label));
 				if (ImGui::Selectable(label, selected)) {
 					settings->castQuality = i;
-					ui.changedFields_ |= Settings::kFieldCast;
+					ui.changedFields_ |= Settings::Field::Cast;
 					cast::SetQuality(i);
 				}
 				if (selected) ImGui::SetItemDefaultFocus();
@@ -239,7 +239,7 @@ void CastDialog::Build(SettingsUi &ui, Settings *settings) {
 	bool mute = settings->castMuteLocal;
 	if (ImGui::Checkbox(Msg("Cast.MuteLocal"), &mute)) {
 		settings->castMuteLocal = mute;
-		ui.changedFields_ |= Settings::kFieldCast;
+		ui.changedFields_ |= Settings::Field::Cast;
 		cast::SetMuteLocal(mute);
 	}
 	// 映像を早める量。鍵盤が音より遅れて見えるときに、見ながら合わせる。
@@ -251,7 +251,7 @@ void CastDialog::Build(SettingsUi &ui, Settings *settings) {
 		ImGui::SetNextItemWidth(-FLT_MIN);
 		if (ImGui::SliderInt("##castadvance", &ms, 0, Settings::kCastAdvanceMsMax, "%d ms")) {
 			settings->castVideoAdvanceMs = ms;
-			ui.changedFields_ |= Settings::kFieldCast;
+			ui.changedFields_ |= Settings::Field::Cast;
 			cast::SetVideoAdvanceMs(ms);
 		}
 		// すぐ効くが、TV は流れを数秒溜めて再生しているので、見えるのはそのあと

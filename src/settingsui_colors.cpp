@@ -133,7 +133,7 @@ void ColorsDialog::SaveAs(SettingsUi &ui, const std::string &name, Settings *set
 	// 元に戻ってしまう。
 	if (!isCurrent) {
 		ui.pendingSkin_ = name;
-		ui.changedFields_ |= Settings::kFieldSkin;
+		ui.changedFields_ |= Settings::Field::Skin;
 	}
 }
 

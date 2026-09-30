@@ -31,18 +31,18 @@ const char *Settings::DefaultSkinLandscape() { return kDefaultSkinLandscape; }
 
 // OrientationMode の並び。ini には名前で書く（手で編集する人に分かるように、
 // また layout.ini の [Screen] FilerSide と同じ流儀に揃えるため）。
-static const char *const kOrientModeNames[Settings::kNumOrientModes] = {
+static const char *const kOrientModeNames[Settings::OrientationMode::Count] = {
 	"PortraitOnly", "LandscapeOnly", "Startup", "Always",
 };
 
 const char *Settings::OrientationModeName(int mode) {
-	if (mode < 0 || mode >= kNumOrientModes) mode = kOrientAlways;
+	if (mode < 0 || mode >= OrientationMode::Count) mode = OrientationMode::Always;
 	return kOrientModeNames[mode];
 }
 
 int Settings::OrientationModeFromName(const std::string &name, int fallback) {
 	if (name.empty()) return fallback;
-	for (int i = 0; i < kNumOrientModes; i++) {
+	for (int i = 0; i < OrientationMode::Count; i++) {
 		if (CompareNoCase(name, kOrientModeNames[i]) == 0) return i;
 	}
 	return fallback;
@@ -52,16 +52,16 @@ Settings::Settings()
     : skinName(kDefaultSkinName),
       skinPortrait(kDefaultSkinPortrait),
       skinLandscape(kDefaultSkinLandscape),
-      orientationMode(kOrientAlways),
+      orientationMode(OrientationMode::Always),
       zoomPercent(0),
       legacyScale(0),
       scaleFilter("sharp"),
       fullScreen(false),
-      touchUi(kTouchAuto),
-      pipMode(kPipPlaying),
+      touchUi(TouchUi::Auto),
+      pipMode(PipMode::Playing),
       fileListFontSize(0),
       folderFirst(false),
-      fileListScroll(kScrollCursor),
+      fileListScroll(FileListScroll::Cursor),
       lastPlaying(false),
       resumePlayOnStart(false),
       sampleRate(48000),
@@ -121,15 +121,15 @@ bool Settings::Load(const std::string &path) {
 	scaleFilter = ini.GetString("Screen", "Filter", scaleFilter);
 	fullScreen = ini.GetInt("Screen", "FullScreen", fullScreen ? 1 : 0) != 0;
 	touchUi = ini.GetInt("Screen", "TouchUI", touchUi);
-	if (touchUi < kTouchAuto || touchUi > kTouchOff) touchUi = kTouchAuto;
+	if (touchUi < TouchUi::Auto || touchUi > TouchUi::Off) touchUi = TouchUi::Auto;
 	pipMode = ini.GetInt("Screen", "Pip", pipMode);
-	if (pipMode < kPipOff || pipMode >= kNumPipModes) pipMode = kPipPlaying;
+	if (pipMode < PipMode::Off || pipMode >= PipMode::Count) pipMode = PipMode::Playing;
 
 	fileListFontSize = ini.GetInt("Filer", "FontSize", fileListFontSize) ? 1 : 0;
 	folderFirst = ini.GetInt("Filer", "FolderFirst", folderFirst ? 1 : 0) != 0;
 	fileListScroll = ini.GetInt("Filer", "TitleScroll", fileListScroll);
-	if (fileListScroll < kScrollNone || fileListScroll > kScrollAll) {
-		fileListScroll = kScrollCursor;
+	if (fileListScroll < FileListScroll::None || fileListScroll > FileListScroll::All) {
+		fileListScroll = FileListScroll::Cursor;
 	}
 	lastDir = ini.GetString("Filer", "LastDir", lastDir);
 	lastFile = ini.GetString("Filer", "LastFile", lastFile);
@@ -426,58 +426,58 @@ bool Settings::SaveFields(const std::string &path, unsigned fields) const {
 	Settings out;
 	out.Load(path);
 
-	if (fields & kFieldLocale) out.locale = locale;
-	if (fields & kFieldSkin) out.skinName = skinName;
-	if (fields & kFieldOrientSkin) {
+	if (fields & Field::Locale) out.locale = locale;
+	if (fields & Field::Skin) out.skinName = skinName;
+	if (fields & Field::OrientSkin) {
 		out.skinPortrait = skinPortrait;
 		out.skinLandscape = skinLandscape;
 	}
-	if (fields & kFieldOrientMode) out.orientationMode = orientationMode;
-	if (fields & kFieldZoom) out.zoomPercent = zoomPercent;
-	if (fields & kFieldFilter) out.scaleFilter = scaleFilter;
-	if (fields & kFieldFullScreen) out.fullScreen = fullScreen;
-	if (fields & kFieldTouchUi) out.touchUi = touchUi;
-	if (fields & kFieldPip) out.pipMode = pipMode;
-	if (fields & kFieldFontSize) out.fileListFontSize = fileListFontSize;
-	if (fields & kFieldFolderFirst) out.folderFirst = folderFirst;
-	if (fields & kFieldFileListScroll) out.fileListScroll = fileListScroll;
-	if (fields & kFieldLastDir) out.lastDir = lastDir;
-	if (fields & kFieldLastFile) {
+	if (fields & Field::OrientMode) out.orientationMode = orientationMode;
+	if (fields & Field::Zoom) out.zoomPercent = zoomPercent;
+	if (fields & Field::Filter) out.scaleFilter = scaleFilter;
+	if (fields & Field::FullScreen) out.fullScreen = fullScreen;
+	if (fields & Field::TouchUi) out.touchUi = touchUi;
+	if (fields & Field::Pip) out.pipMode = pipMode;
+	if (fields & Field::FontSize) out.fileListFontSize = fileListFontSize;
+	if (fields & Field::FolderFirst) out.folderFirst = folderFirst;
+	if (fields & Field::FileListScroll) out.fileListScroll = fileListScroll;
+	if (fields & Field::LastDir) out.lastDir = lastDir;
+	if (fields & Field::LastFile) {
 		out.lastFile = lastFile;
 		out.lastPlaying = lastPlaying;
 	}
-	if (fields & kFieldResumePlay) out.resumePlayOnStart = resumePlayOnStart;
-	if (fields & kFieldSampleRate) out.sampleRate = sampleRate;
-	if (fields & kFieldLoops) out.loops = loops;
-	if (fields & kFieldFadeout) out.fadeout = fadeout;
-	if (fields & kFieldContRepeat) {
+	if (fields & Field::ResumePlay) out.resumePlayOnStart = resumePlayOnStart;
+	if (fields & Field::SampleRate) out.sampleRate = sampleRate;
+	if (fields & Field::Loops) out.loops = loops;
+	if (fields & Field::Fadeout) out.fadeout = fadeout;
+	if (fields & Field::ContRepeat) {
 		out.autoNext = autoNext;
 		out.autoRepeat = autoRepeat;
 	}
-	if (fields & kFieldVolume) out.masterVolume = masterVolume;
-	if (fields & kFieldLatency) {
+	if (fields & Field::Volume) out.masterVolume = masterVolume;
+	if (fields & Field::Latency) {
 		out.latencyAuto = latencyAuto;
 		out.latencyMs = latencyMs;
 	}
-	if (fields & kFieldBluetooth) {
+	if (fields & Field::Bluetooth) {
 		out.btDefaultLatencyMs = btDefaultLatencyMs;
 		out.btDefaultSwapArtistAlbum = btDefaultSwapArtistAlbum;
 		out.btDefaultResumeOnReconnect = btDefaultResumeOnReconnect;
 		out.btDevices = btDevices;
 	}
-	if (fields & kFieldPdxPaths) out.pdxPaths = pdxPaths;
-	if (fields & kFieldFileSystems) out.fileSystems = fileSystems;
-	if (fields & kFieldBookmarks) out.bookmarks = bookmarks;
-	if (fields & kFieldWindowPos) {
+	if (fields & Field::PdxPaths) out.pdxPaths = pdxPaths;
+	if (fields & Field::FileSystems) out.fileSystems = fileSystems;
+	if (fields & Field::Bookmarks) out.bookmarks = bookmarks;
+	if (fields & Field::WindowPos) {
 		out.windowX = windowX;
 		out.windowY = windowY;
 		out.windowIconic = windowIconic;
 		out.windowMaximized = windowMaximized;
 	}
-	if (fields & kFieldTutorial) out.tutorialDone = tutorialDone;
-	if (fields & kFieldUpdateCheck) out.updateCheck = updateCheck;
-	if (fields & kFieldUpdateSchedule) out.nextUpdateCheck = nextUpdateCheck;
-	if (fields & kFieldCast) {
+	if (fields & Field::Tutorial) out.tutorialDone = tutorialDone;
+	if (fields & Field::UpdateCheck) out.updateCheck = updateCheck;
+	if (fields & Field::UpdateSchedule) out.nextUpdateCheck = nextUpdateCheck;
+	if (fields & Field::Cast) {
 		out.castQuality = castQuality;
 		out.castMuteLocal = castMuteLocal;
 		out.castVideoAdvanceMs = castVideoAdvanceMs;

@@ -240,7 +240,7 @@ bool UpdateChecker::Start(bool manual) {
 
 	SDL_Thread *th = SDL_CreateThread(ThreadMain, "mxv2Update", s);
 	if (th == 0) {
-		s->result.status = UpdateResult::kFailed;
+		s->result.status = UpdateResult::Status::Failed;
 		s->result.error = std::string("SDL_CreateThread failed: ") + SDL_GetError();
 		SDL_AtomicSet(&s->refs, 1);
 		SDL_AtomicSet(&s->done, 1);
@@ -307,8 +307,8 @@ int UpdateChecker::ThreadMain(void *arg) {
 			} else {
 				r.pageUrl = project + "/releases/latest";
 			}
-			r.status = (CompareVersions(r.latest, MXV2_APP_VERSION) > 0) ? UpdateResult::kNewer
-			                                                            : UpdateResult::kLatest;
+			const bool newer = CompareVersions(r.latest, MXV2_APP_VERSION) > 0;
+			r.status = newer ? UpdateResult::Status::Newer : UpdateResult::Status::Latest;
 		}
 	}
 

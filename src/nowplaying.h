@@ -20,28 +20,29 @@ namespace mxv2 {
 namespace nowplaying {
 
 // 通知（とヘッドホン・他アプリの都合）から届く要求。
-enum Request {
-	kRequestNone = 0,
-	kRequestPlay,   // 一時停止を解く
-	kRequestPause,  // 一時停止する
-	kRequestPrev,
-	kRequestNext,
-	kRequestStop,
+enum class Request {
+	None = 0,
+	Play,   // 一時停止を解く
+	Pause,  // 一時停止する
+	Prev,
+	Next,
+	Stop,
 	// 他のアプリに音を譲った / ヘッドホンが抜けた。鳴っていたら止める。
-	kRequestFocusLost,
-	// 音を返してもらった。kRequestFocusLost で止めたぶんだけ再開する。
-	kRequestFocusGained,
+	FocusLost,
+	// 音を返してもらった。FocusLost で止めたぶんだけ再開する。
+	FocusGained,
 	// 早送り・巻き戻し（Bluetooth 側の長押しなど）。決まった幅だけ飛ぶ。
-	kRequestSeekForward,
-	kRequestSeekBack,
+	SeekForward,
+	SeekBack,
 	// 位置を指定して飛ぶ（車の画面・ロック画面の位置の棒）。位置は TakeSeekMs。
-	kRequestSeekTo,
+	SeekTo,
 	// 出力先が外れた (BECOMING_NOISY。Bluetooth が切れた・ヘッドホンが抜けた)。
 	// 鳴っていたら止める。
-	kRequestRouteLost,
+	RouteLost,
 	// Bluetooth の出力機器がつながった。設定の [Bluetooth] ResumeOnReconnect が
-	// 入っていれば、kRequestRouteLost で止めたぶんだけ再開する。
-	kRequestBluetoothConnected,
+	// 入っていれば、RouteLost で止めたぶんだけ再開する。
+	BluetoothConnected,
+
 };
 
 // 通知に出す文言。SetLabels は Update より先に一度だけ呼ぶ。

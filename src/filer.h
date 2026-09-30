@@ -31,23 +31,26 @@ class FileSystem;
 class TitleReader;
 class Vfs;
 
-enum FileItemType {
-	kFileItemDir = 1,
-	kFileItemDrive = 2,
-	kFileItemMdx = 4,
-	// ファイルシステム。選択画面の 1 行と、各 FS のルートに出る "[FS]"
-	// （どちらも開くとファイルシステムの選択へ行く／から行く）。
-	kFileItemFileSystem = 8,
-	// 選択画面の末尾の "[Setting]"。開くと設定ダイアログ。
-	kFileItemSetting = 16,
-	// 読み込みに手間取っているときだけ出る「読み込み中」の行。
-	// 開いても何も起きない。
-	kFileItemLoading = 32,
-	// ブックマークの一覧 ("Bookmarks>" の中) の 1 行。path は行き先の ref
-	// （他のファイルシステムを指す）。開くとそこへ移る。
-	kFileItemBookmark = 64,
-	// ブックマークの一覧の末尾の "[Setting]"。開くとブックマークの設定。
-	kFileItemBookmarkSetting = 128,
+struct FileItemType {
+	enum Type {
+		Dir = 1,
+		Drive = 2,
+		Mdx = 4,
+		// ファイルシステム。選択画面の 1 行と、各 FS のルートに出る "[FS]"
+		// （どちらも開くとファイルシステムの選択へ行く／から行く）。
+		FileSystem = 8,
+		// 選択画面の末尾の "[Setting]"。開くと設定ダイアログ。
+		Setting = 16,
+		// 読み込みに手間取っているときだけ出る「読み込み中」の行。
+		// 開いても何も起きない。
+		Loading = 32,
+		// ブックマークの一覧 ("Bookmarks>" の中) の 1 行。path は行き先の ref
+		// （他のファイルシステムを指す）。開くとそこへ移る。
+		Bookmark = 64,
+		// ブックマークの一覧の末尾の "[Setting]"。開くとブックマークの設定。
+		BookmarkSetting = 128,
+
+	};
 };
 
 struct FileItem {
@@ -60,16 +63,17 @@ struct FileItem {
 };
 
 // Filer::Open() の結果。
-enum FilerOpen {
-	kFilerOpenNone = 0,
-	kFilerOpenPlay,      // playPath に曲の ref が入っている
-	kFilerOpenMoved,     // 場所が変わった
-	kFilerOpenSettings,  // ファイルシステムの設定を開いてほしい
-	kFilerOpenBookmark,  // playPath のブックマークへ移ってほしい
-	kFilerOpenBookmarkSettings,  // ブックマークの設定を開いてほしい
+enum class FilerOpen {
+	None = 0,
+	Play,      // playPath に曲の ref が入っている
+	Moved,     // 場所が変わった
+	Settings,  // ファイルシステムの設定を開いてほしい
+	Bookmark,  // playPath のブックマークへ移ってほしい
+	BookmarkSettings,  // ブックマークの設定を開いてほしい
 	// playPath のファイルシステム（mountRef）はアクセス許可が失われている。
 	// [ファイルシステムの設定] を開いて取り直させてほしい（SAF。vfs.h の accessible）。
-	kFilerOpenNeedsAccess,
+	NeedsAccess,
+
 };
 
 class Filer {

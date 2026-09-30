@@ -28,7 +28,7 @@ MouseInput::MouseInput(DrawScreen *draw, Filer *filer, Player *player)
     : draw_(draw),
       filer_(filer),
       player_(player),
-      captured_(kCapturedNone),
+      captured_(Captured::None),
       capturedHit_(0),
       pressMask_(0),
       lastX_(0),
@@ -88,7 +88,7 @@ MouseRequest MouseInput::Handle(const SDL_Event &ev) {
 		default:
 			break;
 	}
-	return kMouseRequestNone;
+	return MouseRequest::None;
 }
 
 // ---------------------------------------------------------------------------
@@ -99,7 +99,7 @@ MouseRequest MouseInput::OnButtonDown(int x, int y, int clicks) {
 	const bool braking = flingActive_;
 	StopFling();
 
-	if (captured_ != kCapturedNone) return kMouseRequestNone;
+	if (captured_ != Captured::None) return MouseRequest::None;
 
 	// スクロールバー
 	//
@@ -110,14 +110,14 @@ MouseRequest MouseInput::OnButtonDown(int x, int y, int clicks) {
 	// 当たり判定もそれに合わせる。
 	{
 		const int hit = draw_->HitCheckScrollBar(x, y);
-		if (hit != DrawScreen::kHitScrollBarNone) {
-			captured_ = kCapturedScrollBar;
+		if (hit != DrawScreen::ScrollBarHit::None) {
+			captured_ = Captured::ScrollBar;
 			capturedHit_ = hit;
 			dragOriginY_ = y;
 			dragOriginThumb_ = draw_->scrollBarThumb();
 			nextRepeatMs_ = SDL_GetTicks() + kRepeatDelayMs;
 			PressScrollBar(hit);
-			return kMouseRequestNone;
+			return MouseRequest::None;
 		}
 	}
 
@@ -126,7 +126,7 @@ MouseRequest MouseInput::OnButtonDown(int x, int y, int clicks) {
 		const int row = draw_->HitCheckFileList(x, y);
 		if (row >= 0) {
 			const int index = filer_->top() + row;
-			captured_ = kCapturedFileList;
+			captured_ = Captured::FileList;
 			dragOriginX_ = x;
 			dragOriginY_ = y;
 			dragOriginTopPx_ = filer_->topPx();
@@ -152,22 +152,22 @@ MouseRequest MouseInput::OnButtonDown(int x, int y, int clicks) {
 			// 長押し（文字サイズ）。ブレーキの押下では見ない。
 			pressStartMs_ = SDL_GetTicks();
 			longPressDone_ = braking;
-			return kMouseRequestNone;
+			return MouseRequest::None;
 		}
 	}
 
 	// 操作ボタン
 	{
 		const int hit = draw_->HitCheckPlayKey(x, y);
-		if (hit != DrawScreen::kHitPlayKeyNone) {
-			captured_ = kCapturedPlayKey;
+		if (hit != DrawScreen::PlayKeyHit::None) {
+			captured_ = Captured::PlayKey;
 			capturedHit_ = hit;
 			pressMask_ = 1u << (hit - 1);
 			pressStartMs_ = SDL_GetTicks();
 			longPressDone_ = false;
 			// FASTPLAY だけは押している間だけ効く。
-			if (hit == DrawScreen::kHitPlayKeyFastPlay) player_->SetFastPlay(true);
-			return kMouseRequestNone;
+			if (hit == DrawScreen::PlayKeyHit::FastPlay) player_->SetFastPlay(true);
+			return MouseRequest::None;
 		}
 	}
 
@@ -175,9 +175,9 @@ MouseRequest MouseInput::OnButtonDown(int x, int y, int clicks) {
 	{
 		int volume = 0;
 		if (draw_->HitCheckTotalVolBar(x, y, &volume)) {
-			captured_ = kCapturedTotalVolBar;
+			captured_ = Captured::TotalVolBar;
 			player_->SetMainVolume(volume);
-			return kMouseRequestNone;
+			return MouseRequest::None;
 		}
 	}
 
@@ -186,15 +186,15 @@ MouseRequest MouseInput::OnButtonDown(int x, int y, int clicks) {
 	// 押した時点で出すと、その直後に届く「離した」がメニューの外を
 	// クリックした扱いになって即閉じてしまう。
 	if (draw_->HitCheckBanner(x, y)) {
-		captured_ = kCapturedBanner;
-		return kMouseRequestNone;
+		captured_ = Captured::Banner;
+		return MouseRequest::None;
 	}
 
 	// プログレスバー
 	{
 		const int hit = draw_->HitCheckProgressBar(x, y);
 		if (hit >= 0) {
-			captured_ = kCapturedProgressBar;
+			captured_ = Captured::ProgressBar;
 			// 総演奏時間が分かっていなければバーの位置に意味がないので、
 			// 掴んだだけで何もしない。
 			if (player_->playTimeMs() != 0) {
@@ -206,7 +206,7 @@ MouseRequest MouseInput::OnButtonDown(int x, int y, int clicks) {
 				seekDragging_ = true;
 				UpdateSeekDrag(x);
 			}
-			return kMouseRequestNone;
+			return MouseRequest::None;
 		}
 	}
 
@@ -216,14 +216,14 @@ MouseRequest MouseInput::OnButtonDown(int x, int y, int clicks) {
 	{
 		const int ch = draw_->HitCheckKeyboard(x, y);
 		if (ch >= 0) {
-			captured_ = kCapturedKeyboard;
+			captured_ = Captured::Keyboard;
 			capturedHit_ = ch;
 			// 長押し（OPM レジスタ一覧の表示切り替え）。動かさずに押し続けたときだけ。
 			dragOriginX_ = x;
 			dragOriginY_ = y;
 			pressStartMs_ = SDL_GetTicks();
 			longPressDone_ = false;
-			return kMouseRequestNone;
+			return MouseRequest::None;
 		}
 	}
 
@@ -233,29 +233,29 @@ MouseRequest MouseInput::OnButtonDown(int x, int y, int clicks) {
 	{
 		const int row = draw_->HitCheckStatus(x, y);
 		if (row >= 0) {
-			captured_ = kCapturedStatus;
+			captured_ = Captured::Status;
 			capturedHit_ = (row < 8) ? 0 : 1;
 			// 長押し（音色データ表示の切り替え）。動かさずに押し続けたときだけ。
 			dragOriginX_ = x;
 			dragOriginY_ = y;
 			pressStartMs_ = SDL_GetTicks();
 			longPressDone_ = false;
-			return kMouseRequestNone;
+			return MouseRequest::None;
 		}
 	}
 
-	return kMouseRequestNone;
+	return MouseRequest::None;
 }
 
 void MouseInput::OnMotion(int x, int y) {
 	// ステータス欄の長押しは「動かしていない」ことが条件。Poll で見る。
-	if (captured_ == kCapturedStatus) {
+	if (captured_ == Captured::Status) {
 		lastX_ = x;
 		lastY_ = y;
 	}
 	switch (captured_) {
-		case kCapturedScrollBar:
-			if (capturedHit_ == DrawScreen::kHitScrollBarThumb) {
+		case Captured::ScrollBar:
+			if (capturedHit_ == DrawScreen::ScrollBarHit::Thumb) {
 				const int thumb = dragOriginThumb_ + (y - dragOriginY_);
 				draw_->SetScrollBarThumb(thumb);
 				const int movement = draw_->scrollBarMovement();
@@ -269,7 +269,7 @@ void MouseInput::OnMotion(int x, int y) {
 			// 矢印・ページ送りは Poll() 側で位置を見て打ち直す。
 			break;
 
-		case kCapturedFileList: {
+		case Captured::FileList: {
 			// 長押しが成立したあとは、離すまで何もしない（行の高さが
 			// 変わっているので、掴んだ位置からのドラッグは意味を失う）。
 			if (longPressDone_) break;
@@ -301,7 +301,7 @@ void MouseInput::OnMotion(int x, int y) {
 			break;
 		}
 
-		case kCapturedPlayKey:
+		case Captured::PlayKey:
 			// ボタンから外れたら押下表示を戻す。
 			if (draw_->HitCheckPlayKey(x, y) == capturedHit_) {
 				pressMask_ = 1u << (capturedHit_ - 1);
@@ -310,11 +310,11 @@ void MouseInput::OnMotion(int x, int y) {
 			}
 			break;
 
-		case kCapturedTotalVolBar:
+		case Captured::TotalVolBar:
 			player_->SetMainVolume(draw_->VolumeFromX(x));
 			break;
 
-		case kCapturedProgressBar:
+		case Captured::ProgressBar:
 			// 表示だけを指に追従させる。実際に飛ぶのは離したとき。
 			UpdateSeekDrag(x);
 			break;
@@ -329,7 +329,7 @@ MouseRequest MouseInput::OnButtonUp(int x, int y) {
 	// 届いていないことがある。
 	if (seekDragging_) UpdateSeekDrag(x);
 
-	const int captured = captured_;
+	const Captured captured = captured_;
 	const int hit = capturedHit_;
 	const int pending = pendingCursor_;
 	const bool open = pendingOpen_;
@@ -341,7 +341,7 @@ MouseRequest MouseInput::OnButtonUp(int x, int y) {
 	//   右 … ENTER（カーソルの項目を開く）
 	//   左 … BACKSPACE（親フォルダへ）
 	int swipe = 0;
-	if (captured_ == kCapturedFileList && swipeArmed_ &&
+	if (captured_ == Captured::FileList && swipeArmed_ &&
 	    SDL_GetTicks() - lastMoveMs_ <= kVelocityStaleMs) {
 		const int dx = x - dragOriginX_;
 		const int dy = y - dragOriginY_;
@@ -361,35 +361,35 @@ MouseRequest MouseInput::OnButtonUp(int x, int y) {
 	// 長押しが成立した押下は、離しても何もしない（STOP の長押しで
 	// フェードアウトを始めたあとに停止させない、ファイラーの長押しで
 	// 文字サイズを変えたあとに行を選ばせない）。
-	if (longPressed && (captured == kCapturedPlayKey || captured == kCapturedFileList)) {
-		return kMouseRequestNone;
+	if (longPressed && (captured == Captured::PlayKey || captured == Captured::FileList)) {
+		return MouseRequest::None;
 	}
 
 	// シークバーは離した位置へ飛ぶ。SeekMs は飛ぶ前の一時停止を引き継ぐので、
 	// 掴んだ時点で止めたぶんはここで戻す（もともと一時停止していたなら
 	// そのまま止まっている）。
-	if (captured == kCapturedProgressBar) {
+	if (captured == Captured::ProgressBar) {
 		if (seeking) {
 			player_->SeekMs(seekMs);
 			if (!wasPaused) player_->Resume();
 		}
-		return kMouseRequestNone;
+		return MouseRequest::None;
 	}
 
 	// ファイラーは、ドラッグせずに離したときだけカーソルを合わせる。
 	// W クリックの 2 回目なら、合わせたうえで開く。
-	if (captured == kCapturedFileList) {
+	if (captured == Captured::FileList) {
 		// 横へはじいたときは、縦の慣性も選択も行わない。
 		// **カーソルは動かさない**——キーボードの ENTER / BACKSPACE を
 		// 指で行うための操作なので、指を置いた行ではなく今のカーソルが
 		// 対象になる（触った拍子にカーソルが飛ばない）。
-		if (swipe > 0) return kMouseRequestOpenCursor;
-		if (swipe < 0) return kMouseRequestGoParent;
+		if (swipe > 0) return MouseRequest::OpenCursor;
+		if (swipe < 0) return MouseRequest::GoParent;
 
 		if (!moved) {
 			if (pending >= 0) filer_->SetCursor(pending);
-			if (open && pending >= 0) return kMouseRequestOpenCursor;
-			return kMouseRequestNone;
+			if (open && pending >= 0) return MouseRequest::OpenCursor;
+			return MouseRequest::None;
 		}
 		// 振り切った勢いで滑らせる。離す前に指が止まっていた
 		// （最後の動きから間が空いている）ときは、置いただけとみなす。
@@ -397,84 +397,84 @@ MouseRequest MouseInput::OnButtonUp(int x, int y) {
 			// 中身は指に付いて動くので、topPx の向きは指と逆。
 			StartFling(-dragVelocity_);
 		}
-		return kMouseRequestNone;
+		return MouseRequest::None;
 	}
 
 	// バナーは、押した場所で離したときだけメニューを出す。
-	if (captured == kCapturedBanner) {
-		return draw_->HitCheckBanner(x, y) ? kMouseRequestContextMenu : kMouseRequestNone;
+	if (captured == Captured::Banner) {
+		return draw_->HitCheckBanner(x, y) ? MouseRequest::ContextMenu : MouseRequest::None;
 	}
 
 	// 鍵盤も、押したチャンネルの上で離したときだけ切り替える
 	// （操作ボタンと同じ作法）。長押し（レジスタ一覧の切り替え）が成立した
 	// 押下ではマスクを変えない。
-	if (captured == kCapturedKeyboard) {
-		if (longPressed) return kMouseRequestNone;
+	if (captured == Captured::Keyboard) {
+		if (longPressed) return MouseRequest::None;
 		if (draw_->HitCheckKeyboard(x, y) == hit) player_->ToggleChannel(hit);
-		return kMouseRequestNone;
+		return MouseRequest::None;
 	}
 
 	// ステータス欄は FM / PCM の一括切り替え。同じ側の段で離したときだけ。
 	// 長押し（表示モードの切り替え）が成立した押下では切り替えない。
-	if (captured == kCapturedStatus) {
-		if (longPressed) return kMouseRequestNone;
+	if (captured == Captured::Status) {
+		if (longPressed) return MouseRequest::None;
 		const int row = draw_->HitCheckStatus(x, y);
 		if (row >= 0 && ((row < 8) ? 0 : 1) == hit) {
 			player_->ToggleChannelGroup(hit == 0 ? Player::kChannelMaskFm
 			                                    : Player::kChannelMaskPcm);
 		}
-		return kMouseRequestNone;
+		return MouseRequest::None;
 	}
 
-	if (captured != kCapturedPlayKey) return kMouseRequestNone;
+	if (captured != Captured::PlayKey) return MouseRequest::None;
 
 	// FASTPLAY は離した時点で必ず解除する。
-	if (hit == DrawScreen::kHitPlayKeyFastPlay) {
+	if (hit == DrawScreen::PlayKeyHit::FastPlay) {
 		player_->SetFastPlay(false);
-		return kMouseRequestNone;
+		return MouseRequest::None;
 	}
 
 	// 旧 mxv はボタンから外れた場所で離しても動作していたが、押下表示は
 	// 外れた時点で戻るので、見た目に合わせてここでは実行しない。
-	if (draw_->HitCheckPlayKey(x, y) != hit) return kMouseRequestNone;
+	if (draw_->HitCheckPlayKey(x, y) != hit) return MouseRequest::None;
 
 	switch (hit) {
-		case DrawScreen::kHitPlayKeyPrev:
-			return kMouseRequestPrev;
-		case DrawScreen::kHitPlayKeyNext:
-			return kMouseRequestNext;
+		case DrawScreen::PlayKeyHit::Prev:
+			return MouseRequest::Prev;
+		case DrawScreen::PlayKeyHit::Next:
+			return MouseRequest::Next;
 
-		case DrawScreen::kHitPlayKeyStop:
+		case DrawScreen::PlayKeyHit::Stop:
 			player_->Stop();
-			return kMouseRequestNone;
+			return MouseRequest::None;
 
-		case DrawScreen::kHitPlayKeyPlay:
+		case DrawScreen::PlayKeyHit::Play:
 			if (player_->paused()) {
 				player_->Resume();
-				return kMouseRequestNone;
+				return MouseRequest::None;
 			}
 			// カーソルが MDX ならそれを、そうでなければ今の曲を掛け直す。
 			if (filer_->itemCount() > 0 &&
-			    (filer_->item(filer_->cursor()).type & kFileItemMdx) != 0) {
-				return kMouseRequestOpenCursor;
+			    (filer_->item(filer_->cursor()).type & FileItemType::Mdx) != 0) {
+				return MouseRequest::OpenCursor;
 			}
-			return kMouseRequestReplay;
+			return MouseRequest::Replay;
 
-		case DrawScreen::kHitPlayKeyPause:
+		case DrawScreen::PlayKeyHit::Pause:
 			if (player_->paused()) {
 				player_->Resume();
 			} else {
 				player_->Pause();
 			}
-			return kMouseRequestNone;
+			return MouseRequest::None;
 
-		case DrawScreen::kHitPlayKeyCont:
-			return kMouseRequestToggleCont;
-		case DrawScreen::kHitPlayKeyRepeat:
-			return kMouseRequestToggleRepeat;
+		case DrawScreen::PlayKeyHit::Cont:
+			return MouseRequest::ToggleCont;
+		case DrawScreen::PlayKeyHit::Repeat:
+			return MouseRequest::ToggleRepeat;
 
 		default:
-			return kMouseRequestNone;
+			return MouseRequest::None;
 	}
 }
 
@@ -489,22 +489,22 @@ void MouseInput::PressScrollBar(int hit) {
 	int flags = draw_->scrollBarFlags();
 
 	switch (hit) {
-		case DrawScreen::kHitScrollBarUpArrow:
+		case DrawScreen::ScrollBarHit::UpArrow:
 			filer_->SetTop(filer_->top() - 1);
-			flags |= DrawScreen::kScrollBarUpArrowDown;
+			flags |= DrawScreen::ScrollBarFlag::UpArrowDown;
 			break;
-		case DrawScreen::kHitScrollBarDownArrow:
+		case DrawScreen::ScrollBarHit::DownArrow:
 			filer_->SetTop(filer_->top() + 1);
-			flags |= DrawScreen::kScrollBarDownArrowDown;
+			flags |= DrawScreen::ScrollBarFlag::DownArrowDown;
 			break;
-		case DrawScreen::kHitScrollBarUpPage:
+		case DrawScreen::ScrollBarHit::UpPage:
 			filer_->SetTop(filer_->top() - rows);
 			break;
-		case DrawScreen::kHitScrollBarDownPage:
+		case DrawScreen::ScrollBarHit::DownPage:
 			filer_->SetTop(filer_->top() + rows);
 			break;
-		case DrawScreen::kHitScrollBarThumb:
-			flags |= DrawScreen::kScrollBarDrag;
+		case DrawScreen::ScrollBarHit::Thumb:
+			flags |= DrawScreen::ScrollBarFlag::Drag;
 			break;
 		default:
 			break;
@@ -564,7 +564,7 @@ MouseRequest MouseInput::Poll(uint32_t nowMs) {
 	UpdateFling(nowMs);
 
 	// 長押し。押してから kLongPressMs 経ち、まだ成立していなければ見る。
-	if (!longPressDone_ && (captured_ == kCapturedStatus || captured_ == kCapturedKeyboard) &&
+	if (!longPressDone_ && (captured_ == Captured::Status || captured_ == Captured::Keyboard) &&
 	    nowMs - pressStartMs_ >= kLongPressMs) {
 		// ステータス欄は表示モードの切り替え、鍵盤は OPM レジスタ一覧の
 		// 表示切り替え。どちらも掴んだ場所から動かしていないときだけ。
@@ -573,21 +573,21 @@ MouseRequest MouseInput::Poll(uint32_t nowMs) {
 		const int dy = lastY_ - dragOriginY_;
 		const bool still = (dx > -kDragSlopPx && dx < kDragSlopPx) &&
 		                   (dy > -kDragSlopPx && dy < kDragSlopPx);
-		if (!still) return kMouseRequestNone;
-		return (captured_ == kCapturedStatus) ? kMouseRequestToggleStatusMode
-		                                      : kMouseRequestToggleRegMap;
+		if (!still) return MouseRequest::None;
+		return (captured_ == Captured::Status) ? MouseRequest::ToggleStatusMode
+		                                      : MouseRequest::ToggleRegMap;
 	}
-	if (!longPressDone_ && (captured_ == kCapturedPlayKey || captured_ == kCapturedFileList) &&
+	if (!longPressDone_ && (captured_ == Captured::PlayKey || captured_ == Captured::FileList) &&
 	    nowMs - pressStartMs_ >= kLongPressMs) {
 		// STOP を押したままならフェードアウト（F キー）。押下表示は戻して
 		// 「受け付けた」ことを見せる。他のボタンに長押しは無い。
-		if (captured_ == kCapturedPlayKey) {
-			if (capturedHit_ == DrawScreen::kHitPlayKeyStop && pressMask_ != 0) {
+		if (captured_ == Captured::PlayKey) {
+			if (capturedHit_ == DrawScreen::PlayKeyHit::Stop && pressMask_ != 0) {
 				longPressDone_ = true;
 				pressMask_ = 0;
 				player_->Fadeout();
 			}
-			return kMouseRequestNone;
+			return MouseRequest::None;
 		}
 		// ファイラーは、掴んだ場所から動かしていないときだけ（TAB と同じ
 		// 文字サイズの切り替え）。縦のドラッグ扱いになっていれば見ない。
@@ -600,27 +600,27 @@ MouseRequest MouseInput::Poll(uint32_t nowMs) {
 			longPressDone_ = true;
 			pendingCursor_ = -1;
 			pendingOpen_ = false;
-			return kMouseRequestToggleFontSize;
+			return MouseRequest::ToggleFontSize;
 		}
 		// 動かしてしまった押下では、以後この押下の長押しは見ない。
 		longPressDone_ = true;
-		return kMouseRequestNone;
+		return MouseRequest::None;
 	}
 
-	if (captured_ != kCapturedScrollBar) return kMouseRequestNone;
-	if (capturedHit_ == DrawScreen::kHitScrollBarThumb) return kMouseRequestNone;
-	if (nowMs < nextRepeatMs_) return kMouseRequestNone;
+	if (captured_ != Captured::ScrollBar) return MouseRequest::None;
+	if (capturedHit_ == DrawScreen::ScrollBarHit::Thumb) return MouseRequest::None;
+	if (nowMs < nextRepeatMs_) return MouseRequest::None;
 
 	nextRepeatMs_ = nowMs + kRepeatIntervalMs;
 	// 押した部品の上から外れている間は止める（旧 mxv と同じ）。
 	if (draw_->HitCheckScrollBar(lastX_, lastY_) == capturedHit_) {
 		PressScrollBar(capturedHit_);
 	}
-	return kMouseRequestNone;
+	return MouseRequest::None;
 }
 
 void MouseInput::ReleaseAll() {
-	captured_ = kCapturedNone;
+	captured_ = Captured::None;
 	capturedHit_ = 0;
 	pressMask_ = 0;
 	pendingCursor_ = -1;

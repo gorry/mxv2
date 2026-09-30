@@ -32,12 +32,13 @@ struct Device {
 	Device() : port(0) {}
 };
 
-enum State {
-	kIdle = 0,     // 送っていない
-	kConnecting,   // つないでいる（受信側の返事待ち）
-	kStarting,     // 受信側でアプリを起こし、流れを読み込ませている
-	kCasting,      // 受信側で再生している
-	kStopping,     // やめている（受信アプリを止めて切る）
+enum class State {
+	Idle = 0,     // 送っていない
+	Connecting,   // つないでいる（受信側の返事待ち）
+	Starting,     // 受信側でアプリを起こし、流れを読み込ませている
+	Casting,      // 受信側で再生している
+	Stopping,     // やめている（受信アプリを止めて切る）
+
 };
 
 // MXV2_CAST 付きでビルドしたか。
@@ -58,18 +59,19 @@ void Start(const Device &device);
 void Stop();
 
 // 毎フレーム、メインスレッドから。受信側で起きたことを返す。
-enum Event {
-	kEventNone = 0,
+enum class Event {
+	None = 0,
 	// 受信側が終わった（TV で別のアプリにした、受信アプリを閉じた、切れた）。
 	// まだ手元の音を消したままなので、呼ぶ側は演奏を一時停止してから Stop() を
 	// 呼ぶこと（ヘッドホンが抜けたときと同じ扱い。2026-09-25、ユーザーの指示）。
-	kEventEnded,
+	Ended,
 	// 受信側で一時停止された（TV のリモコンの PAUSE）。呼ぶ側は演奏を一時停止する。
-	kEventRemotePause,
+	RemotePause,
 	// 受信側で再開された（TV のリモコンの PLAY）。呼ぶ側は演奏を再開し、
 	// ResumeRemote() を呼ぶ（止めていた間も流れは進んでいるので、TV に今の位置から
 	// 読み込み直させる）。2026-09-25、ユーザーの指示。
-	kEventRemotePlay,
+	RemotePlay,
+
 };
 Event Poll();
 // kEventRemotePlay のあとに。TV に流れを読み込み直させる（TV は数秒読み込み中になる）。
@@ -90,13 +92,16 @@ std::string StatsText();
 
 // 送る品質（[キャスト品質]。Settings::castQuality の段）。大きさ・fps・映像の
 // ビットレートの組。次に送り始めるときから効く（送っている間は変えない）。
-enum Quality {
-	kQualityLowest = 0,  // 640x360・15fps・1Mbps、音声 128kbps
-	kQualityLow,         // 854x480・30fps・2Mbps、音声 128kbps（Android の既定）
-	kQualityMedium,      // 1280x720・30fps・2Mbps、音声 192kbps（パソコンの既定）
-	kQualityHigh,        // 1920x1080・30fps・4Mbps、音声 192kbps
-	kQualityHighest,     // 1920x1080・60fps・6Mbps、音声 192kbps
-	kQualityCount
+struct Quality {
+	enum Type {
+		Lowest = 0,  // 640x360・15fps・1Mbps、音声 128kbps
+		Low,         // 854x480・30fps・2Mbps、音声 128kbps（Android の既定）
+		Medium,      // 1280x720・30fps・2Mbps、音声 192kbps（パソコンの既定）
+		High,        // 1920x1080・30fps・4Mbps、音声 192kbps
+		Highest,     // 1920x1080・60fps・6Mbps、音声 192kbps
+		Count
+
+	};
 };
 struct QualityPreset {
 	int width;

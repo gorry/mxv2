@@ -26,16 +26,17 @@ struct Settings;
 
 class LatencyDialog : public ModalDialog {
 public:
-	enum Target {
-		kLatencyTargetDisplay = 0,  // [演奏] の画面の遅れ（手動のとき）
-		kLatencyTargetBluetooth,    // いまつないでいる Bluetooth の機器の遅延時間
+	enum class Target {
+		Display = 0,  // [演奏] の画面の遅れ（手動のとき）
+		Bluetooth,    // いまつないでいる Bluetooth の機器の遅延時間
+	
 	};
 
-	LatencyDialog() : target_(kLatencyTargetDisplay) {}
+	LatencyDialog() : target_(Target::Display) {}
 
 	// [設定…] から。設定ウィンドウを閉じ、閉じきったら開く。device は
 	// kLatencyTargetBluetooth のときの機器名。
-	void Open(SettingsUi &ui, int target, const std::string &device);
+	void Open(SettingsUi &ui, Target target, const std::string &device);
 	// ダイアログの題名。target で変わる。
 	const char *Title() const;
 	void Build(SettingsUi &ui, Settings *settings, DrawScreen *draw, Player *player,
@@ -45,7 +46,7 @@ private:
 	friend class SettingsUi;
 
 	Handoff handoff_;     // 設定ウィンドウとの往復
-	int target_;          // Target
+	Target target_;
 	std::string device_;  // kLatencyTargetBluetooth の機器名（開いたときのもの）
 };
 

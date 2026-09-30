@@ -23,19 +23,20 @@ class Filer;
 class Player;
 
 // マウス操作の結果、メインループにやってもらうこと。
-enum MouseRequest {
-	kMouseRequestNone = 0,
-	kMouseRequestOpenCursor,  // カーソル位置を開く (曲なら演奏 / ディレクトリなら移動)
-	kMouseRequestPrev,        // 前の MDX へ
-	kMouseRequestNext,        // 次の MDX へ
-	kMouseRequestReplay,      // 今の曲を頭から
-	kMouseRequestToggleCont,
-	kMouseRequestToggleRepeat,
-	kMouseRequestContextMenu,  // バナーを押した (右クリックの代わり)
-	kMouseRequestGoParent,     // ファイラーで左へはじいた (BACKSPACE と同じ)
-	kMouseRequestToggleFontSize,  // ファイラーを長押しした (TAB と同じ)
-	kMouseRequestToggleStatusMode,  // ステータス欄を長押しした（音色データ表示の切り替え）
-	kMouseRequestToggleRegMap,      // 鍵盤を長押しした（OPM レジスタ一覧の表示切り替え）
+enum class MouseRequest {
+	None = 0,
+	OpenCursor,  // カーソル位置を開く (曲なら演奏 / ディレクトリなら移動)
+	Prev,        // 前の MDX へ
+	Next,        // 次の MDX へ
+	Replay,      // 今の曲を頭から
+	ToggleCont,
+	ToggleRepeat,
+	ContextMenu,  // バナーを押した (右クリックの代わり)
+	GoParent,     // ファイラーで左へはじいた (BACKSPACE と同じ)
+	ToggleFontSize,  // ファイラーを長押しした (TAB と同じ)
+	ToggleStatusMode,  // ステータス欄を長押しした（音色データ表示の切り替え）
+	ToggleRegMap,      // 鍵盤を長押しした（OPM レジスタ一覧の表示切り替え）
+
 };
 
 class MouseInput {
@@ -97,16 +98,17 @@ public:
 	static const int kSwipeMinPx = 40;
 
 private:
-	enum Captured {
-		kCapturedNone = 0,
-		kCapturedFileList,
-		kCapturedScrollBar,
-		kCapturedPlayKey,
-		kCapturedTotalVolBar,
-		kCapturedProgressBar,
-		kCapturedBanner,
-		kCapturedKeyboard,
-		kCapturedStatus,
+	enum class Captured {
+		None = 0,
+		FileList,
+		ScrollBar,
+		PlayKey,
+		TotalVolBar,
+		ProgressBar,
+		Banner,
+		Keyboard,
+		Status,
+	
 	};
 
 	MouseRequest OnButtonDown(int x, int y, int clicks);
@@ -130,7 +132,7 @@ private:
 	Filer *filer_;
 	Player *player_;
 
-	int captured_;
+	Captured captured_;
 	int capturedHit_;   // 掴んだ部品のヒットコード
 	uint32_t pressMask_;
 
