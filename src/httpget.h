@@ -3,6 +3,7 @@
 // 外部ライブラリは使わず、OS の持っているものを呼ぶ:
 //   Windows … WinHTTP（TLS も OS 任せ）
 //   Android … Java の HttpURLConnection（net.gorry.mxv2.HttpBridge を JNI で）
+//   macOS … システムの libcurl
 // それ以外の環境では「使えない」と返す。
 //
 // 呼ぶのは作業スレッドからでよいが、**Prepare() だけはメインスレッドから**

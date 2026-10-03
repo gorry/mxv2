@@ -1,5 +1,16 @@
 cmake_minimum_required(VERSION 3.20)
+# Big Sur 以降。指定済みの deployment target は尊重する。
+if(CMAKE_HOST_APPLE AND NOT DEFINED CMAKE_OSX_DEPLOYMENT_TARGET)
+	set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
+endif()
 project(mxv2 LANGUAGES C CXX)
+
+if(APPLE)
+	# SDL2 の .m と mxv2 の .mm を別々の言語として扱う。
+	enable_language(OBJC OBJCXX)
+	set(CMAKE_OBJCXX_STANDARD 11)
+	set(CMAKE_OBJCXX_STANDARD_REQUIRED ON)
+endif()
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 11)
@@ -59,19 +70,26 @@ endif()
 #   使う third_party/SDL2-2.32.10 は VC 用パッケージで include と lib しか無いため、
 #   ソースは別フォルダ (SDL2_SRC_ROOT) に置いて両者を混ぜない。
 # ---------------------------------------------------------------------------
-if(ANDROID)
+if(ANDROID OR APPLE)
 
 set(SDL2_SRC_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/SDL2-2.32.10-src" CACHE PATH
-	"SDL2 のソースのルートディレクトリ (Android で使う)")
+	"SDL2 のソースのルートディレクトリ (Android / macOS で使う)")
 
 if(NOT EXISTS "${SDL2_SRC_ROOT}/CMakeLists.txt")
 	message(FATAL_ERROR "SDL2 のソースが見つかりません: ${SDL2_SRC_ROOT}")
 endif()
 
-# APK に入れるのは libSDL2.so だけでよい。静的版とテスト類は作らない。
-set(SDL_SHARED ON CACHE BOOL "" FORCE)
-set(SDL_STATIC OFF CACHE BOOL "" FORCE)
+# Android は APK 用の共有版、macOS は自己完結した .app 用の静的版。
+if(APPLE)
+	# .app だけをコピーして起動できるよう、SDL2 は静的リンクする。
+	set(SDL_SHARED OFF CACHE BOOL "" FORCE)
+	set(SDL_STATIC ON CACHE BOOL "" FORCE)
+else()
+	set(SDL_SHARED ON CACHE BOOL "" FORCE)
+	set(SDL_STATIC OFF CACHE BOOL "" FORCE)
+endif()
 set(SDL_TEST OFF CACHE BOOL "" FORCE)
+set(SDL_TESTS OFF CACHE BOOL "" FORCE)
 add_subdirectory("${SDL2_SRC_ROOT}" sdl2-build)
 
 add_library(sdl2 INTERFACE)
@@ -452,6 +470,11 @@ endif()
 #   portable_mdx の内部ヘッダ（コマンドバッファの水位を覗くため）を読むので、
 #   src/ に加えて mxdrv / x68sound のソースディレクトリも include に足す。
 # ---------------------------------------------------------------------------
+# この検証ツールだけはコマンドバッファ拡張 API が必須。
+# 拡張の無い portable_mdx でもプレーヤーと波形検証はビルドできる。
+file(STRINGS "${PORTABLE_MDX_DIR}/include/mxdrv.h" _mxv2_buffer_api
+	REGEX "^#define[ \t]+MXDRV_SUPPORT_ADJUST_X68SOUND_COMMAND_BUFFER_SIZE")
+if(_mxv2_buffer_api)
 add_executable(mxv2_benchmark
 	tools/benchmark.cpp
 	src/fileutil.cpp
@@ -471,6 +494,9 @@ target_link_libraries(mxv2_benchmark PRIVATE portable_mdx)
 if(MSVC)
 	target_compile_definitions(mxv2_benchmark PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
+else()
+	message(STATUS "mxv2: portable_mdx に拡張 API が無いため benchmark を省略")
+endif()
 
 endif()
 
@@ -488,17 +514,24 @@ endif()
 # APK の assets の届け方は Phase C で別に用意する。
 if(NOT ANDROID)
 
-# 素材ビットマップとスキンを実行ファイルの隣の assets/ へ置く
+# macOS では素材と NOTICE を Contents/Resources にまとめる。
+if(APPLE)
+	set(MXV2_RESOURCE_DIR "$<TARGET_BUNDLE_CONTENT_DIR:mxv2>/Resources")
+else()
+	set(MXV2_RESOURCE_DIR "$<TARGET_FILE_DIR:mxv2>")
+endif()
+
+# 素材ビットマップとスキンを同梱素材の根の assets/ へ置く
 add_custom_command(TARGET mxv2 POST_BUILD
 	COMMAND ${CMAKE_COMMAND} -E copy_directory
-		"${CMAKE_CURRENT_SOURCE_DIR}/assets" "$<TARGET_FILE_DIR:mxv2>/assets"
+		"${CMAKE_CURRENT_SOURCE_DIR}/assets" "${MXV2_RESOURCE_DIR}/assets"
 )
 
 # 曲の置き場所 assets/mdx（ファイラーの "Assets>" が根に据えるフォルダ）。
 # 空でも作る。無いとファイラーが空の一覧になるだけだが、置き場所として
 # 見せておきたい。
 add_custom_command(TARGET mxv2 POST_BUILD
-	COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:mxv2>/assets/mdx"
+	COMMAND ${CMAKE_COMMAND} -E make_directory "${MXV2_RESOURCE_DIR}/assets/mdx"
 )
 
 # 同梱の MDX（ArctanX 氏の許諾済み。詳細は NOTICE と BUILD.md）。
@@ -508,7 +541,7 @@ set(BUNDLED_MDX_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/GUSA-CDg/ArctanX" C
 if(EXISTS "${BUNDLED_MDX_DIR}")
 	add_custom_command(TARGET mxv2 POST_BUILD
 		COMMAND ${CMAKE_COMMAND} -E copy_directory
-			"${BUNDLED_MDX_DIR}" "$<TARGET_FILE_DIR:mxv2>/assets/mdx/ArctanX"
+			"${BUNDLED_MDX_DIR}" "${MXV2_RESOURCE_DIR}/assets/mdx/ArctanX"
 	)
 endif()
 
@@ -517,11 +550,15 @@ endif()
 # 配布物の説明書（2026-09-13 に追加。バイナリパッケージでも同じ場所に置く）。
 add_custom_command(TARGET mxv2 POST_BUILD
 	COMMAND ${CMAKE_COMMAND} -E copy_if_different
-		"${CMAKE_CURRENT_SOURCE_DIR}/NOTICE" "$<TARGET_FILE_DIR:mxv2>/NOTICE"
+		"${CMAKE_CURRENT_SOURCE_DIR}/NOTICE" "${MXV2_RESOURCE_DIR}/NOTICE"
 	COMMAND ${CMAKE_COMMAND} -E copy_if_different
-		"${CMAKE_CURRENT_SOURCE_DIR}/LICENSE" "$<TARGET_FILE_DIR:mxv2>/LICENSE"
+		"${CMAKE_CURRENT_SOURCE_DIR}/LICENSE" "${MXV2_RESOURCE_DIR}/LICENSE"
 	COMMAND ${CMAKE_COMMAND} -E copy_if_different
-		"${CMAKE_CURRENT_SOURCE_DIR}/README.md" "$<TARGET_FILE_DIR:mxv2>/README.md"
+		"${CMAKE_CURRENT_SOURCE_DIR}/README.md" "${MXV2_RESOURCE_DIR}/README.md"
 )
 
+endif()
+
+if(APPLE)
+	include(cmake/macos.cmake)
 endif()

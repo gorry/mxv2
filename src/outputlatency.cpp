@@ -2,6 +2,9 @@
 
 #include "outputlatency.h"
 
+// BluetoothName() のキャッシュ時刻は全プラットフォームで SDL を使う。
+#include <SDL.h>
+
 #include <algorithm>
 #include <atomic>
 #include <chrono>

@@ -7,6 +7,10 @@
 
 #include <cstdlib>
 
+#ifdef __APPLE__
+#include "macosfileutil.h"
+#endif
+
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -274,6 +278,8 @@ std::string ExecutableDir() {
 	}
 	std::string dir = DirNameOf(WideToUtf8(buf));
 	return dir.empty() ? std::string("./") : dir;
+#elif defined(__APPLE__)
+	return WithSeparator(MacResourceDir());
 #else
 	char buf[4096];
 	ssize_t n = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
@@ -300,6 +306,8 @@ std::string ExecutableBaseName() {
 	const size_t dot = name.rfind('.');
 	if (dot != std::string::npos && dot > 0) name.resize(dot);
 	return name.empty() ? std::string("mxv2") : name;
+#elif defined(__APPLE__)
+	return MacExecutableBaseName();
 #else
 	return std::string("mxv2");
 #endif
@@ -586,7 +594,7 @@ bool BrowseForFolder(const std::string &title, const std::string &start, void *o
 	if (weInitialized) CoUninitialize();
 	return !out->empty();
 }
-#else
+#elif !defined(__APPLE__)
 bool HasFolderBrowser() {
 	return false;
 }

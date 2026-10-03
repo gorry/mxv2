@@ -4,6 +4,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <mutex>
 
 #if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
@@ -12,6 +13,8 @@
 #elif defined(__ANDROID__)
 #include <jni.h>
 #include <SDL.h>
+#elif defined(__APPLE__)
+#include <curl/curl.h>
 #endif
 
 namespace mxv2 {
@@ -261,6 +264,109 @@ bool Get(const std::string &url, const std::string &userAgent, const std::string
 		return false;
 	}
 	return true;
+}
+
+#elif defined(__APPLE__)
+
+// macOS: システムの libcurl。SSL の検証は既定のまま、本文は受信中に制限する。
+namespace {
+
+std::once_flag g_curlInit;
+CURLcode g_curlInitResult = CURLE_FAILED_INIT;
+
+struct Response {
+	std::string *body;
+	bool tooLarge;
+};
+
+size_t ReceiveBody(char *data, size_t size, size_t count, void *userdata) {
+	Response *response = static_cast<Response *>(userdata);
+	if (size != 0 && count > kMaxBodyBytes / size) {
+		response->tooLarge = true;
+		return 0;
+	}
+	const size_t bytes = size * count;
+	if (bytes > kMaxBodyBytes - response->body->size()) {
+		response->tooLarge = true;
+		return 0;
+	}
+	response->body->append(data, bytes);
+	return bytes;
+}
+
+}  // namespace
+
+void Prepare() {
+	std::call_once(g_curlInit, []() { g_curlInitResult = curl_global_init(CURL_GLOBAL_DEFAULT); });
+}
+
+bool Available() {
+	Prepare();
+	return g_curlInitResult == CURLE_OK;
+}
+
+bool Get(const std::string &url, const std::string &userAgent, const std::string &accept,
+         int *status, std::string *body, std::string *err) {
+	*status = 0;
+	body->clear();
+	err->clear();
+	if (!Available()) {
+		*err = "curl_global_init failed";
+		return false;
+	}
+	CURL *handle = curl_easy_init();
+	if (handle == 0) {
+		*err = "curl_easy_init failed";
+		return false;
+	}
+	Response response = {body, false};
+	char errorBuffer[CURL_ERROR_SIZE] = {};
+	curl_easy_setopt(handle, CURLOPT_URL, url.c_str());
+	curl_easy_setopt(handle, CURLOPT_USERAGENT, userAgent.c_str());
+	curl_easy_setopt(handle, CURLOPT_TIMEOUT_MS, (long)kTimeoutMs);
+	curl_easy_setopt(handle, CURLOPT_CONNECTTIMEOUT_MS, (long)kTimeoutMs);
+	curl_easy_setopt(handle, CURLOPT_NOSIGNAL, 1L);
+	curl_easy_setopt(handle, CURLOPT_FOLLOWLOCATION, 1L);
+	curl_easy_setopt(handle, CURLOPT_MAXREDIRS, 5L);
+#if LIBCURL_VERSION_NUM >= 0x075500
+	// ビルド SDK より古い macOS では実行時の libcurl も古い。
+	// 7.85 より前は従来のビットマスクを使う。
+	if (curl_version_info(CURLVERSION_NOW)->version_num >= 0x075500) {
+		curl_easy_setopt(handle, CURLOPT_PROTOCOLS_STR, "https");
+		curl_easy_setopt(handle, CURLOPT_REDIR_PROTOCOLS_STR, "https");
+	} else {
+		curl_easy_setopt(handle, CURLOPT_PROTOCOLS, (long)CURLPROTO_HTTPS);
+		curl_easy_setopt(handle, CURLOPT_REDIR_PROTOCOLS, (long)CURLPROTO_HTTPS);
+	}
+#else
+	curl_easy_setopt(handle, CURLOPT_PROTOCOLS, (long)CURLPROTO_HTTPS);
+	curl_easy_setopt(handle, CURLOPT_REDIR_PROTOCOLS, (long)CURLPROTO_HTTPS);
+#endif
+	curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, ReceiveBody);
+	curl_easy_setopt(handle, CURLOPT_WRITEDATA, &response);
+	curl_easy_setopt(handle, CURLOPT_ERRORBUFFER, errorBuffer);
+	struct curl_slist *headers = 0;
+	if (!accept.empty()) {
+		const std::string header = "Accept: " + accept;
+		headers = curl_slist_append(0, header.c_str());
+		if (headers == 0) {
+			curl_easy_cleanup(handle);
+			*err = "curl_slist_append failed";
+			return false;
+		}
+		curl_easy_setopt(handle, CURLOPT_HTTPHEADER, headers);
+	}
+	const CURLcode result = curl_easy_perform(handle);
+	long code = 0;
+	curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &code);
+	*status = (int)code;
+	if (result != CURLE_OK) {
+		*err = response.tooLarge ? "HTTP body exceeds limit" :
+		       (errorBuffer[0] ? errorBuffer : curl_easy_strerror(result));
+	}
+	curl_slist_free_all(headers);
+	curl_easy_cleanup(handle);
+	return result == CURLE_OK;
 }
 
 #else

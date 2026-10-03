@@ -56,7 +56,9 @@ Screen::~Screen() {
 }
 
 int Screen::SystemZoomPercent() {
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__APPLE__)
+	// macOS の窓サイズは論理ポイント。Retina の実ピクセル倍率は SDL が
+	// 扱うので、物理 DPI をさらに掛けると二重に拡大される。
 	// Android の窓は画面いっぱいで、拡大は SDL_RenderSetLogicalSize が
 	// 面倒を見る（余った側は帯になる）。DPI から出すと 400% などになって
 	// 意味を持たないので、等倍を既定にする。

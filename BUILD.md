@@ -12,24 +12,24 @@
 
 ## 1. 必要なもの
 
-| | 版 | 備考 |
-|---|---|---|
-| CMake | 3.20 以降 | 開発は 3.31.8 で行っている |
-| C++ コンパイラ | C++11 | Windows は Visual Studio 2022 (MSVC 19.44) で開発・検証している |
+|                | 版        | 備考                                                            |
+| -------------- | --------- | --------------------------------------------------------------- |
+| CMake          | 3.20 以降 | 開発は 3.31.8 で行っている                                      |
+| C++ コンパイラ | C++11     | Windows は Visual Studio 2022 (MSVC 19.44) で開発・検証している |
 
-**動作を確認しているのは Windows / MSVC と Android。** Android のビルドは
-「6. Android 版のビルド」を見ること。それ以外のプラットフォーム向けの記述も
-CMake は持っているが（SDL2 を `find_package` で探す）、まだ試していない。
+Windows / MSVC、Android に加え、この fork は macOS の `.app` ビルドに対応する。
+Android は「6. Android 版のビルド」、macOS は下の「macOS 版のビルド」を見ること。
+macOS の arm64/x86_64 はそれぞれビルドし、SDL2 を静的リンクする。
 
 ## 2. third_party/ を用意する
 
-ライブラリを次のパスに展開する（SDL2 のソースは Android のときだけ）。
+ライブラリを次のパスに展開する（SDL2 のソースは Android / macOS で使う）。
 
 ```
 mxv2/
     third_party/
         SDL2-2.32.10/     SDL2 の VC 開発用パッケージ
-        SDL2-2.32.10-src/ SDL2 のソース（Android のときだけ）
+        SDL2-2.32.10-src/ SDL2 のソース（Android / macOS）
         imgui/            Dear ImGui v1.92.4
         portable_mdx/     演奏モジュール
         mbedtls-3.6.7/    TLS（sdlcastg のときだけ）
@@ -55,14 +55,16 @@ mxv2/
 **フォルダ名にバージョンが入っている**ので、別の版を使うときは
 `-DSDL2_ROOT=<パス>` で場所を指定する。ただし **2.0.18 以降が必要**
 （Dear ImGui の SDL_Renderer バックエンドが `SDL_RenderGeometry` を使う）。
-Windows 以外では `find_package(SDL2)` で探すので、この展開は不要。
+Android / macOS は SDL2 のソースを使うので、VC パッケージの展開は不要。
+その他のデスクトップ環境では `find_package(SDL2)` で探す。
 
-### SDL2 2.32.10 のソース（Android のときだけ）
+### SDL2 2.32.10 のソース（Android / macOS）
 
 Android では SDL2 をソースからビルドし、Java 側（`SDLActivity` など）も同じ
 ソースツリーから読む。同じページの **`SDL2-2.32.10.zip`**（ソース配布）を
 `third_party/SDL2-2.32.10-src/` へ展開する。`src/` と `android-project/` が
 並んでいれば正しい。
+macOS では下記の取得スクリプトで同じ版を用意できる。
 
 **上の VC 用パッケージとは別に置くこと。** あちらは Windows のビルドが使う。
 場所を変えたいときは `-DSDL2_SRC_ROOT=<パス>`。
@@ -98,10 +100,10 @@ OPM レジスタ書き込みの通知 `MXDRV_SetOpmWriteCallback` を足した f
 通るが、音色データ表示の PMD / AMD は通知が無いと最後に書かれたほうしか出ない。
 
 MDX の演奏モジュール（MXDRV + X68Sound の移植）。
-<https://github.com/yosshin4004/portable_mdx> を `third_party/portable_mdx/` へ。
+<https://github.com/gorry/portable_mdx> を `third_party/portable_mdx/` へ。
 
 ```sh
-git clone --depth 1 https://github.com/yosshin4004/portable_mdx.git third_party/portable_mdx
+git clone --depth 1 https://github.com/gorry/portable_mdx.git third_party/portable_mdx
 ```
 
 ビルドに使われるのは以下。
@@ -208,15 +210,15 @@ cmake --build build --config Release
 
 生成物は `build/Release/`（MSBuild のときは構成ごとのサブフォルダ）。
 
-| | |
-|---|---|
-| `mxv2.exe` | 本体（Debug 構成では `mxv2_debug.exe`。末尾は `Profile.ini` の `[AppId] DebugSuffix`） |
-| `mxv2_chunktest.exe` | 検証ツール（後述） |
-| `simple_mdx_player.exe` `simple_mdx2wav.exe` | portable_mdx 付属サンプル |
-| `SDL2.dll` | 自動コピー |
-| `assets/` | 素材一式を自動コピー（文言の `assets/locale/` を含む） |
-| `assets/mdx` | 自動作成 |
-| `assets/mdx/ArctanX` | third_party/GUSA-CDg/ArctanX から自動コピー、なければ無視 |
+|                                              |                                                                                        |
+| -------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `mxv2.exe`                                   | 本体（Debug 構成では `mxv2_debug.exe`。末尾は `Profile.ini` の `[AppId] DebugSuffix`） |
+| `mxv2_chunktest.exe`                         | 検証ツール（後述）                                                                     |
+| `simple_mdx_player.exe` `simple_mdx2wav.exe` | portable_mdx 付属サンプル                                                              |
+| `SDL2.dll`                                   | 自動コピー                                                                             |
+| `assets/`                                    | 素材一式を自動コピー（文言の `assets/locale/` を含む）                                 |
+| `assets/mdx`                                 | 自動作成                                                                               |
+| `assets/mdx/ArctanX`                         | third_party/GUSA-CDg/ArctanX から自動コピー、なければ無視                              |
 
 `assets/` は毎回のビルドでコピーされるが、**削除はされない**ので、
 実験で置いたファイルは残る。おかしくなったら `build/` ごと捨てる。
@@ -265,15 +267,15 @@ mxv2 [options] [<mdxfile> | <dir>]
 
 ## 5. うまくいかないとき
 
-| 症状 | 原因 |
-|---|---|
-| `portable_mdx が見つかりません: <パス>` | `third_party/portable_mdx/` が無い。`-DPORTABLE_MDX_DIR=` で指定してもよい |
-| `Cannot find source file: .../third_party/imgui/imgui.cpp` | `third_party/imgui/` が無い |
+| 症状                                                              | 原因                                                                                                                                                   |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `portable_mdx が見つかりません: <パス>`                           | `third_party/portable_mdx/` が無い。`-DPORTABLE_MDX_DIR=` で指定してもよい                                                                             |
+| `Cannot find source file: .../third_party/imgui/imgui.cpp`        | `third_party/imgui/` が無い                                                                                                                            |
 | configure は通るが `SDL.h` が開けない / `SDL2.lib` が見つからない | `third_party/SDL2-2.32.10/` が無い、または VC 開発用パッケージでない（ソース配布には `lib/` が無い）。存在チェックをしていないのでここまで進んでしまう |
-| リンクは通るが起動直後に落ちる | `SDL2.dll` の版が違う。`build/` を捨ててビルドし直す |
-| 素材が見つからないと言われる | `assets/` が実行ファイルの隣に無い。`-assets <dir>` で場所を渡せる |
-| 画面の文字が `Menu.Open` のようなキー名になる | `assets/locale/` が無い。ログに `message not found:` が出る。ロケール名が違うだけなら英語で出る（`Locale ... was not found`） |
-| 設定を変えても次の起動で戻る | ユーザーフォルダに書けていない。起動ログの `userdir :` の行を見る |
+| リンクは通るが起動直後に落ちる                                    | `SDL2.dll` の版が違う。`build/` を捨ててビルドし直す                                                                                                   |
+| 素材が見つからないと言われる                                      | `assets/` が実行ファイルの隣に無い。`-assets <dir>` で場所を渡せる                                                                                     |
+| 画面の文字が `Menu.Open` のようなキー名になる                     | `assets/locale/` が無い。ログに `message not found:` が出る。ロケール名が違うだけなら英語で出る（`Locale ... was not found`）                          |
+| 設定を変えても次の起動で戻る                                      | ユーザーフォルダに書けていない。起動ログの `userdir :` の行を見る                                                                                      |
 
 ## 配布物を作る（make arc）
 
@@ -360,13 +362,13 @@ make clean-skineditor                 # bin/ obj/ と、ここへコピーされ
 
 ### 用意するもの
 
-| | 版 | 開発に使っているもの |
-|---|---|---|
-| Android SDK | platform 34 以上 | `platforms/android-34` と build-tools |
-| NDK | r28c (28.2.13676358) | `app/build.gradle` の `ndkVersion` と揃える |
-| JDK | 17 以上 | OpenJDK 21.0.2 |
-| Gradle | 8.7 | `android/gradlew` が拾ってくる |
-| CMake | 3.22.1 | **SDK 同梱のもの**（SDL2 のソースが 3.31 では通らない） |
+|             | 版                   | 開発に使っているもの                                    |
+| ----------- | -------------------- | ------------------------------------------------------- |
+| Android SDK | platform 34 以上     | `platforms/android-34` と build-tools                   |
+| NDK         | r28c (28.2.13676358) | `app/build.gradle` の `ndkVersion` と揃える             |
+| JDK         | 17 以上              | OpenJDK 21.0.2                                          |
+| Gradle      | 8.7                  | `android/gradlew` が拾ってくる                          |
+| CMake       | 3.22.1               | **SDK 同梱のもの**（SDL2 のソースが 3.31 では通らない） |
 
 `third_party/SDL2-2.32.10-src/` が要る（上の「SDL2 2.32.10 のソース」）。
 
@@ -538,13 +540,13 @@ python tools/make_icons.py
 
 書き出す先:
 
-| 場所 | 用途 |
-|---|---|
-| `res/mxv2.ico` | Windows。`res/mxv2.rc` から実行ファイルへ埋める |
-| `android/app/src/main/res/mipmap-*/ic_launcher.png` | Android の昔ながらのアイコン (API 25 まで) |
-| `android/app/src/main/res/mipmap-*/ic_launcher_foreground.png` | アダプティブアイコンの前景 |
-| `android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml` | アダプティブアイコンの定義 |
-| `android/app/src/main/res/values/ic_launcher_background.xml` | その下地の色（元画像の縁の色） |
+| 場所                                                           | 用途                                            |
+| -------------------------------------------------------------- | ----------------------------------------------- |
+| `res/mxv2.ico`                                                 | Windows。`res/mxv2.rc` から実行ファイルへ埋める |
+| `android/app/src/main/res/mipmap-*/ic_launcher.png`            | Android の昔ながらのアイコン (API 25 まで)      |
+| `android/app/src/main/res/mipmap-*/ic_launcher_foreground.png` | アダプティブアイコンの前景                      |
+| `android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml`   | アダプティブアイコンの定義                      |
+| `android/app/src/main/res/values/ic_launcher_background.xml`   | その下地の色（元画像の縁の色）                  |
 
 **Windows はリソースを 1 つ置くだけでよい。** SDL2 はウィンドウクラスを
 作るとき、ヒントが無ければ `EnumResourceNames(RT_GROUP_ICON)` で
@@ -567,3 +569,86 @@ mxv2 は Apache License Version 2.0（`LICENSE`）。
 従う。**ビルドしたバイナリを配布するときは `NOTICE` を読むこと。** 何が同梱され
 どのライセンスが適用されるか（SDL2 は zlib、Dear ImGui は MIT、portable_mdx は
 由来ごとに 3 系統、同梱フォントは OFL 1.1）をそこにまとめてある。
+
+## macOS 版のビルド
+
+macOS 11 以降、Apple Silicon / Intel に対応する。Xcode Command Line Tools
+（`xcode-select --install`）、CMake 3.20 以降、Ninja、Python 3 を用意する。
+Homebrew を使う場合は `brew install cmake ninja python`。
+SDL2、ImGui、演奏エンジンは `third_party/` に置き、SDL2 はソースから静的リンクする。
+システムの AppKit と libcurl を使うため、実行先に Homebrew のライブラリは不要。
+
+```sh
+# プロジェクトルートで実行してください。
+bash tools/fetch_macos_deps.sh
+
+# Apple Silicon用。Intel は arm64 を x86_64 に置き換えてください。
+cmake -S . -B build/macos-arm64 -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_OSX_ARCHITECTURES=arm64 \
+  -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
+  -DMXV2_CAST=OFF \
+  -DPython3_EXECUTABLE="$(command -v python3)"
+cmake --build build/macos-arm64 --parallel
+ctest --test-dir build/macos-arm64 --output-on-failure
+open build/macos-arm64/mxv2.app
+```
+
+取得スクリプトは SDL2 **2.32.10**、
+ImGui **v1.92.4** と gorry/portable_mdx を固定コミットで取得する。
+`SDL2_SRC_ROOT` と `PORTABLE_MDX_DIR` は CMake で別の場所を指定できる。
+手動で依存を用意する場合は従来の `third_party/` 配置も使える。
+コマンドバッファ拡張 API の無い portable_mdx では `mxv2_benchmark` を省略するが、
+プレーヤーと `mxv2_chunktest` はビルドする。
+
+`.app/Contents/MacOS/` に実行ファイル、`Contents/Resources/` に素材、フォント、
+NOTICE、ライセンス、README、アイコンが入る。素材パスは Cocoa の bundle から
+解決し、カレントディレクトリには依存しない。設定と追加素材は
+`~/Library/Application Support/mxv2/` に保存する。
+macOS の bundle identifier は `app.kakikou.mxv2-mac`（`MXV2_MACOS_BUNDLE_ID` で変更可）。
+
+macOS 配布用の `Contents/Resources/LICENSE` は `cmake/macos_license.cmake` で
+生成する。本体の Apache 2.0 と NOTICE、SDL2 と内部の yuv2rgb / HIDAPI / fdlibm、
+ImGui、portable_mdx、同梱フォントのライセンス・著作権表示を原文からまとめる。
+通常ビルド・公証ビルドの Actions は、インストール後に全文を照合してから署名する。
+リポジトリ直下の `LICENSE` は本体の Apache 2.0 のまま保持する。
+
+`tools/test_macos.py` は別の場所へ `.app` をコピーし、日本語と空白を含むパスで
+起動・素材読込み・設定保存・SDL の非無音 PCM 出力を確認する。
+合成した短い FM 音で `mxv2_chunktest` の波形一致も確認する。
+SDL の dummy video / disk audio を使う自動テストなので、実画面のクリック操作や
+スピーカーでの実際の音の確認は手動で行う。
+
+本移植では Chromecast は無効。Windows の SkinEditor、Android 固有の
+SAF / PiP / メディア通知は macOS には移植しない。Bluetooth 出力先の自動検出と
+OS の遅延計測は未対応で、SDL のバッファ長を基準に表示を遅らせる。
+更新確認は従来どおり `Profile.ini` の本家の Releases を参照する。
+LZX 圧縮 MDX / PDX は展開機能が無いため、読込み時にエラーとして拒否する。
+圧縮・ヘッダー欠落・範囲外オフセットの拒否も自動テストに含める。
+
+### GitHub Actions
+
+`.github/workflows/build-macos.yml` は Apple Silicon (`macos-15`) と
+Intel (`macos-15-intel`) のそれぞれで同じ依存取得・Release ビルド・自動テストを行う。
+ブランチへの push、pull request、Actions の **Run workflow** で起動する。
+完了後、Artifacts の `mxv2-macos-arm64` / `mxv2-macos-x86_64` を取得する。
+中にある `mxv2-macos-<architecture>.zip` に `.app` が入る。
+
+パッケージ化前にアドホック署名を施し、署名を検証してから `ditto` で ZIP を作る。
+Developer ID の署名・Apple の公証は行わず、署名秘密鍵も必要としない。
+
+### 手動の署名・公証版と Draft Release
+
+`.github/workflows/release-macos-notarized.yml` は上記のビルドに加え公証付きのビルドを生成します。
+
+必要なSecret:
+
+| Secret                        | 内容                                                                        |
+| ----------------------------- | --------------------------------------------------------------------------- |
+| `MACOS_CERTIFICATE_BASE64`    | Developer ID Application の証明書と秘密鍵を含む `.p12` を Base64 にしたもの |
+| `MACOS_CERTIFICATE_PASSWORD`  | `.p12` の書き出しパスワード                                                 |
+| `APPLE_ID`                    | Apple Developer アカウントのメールアドレス                                  |
+| `APPLE_APP_SPECIFIC_PASSWORD` | 公証申請用のアプリ用パスワード（通常のログインパスワードではない）          |
+| `APPLE_TEAM_ID`               | 上記署名証明書に対応する Developer Team ID                                  |
+
+成果物は `mxv2-macos-arm64-notarized.zip` / `mxv2-macos-x86_64-notarized.zip`

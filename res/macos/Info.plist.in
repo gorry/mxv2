@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleExecutable</key><string>mxv2</string>
+	<key>CFBundleName</key><string>mxv2</string>
+	<key>CFBundleDisplayName</key><string>mxv2</string>
+	<key>CFBundleIdentifier</key><string>${MXV2_MACOS_BUNDLE_ID}</string>
+	<key>CFBundlePackageType</key><string>APPL</string>
+	<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+	<key>CFBundleShortVersionString</key><string>${MXV2_MACOS_VERSION}</string>
+	<key>CFBundleVersion</key><string>${MXV2_VERSION_NUMBER}</string>
+	<key>CFBundleIconFile</key><string>mxv2.icns</string>
+	<key>NSHumanReadableCopyright</key><string>${MXV2_COPYRIGHT_TEXT}</string>
+	<key>LSMinimumSystemVersion</key><string>${CMAKE_OSX_DEPLOYMENT_TARGET}</string>
+	<key>NSHighResolutionCapable</key><true/>
+	<key>CFBundleDocumentTypes</key>
+	<array><dict>
+		<key>CFBundleTypeName</key><string>X68000 MDX music</string>
+		<key>CFBundleTypeRole</key><string>Viewer</string>
+		<key>LSHandlerRank</key><string>Alternate</string>
+		<key>CFBundleTypeExtensions</key><array><string>mdx</string></array>
+	</dict></array>
+</dict>
+</plist>

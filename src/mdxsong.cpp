@@ -16,6 +16,15 @@ namespace mxv2 {
 
 namespace {
 
+bool IsLzxPacked(const uint8_t *data, size_t size) {
+	return size >= 7 && memcmp(data + 4, "LZX", 3) == 0;
+}
+
+uint32_t ReadBigEndian32(const uint8_t *data) {
+	return (uint32_t)data[0] << 24 | (uint32_t)data[1] << 16 |
+	       (uint32_t)data[2] << 8 | data[3];
+}
+
 // PDX ファイル名は Shift_JIS。ASCII ならそのまま UTF-8 として扱えるので、
 // 生バイト版と UTF-8 変換版の両方を候補にする。
 void AppendNameVariants(const std::string &name, std::vector<std::string> *out) {
@@ -123,6 +132,34 @@ bool LoadMdxSong(const Vfs &vfs,
 	}
 	const uint32_t mdxImageSize = (uint32_t)mdxImage.size();
 
+	// タイトルと PDX 名の検証だけでは、LZX 圧縮された MDX も通ってしまう。
+	// MXDRV は圧縮解除しないため、不正なオフセットを演奏へ渡す前に止める。
+	uint32_t bodyOffset = 0;
+	if (!MdxSeekFileImage(&mdxImage[0], mdxImageSize, MDX_CHUNK_TYPE_MDX_BODY, &bodyOffset)) {
+		*err = MsgF("Error.MdxBody", mdxRef);
+		return false;
+	}
+	const size_t bodySize = mdxImage.size() - bodyOffset;
+	const uint8_t *body = &mdxImage[bodyOffset];
+	if (IsLzxPacked(body, bodySize)) {
+		*err = MsgF("Error.MdxPacked", mdxRef);
+		return false;
+	}
+	// 通常の MDX は音色表 + FM 8ch / ADPCM 1ch の 10 個のオフセット。
+	if (bodySize < 20) {
+		*err = MsgF("Error.MdxBody", mdxRef);
+		return false;
+	}
+	for (size_t i = 0; i < 10; i++) {
+		const size_t offset = (size_t)body[i * 2] * 256 + body[i * 2 + 1];
+		// 音色表は未使用なら 0 またはデータ末尾でもよい。
+		if (i == 0 && (offset == 0 || offset == bodySize)) continue;
+		if (offset < 20 || offset >= bodySize) {
+			*err = MsgF("Error.MdxBody", mdxRef);
+			return false;
+		}
+	}
+
 	// タイトル
 	{
 		char title[512];
@@ -164,6 +201,29 @@ bool LoadMdxSong(const Vfs &vfs,
 			// 空の PDX (96 エントリ全て長さ 0) を代わりに渡し、FM だけを鳴らす。
 			const size_t kEmptyPdxSize = 96 * 8;
 			pdxImage.assign(kEmptyPdxSize, 0);
+		} else {
+			// PDX にも LZX 圧縮がある。展開せずに PCM8 へ渡すと、圧縮
+			// ヘッダーをサンプルのアドレスとして解釈して範囲外を読む。
+			if (IsLzxPacked(pdxImage.data(), pdxImage.size())) {
+				*err = MsgF("Error.PdxPacked", out->pdxPath);
+				return false;
+			}
+			// 基本の 96 サンプルの表と、その非空サンプルの範囲を確認。
+			if (pdxImage.size() < 96 * 8) {
+				*err = MsgF("Error.PdxBody", out->pdxPath);
+				return false;
+			}
+			for (size_t i = 0; i < 96; i++) {
+				const uint8_t *entry = &pdxImage[i * 8];
+				const size_t offset = ReadBigEndian32(entry);
+				const size_t length = ReadBigEndian32(entry + 4);
+				if (length == 0) continue;
+				if (offset < 96 * 8 || offset > pdxImage.size() ||
+				    length > pdxImage.size() - offset) {
+					*err = MsgF("Error.PdxBody", out->pdxPath);
+					return false;
+				}
+			}
 		}
 	}
 

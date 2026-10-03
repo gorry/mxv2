@@ -166,6 +166,11 @@ bool PollSong(const PlayContext &ctx) {
 			if (!r.ok) {
 				printf("ERROR: %s\n", r.err.c_str());
 				fflush(stdout);
+#ifdef __APPLE__
+				// Finder 起動ではログが見えないので、読めなかった理由を表示する。
+				SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, Msg("Error.MdxPlaybackTitle"),
+				                         r.err.c_str(), ctx.screen ? ctx.screen->window() : 0);
+#endif
 				if (restoreTitle) ctx.draw->PutMDXTitle(prevTitle);
 				*ctx.playing = false;
 				*ctx.chromeRefresh = true;

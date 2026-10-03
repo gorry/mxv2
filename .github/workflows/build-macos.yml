@@ -1,0 +1,92 @@
+name: Build macOS
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: macOS ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-15
+          - arch: x86_64
+            runner: macos-15-intel
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.12'
+
+      - name: Verify runner and build tools
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: |
+          test "$(uname -m)" = "$EXPECTED_ARCH"
+          cmake --version
+          ninja --version
+          xcrun clang --version
+
+      - name: Fetch pinned dependencies
+        run: bash tools/fetch_macos_deps.sh
+
+      - name: Configure
+        env:
+          TARGET_ARCH: ${{ matrix.arch }}
+        run: |
+          cmake -S . -B build/macos -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_ARCHITECTURES="$TARGET_ARCH" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
+            -DMXV2_CAST=OFF \
+            -DBUILD_TESTING=ON \
+            -DPython3_EXECUTABLE="$(command -v python3)"
+
+      - name: Build
+        run: cmake --build build/macos --parallel 3
+
+      - name: Test relocated bundle and MDX audio
+        run: ctest --test-dir build/macos --output-on-failure --no-tests=error
+
+      - name: Package app
+        env:
+          TARGET_ARCH: ${{ matrix.arch }}
+        run: |
+          cmake --install build/macos --prefix dist
+          plutil -lint dist/mxv2.app/Contents/Info.plist
+          cmake -DMXV2_MACOS_LICENSE_VERIFY_ONLY=ON \
+            -DMXV2_MACOS_LICENSE_OUTPUT=dist/mxv2.app/Contents/Resources/LICENSE \
+            -P cmake/macos_license.cmake
+          codesign --force --sign - dist/mxv2.app
+          codesign --verify --strict --verbose=2 dist/mxv2.app
+          ditto -c -k --sequesterRsrc --keepParent \
+            dist/mxv2.app "dist/mxv2-macos-$TARGET_ARCH.zip"
+          cd dist
+          shasum -a 256 "mxv2-macos-$TARGET_ARCH.zip" > "mxv2-macos-$TARGET_ARCH.zip.sha256"
+
+      - name: Upload app
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: mxv2-macos-${{ matrix.arch }}
+          path: |
+            dist/mxv2-macos-${{ matrix.arch }}.zip
+            dist/mxv2-macos-${{ matrix.arch }}.zip.sha256
+          if-no-files-found: error
+          retention-days: 14
