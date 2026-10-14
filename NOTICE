@@ -51,25 +51,37 @@ portable_mdx  --  portable_mdx.lib として静的リンク
 
 https://github.com/yosshin4004/portable_mdx
 
-    1. portable_mdxに由来する部分
-       Apache License Version 2.0
+X68k MXDRV music driver version 2.06+17 Rel.X5-S
+    (c)1988-92 milk.,K.MAEKAWA, Missy.M, Yatsube
 
-    2. MXDRVg に由来する部分
-       Apache License Version 2.0
+Converted for Win32 [MXDRVg] V2.00a
+    Copyright (C) 2000-2002 GORRY.
 
-    3. MXDRV.X に由来する部分
-       X68000 ネイティブ版 MXDRV.X (milk., K.MAEKAWA, Missy.M, Yatsube) を
-       ディスアセンブルしたものを GORRY が C 言語へコンバートした MXDRVg を、
-       さらに Yosshin が改変したもの。
-       「X68 的 default のフリーソフトウェア扱い」と思われる。
+X68Sound_src020615
+    Copyright (C) m_puusan.
 
-    4. X68Sound.dllに由来する部分
-       http://mpuusan.web.fc2.com/x68sound/index.htm
-       ・本ソースの改変および改変物の公開、自作ソフト等への組み込みおよび
-         そのソフトの配布は自由です。_puusan への報告は必要ありません。
-       ・本ソフトウェアの使用または使用不能から生じるいかなる損害
-         (利益やデータの損失、その他の金銭的損失など) に関して
-         m_puusan は一切責任を負わないこととします。
+Ported for 64bit environments
+    Copyright (C) 2018 Yosshin.
+
+1. MXDRV.X に由来する部分
+   X68000 ネイティブ版 MXDRV.X (milk., K.MAEKAWA, Missy.M, Yatsube) を
+   ディスアセンブルしたものを GORRY が C 言語へコンバートした MXDRVg を、
+   さらに Yosshin が改変したもの。
+   「X68 的 default のフリーソフトウェア扱い」と思われる。
+
+2. MXDRVg に由来する部分
+   Apache License Version 2.0
+
+3. X68Sound.dllに由来する部分
+   http://mpuusan.web.fc2.com/x68sound/index.htm
+   ・本ソースの改変および改変物の公開、自作ソフト等への組み込みおよび
+     そのソフトの配布は自由です。_puusan への報告は必要ありません。
+   ・本ソフトウェアの使用または使用不能から生じるいかなる損害
+     (利益やデータの損失、その他の金銭的損失など) に関して
+     m_puusan は一切責任を負わないこととします。
+
+4. portable_mdxに由来する部分
+   Apache License Version 2.0
 
 (注) MXDRVg の作者 GORRY は mxv2 の作者でもあります。
 当時は以下のように定めていましたが、mxv2の配布に伴いライセンスを改めました。
