@@ -48,44 +48,33 @@ MIT ライセンス
 --------------------------------------------------------------------------------
 portable_mdx  --  portable_mdx.lib として静的リンク
 --------------------------------------------------------------------------------
-単一のライセンスではない。
 
-    https://github.com/yosshin4004/portable_mdx
+https://github.com/yosshin4004/portable_mdx
 
-正確な条件は third_party/portable_mdx/readme.md の「ライセンス」項を読むこと。
-mxv2 がリンクするファイルは、由来によって次の 3 系統に分かれる。
+    1. portable_mdxに由来する部分
+       Apache License Version 2.0
 
-  1. Yosshin 氏が制作した部分
-     (mdx_util、mxdrv_context.h / x68sound_context.h など)
+    2. MXDRVg に由来する部分
+       Apache License Version 2.0
 
-     Apache License Version 2.0
+    3. MXDRV.X に由来する部分
+       X68000 ネイティブ版 MXDRV.X (milk., K.MAEKAWA, Missy.M, Yatsube) を
+       ディスアセンブルしたものを GORRY が C 言語へコンバートした MXDRVg を、
+       さらに Yosshin が改変したもの。
+       「X68 的 default のフリーソフトウェア扱い」と思われる。
 
-  2. MXDRVg / MXDRV.X に由来する部分 (mxdrv.h、mxdrv/*)
+    4. X68Sound.dllに由来する部分
+       http://mpuusan.web.fc2.com/x68sound/index.htm
+       ・本ソースの改変および改変物の公開、自作ソフト等への組み込みおよび
+         そのソフトの配布は自由です。_puusan への報告は必要ありません。
+       ・本ソフトウェアの使用または使用不能から生じるいかなる損害
+         (利益やデータの損失、その他の金銭的損失など) に関して
+         m_puusan は一切責任を負わないこととします。
 
-     X68000 ネイティブ版 MXDRV.X (milk., K.MAEKAWA, Missy.M, Yatsube 氏) を
-     ディスアセンブルしたものを GORRY が C 言語へコンバートした MXDRVg を、
-     さらに Yosshin 氏が改変したもの。Yosshin 氏による改変箇所のライセンスは
-     オリジナルの MXDRV.X / MXDRVg に従う。
-     明確なライセンス文書は存在せず、「X68 的 default のフリーソフトウェア扱い」
-     とされている。
-     (MXDRVg の作者 GORRY は mxv2 の作者と同一人物である。)
-
-  3. X68Sound.dll に由来する部分 (x68sound.h、x68sound/*)
-
-     m_puusan 氏の X68Sound.dll を Yosshin 氏が改変したもの。Yosshin 氏による
-     改変箇所のライセンスはオリジナルの X68Sound.dll に従う。
-     オリジナルの使用許諾は次のとおり (readme.txt より)。
-
-         ・本ソースの改変および改変物の公開、自作ソフト等への組み込みおよび
-           そのソフトの配布は自由です。m_puusan への報告は必要ありません。
-         ・本ソフトウェアの使用または使用不能から生じるいかなる損害
-           (利益やデータの損失、その他の金銭的損失など) に関して
-           m_puusan は一切責任を負わないこととします。
-
-     参考: X68Sound.dll  http://mpuusan.web.fc2.com/x68sound/index.htm
-
-portable_mdx が同梱する SDL2 2.0.7 (examples/SDL2-2.0.7/*) は mxv2 のビルドでは
-使わないので、バイナリパッケージには含まれない。
+(注) MXDRVg の作者 GORRY は mxv2 の作者でもあります。
+当時は以下のように定めていましたが、mxv2の配布に伴いライセンスを改めました。
+「自由に使用・配布・改変を行うことができます。これらは無保証であり、使用した、
+あるいはしなかったことによる一切の責任は所有者にあるものとします。」
 
 --------------------------------------------------------------------------------
 キャスト（Chromecast へ送る）に使うもの  --  mxv2 に静的リンク
